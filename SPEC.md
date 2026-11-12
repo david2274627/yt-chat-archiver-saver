@@ -2,21 +2,24 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v19**（前版：v18 交接文件，見 `docs/handover-v18.md`） |
-| 目標套件版本 | **2.7.0**（前版 2.6.0） |
+| 規格版本 | **v20**（前版：v19；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
+| 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
 | 專案代號 | `yt-chat-archiver-saver` |
 | 最後更新 | 2026-11-13 |
 
-> **給 Claude Code 的閱讀順序**：先讀本檔第 0、1 節了解目標，再讀第 4 節（資料模型與訊息協定），第 6 節（F-10 新設計）是本版唯一的主要開發工作，第 8 節是逐步任務清單。共通開發規則見 `CLAUDE.md`。
+> **給 Claude Code 的閱讀順序**：第 0 節 → 第 1 節（目標）→ 第 4 節（資料模型與訊息協定）→ 第 6 節（F-10 技術設計）→ **第 10 節（UI 視覺設計）** → 第 8 節（任務清單，依序執行）。共通規則見 `CLAUDE.md`，本機操作流程見 `docs/HANDOFF.md`。
 
 ---
 
 ## 0. 本版重點（TL;DR）
 
-- F-01 ～ F-09 在 v2.6.0 **已實測可用**，本版只做「重構時不得退化」的保護。
-- **F-10（直播中保留原生輸入區）是本版唯一要解決的問題**。v13～v18 的「壓扁 iframe」路線全部放棄，改採 **方案 A：原生 iframe 維持完整高度 + CSS `clip-path` 動態裁切**（第 6 節）。
-- 方案 B（自建輸入框、呼叫 `youtubei/v1/live_chat/send_message`）列為**備案**，只在方案 A 驗收失敗時才啟動，且不處理金流。
+- **全新重寫**：不沿用 v2.6.0 程式碼，依本規格從零實作。v2.6.0 的 F-01～F-09 行為已驗證可行，作為功能需求照做；**所有 UI 樣式全部重新設計**（第 10 節）。
+- **風險最高的 F-10 最先驗證**：開發第一步就是 clip-path PoC（T1），結果決定走方案 A 或 B，再往下蓋其他功能。
+- **F-10 採方案 A**：原生 iframe 維持完整高度 + CSS `clip-path` 動態裁切（第 6 節）。v13～v18 的「壓扁 iframe」路線全部禁止。
+- 方案 B（自建輸入框、呼叫 `youtubei/v1/live_chat/send_message`）列為**備案**，只在 T1 失敗時啟動，且不處理金流。
+- **設計先行**：寫 UI 程式前先產出靜態設計稿（`design/`），經使用者確認再實作。
 
 ---
 
@@ -79,7 +82,11 @@ yt-chat-archiver-saver/
 └── CLAUDE.md
 ```
 
-> 若 repo 已放入 v2.6.0 原始碼（根目錄平鋪），可先維持平鋪結構；`src/` 搬移屬可選重構，必須獨立 commit 且不得改變行為。
+> 全新重寫，直接採用上述 `src/` 結構（`manifest.json` 放 repo 根目錄，路徑指向 `src/`）。另新增：
+> - `src/styles/tokens.css`：設計 token（CSS 變數，第 10 節），viewer、popup、匯出 HTML 共用。
+> - `src/styles/inject.css`：注入 YouTube 頁面的樣式，所有選擇器加 `ytcas-` 前綴。
+> - `src/icons/`：套件圖示 16/32/48/128 px（自行繪製 SVG 轉 PNG，不得使用 YouTube 標誌）。
+> - `design/`：靜態設計稿 HTML（第 10.8 節），不打包進套件。
 
 ### 3.2 資料流
 
@@ -163,52 +170,52 @@ yt-chat-archiver-saver/
 
 ### A. 效能與資料收錄
 
-**F-01 直播低記憶體佔用**（✅ 已完成，維持）
+**F-01 直播低記憶體佔用**（v2.6.0 已驗證可行，重寫照做）
 - chat frame 中每 3.5 秒將 `#items` 下超過 **45** 則的舊訊息節點 `remove()`。
 - 監聽 `yt-navigate-finish`，切換影片時清除舊 observer、計時器與殘留空白圖片節點。
 - AC：連續播放高流量直播 2 小時，聊天室訊息節點數恆 ≤ 50；切換 3 部影片後無重複 observer（以 console 計數確認）。
 
-**F-02 完整富媒體歷史保存**（✅ 已完成，維持）
+**F-02 完整富媒體歷史保存**（v2.6.0 已驗證可行，重寫照做）
 - 保存文字、官方 Emoji、會員貼圖（`src` + `alt`）、雙時間軸、頭像、頻道直連網址。
 - 被修剪前一定先完成擷取（擷取在 MutationObserver 回呼內同步完成，修剪只動已擷取節點：以 `data-ytcas-saved="1"` 標記）。
 - AC：同一訊息不重複寫入（以 `id` 去重）；匯出 JSON 與畫面數量一致。
 
-**F-03 全自動頻道名稱解析**（✅ 已完成，維持）
+**F-03 全自動頻道名稱解析**（v2.6.0 已驗證可行，重寫照做）
 - 無手動改名按鈕。`@Handle` 由 bg 抓頻道頁 `og:title`、`og:image` 解析；併發上限 **3**，失敗指數退避，快取 **7 天**。
 - 顯示：主名稱 = 頻道名稱，副標淡色 = `@Handle`。
 - AC：解析失敗時退回顯示 `@Handle`，不得顯示空白。
 
 ### B. 檢視器 UI（`viewer.html` / `viewer.js`）
 
-**F-04 前後台介面分離**（✅）
+**F-04 前後台介面分離**（v2.6.0 已驗證可行）
 - `embed=1`：隱藏場次下拉、匯出/刪除列。
 - 後台：場次切換、匯出離線 HTML（內嵌表符圖片為 data URL 或保留原網址，內建離線搜尋框）、匯出 JSON、刪除。
 
-**F-05 快速分類膠囊列**（✅）
+**F-05 快速分類膠囊列**（v2.6.0 已驗證可行）
 - 「全部訊息（N）」、「💰 Super Chat」（含超級貼圖）、「✨ 實況主降落」。
 - 降落 = Raid 橫幅 + 帶 `verified` 徽章的其他實況主發言；**排除** `constants.js` 的 `BOT_BLOCKLIST`（至少 `Nightbot`、`StreamElements`、`Streamlabs`、`Moobot`、`Fossabot`，比對不分大小寫，同時比對名稱與 @Handle）以及本台 `owner`/`moderator`。
 
-**F-06 搜尋列順序**（✅）
+**F-06 搜尋列順序**（v2.6.0 已驗證可行）
 - 左：「過濾使用者 (頻道名稱 / @代碼)...」；點列表中的名稱可一鍵帶入。
 - 右：「搜尋訊息關鍵字或表符...」；命中處 `<mark>` 高亮（表符以 `alt`/`shortcut` 比對）。
 - 輸入 debounce 200ms。
 
-**F-07 懸浮主播置頂卡片**（✅）
+**F-07 懸浮主播置頂卡片**（v2.6.0 已驗證可行）
 - 置頂訊息去重後固定在搜尋列下方，不混入一般流；點擊展開/收合；顯示主播頭像。
 
-**F-08 VOD 時間軸雙向同步**（✅，預設開啟，無開關）
+**F-08 VOD 時間軸雙向同步**（v2.6.0 已驗證可行；預設開啟，無開關）
 - 依 `VOD_TIME` 對 `videoOffsetSec` 二分搜尋定位、平滑捲動、藍框高亮當前訊息。
 - 使用者手動往上捲 → 暫停跟隨，底部出現「↓ 恢復自動捲動」。
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
 
 ### C. YouTube 頁面整合（`content.js`）
 
-**F-09 單一精簡控制按鈕**（✅）
+**F-09 單一精簡控制按鈕**（v2.6.0 已驗證可行）
 - 按鈕置於原生聊天室收合橫幅「開啟面板」右側水平並排；文字「開啟優化面板」，開啟後變紅色「關閉優化面板」。
 - 開啟時若原生聊天室收合，自動展開以開始擷取。
 - 不顯示大型說明橫幅。
 
-**F-10 直播中保留底部原生互動輸入區**（❌ 本版主要工作，詳見第 6 節）
+**F-10 直播中保留底部原生互動輸入區**（v2.6.0 未解決，本版重點，詳見第 6 節）
 
 ---
 
@@ -290,24 +297,29 @@ yt-chat-archiver-saver/
 | 效能 | viewer 開啟 10 萬則訊息場次 ≤ 2 秒顯示首屏（使用虛擬清單或分批渲染）；搜尋 ≤ 300ms |
 | 安全 | 匯出 HTML 與 viewer 渲染時，所有使用者文字一律 `textContent` / 跳脫，禁止 `innerHTML` 拼接未跳脫文字；圖片只接受 `https://` 且網域為 `*.ggpht.com`、`*.ytimg.com`、`*.googleusercontent.com`、`yt3.ggpht.com` |
 | 隱私 | 資料只存本機；不新增任何外部網路請求（頻道頁抓取除外，僅限 `www.youtube.com`） |
-| 權限 | 不新增 manifest 權限；若必須新增需在 PR 說明理由 |
+| 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions 僅 `https://www.youtube.com/*`。新增權限需先徵得使用者同意 |
 | 相容 | YouTube 改版時只需修改 `selectors.js`；所有選擇器找不到時須 graceful degrade（console.warn 一次，不拋錯） |
 
 ---
 
-## 8. 開發任務清單（Claude Code 依序執行）
+## 8. 開發任務清單（本機 Claude Code 依序執行）
+
+標示 **⏸** 的任務完成後必須**停下來**，告訴使用者如何在 Chrome 測試或檢視，等使用者回覆再繼續。
 
 | # | 任務 | 產出 | 完成條件 |
 |---|---|---|---|
-| T0 | 讀取現有程式碼（若有 v2.6.0），建立 `selectors.js`、`constants.js`，把散落的選擇器與常數集中 | refactor commit | 行為不變 |
-| T1 | **PoC**：在 top frame 對 `ytd-live-chat-frame` 手動套 `clip-path: inset(calc(100% - 84px) 0 0 0)`，驗證上半部點擊會穿透到下層面板、下半部輸入框可用 | `docs/poc-clip-path.md`（結論 + Chrome 版本） | 成功 → T2；失敗 → 改走 6.6 方案 B |
-| T2 | chat frame：移除 v13～v18 所有高度/佈局覆寫；改為只隱藏 `#item-list`、header | commit | 對照 6.1 清單，舊覆寫全數刪除 |
-| T3 | chat frame：輸入區高度 + 彈窗偵測 → `CHAT_INPUT_STATE` | commit | console 可看到狀態轉換正確 |
-| T4 | top frame：重疊容器、z-index、`--ytcas-clip` 狀態機、關閉時完整還原 | commit | 6.5 AC 1～3、7 |
-| T5 | 面板底部 padding 與「恢復自動捲動」位置調整 | commit | 6.5 AC 5 |
-| T6 | `$` 三種購買流程、VOD、劇院模式、縮放實測與修正 | commit | 6.5 AC 4、6、8 |
-| T7 | 回歸測試 F-01～F-09，更新 `docs/test-checklist.md` | commit | 6.5 AC 9 |
-| T8 | 版本號 → 2.7.0（manifest.json、VERSION、CHANGELOG），打 tag `v2.7.0` | release commit | 見 `CLAUDE.md` 版本規則 |
+| T0 | 專案骨架：`manifest.json`、`src/` 結構、`selectors.js`、`constants.js`、空白 `tokens.css`、套件圖示 | commit | Chrome「載入未封裝項目」無錯誤 |
+| T1 ⏸ | **clip-path PoC**：最小 content script，在 top frame 建立重疊容器，下層放一個可捲動/可點擊的測試面板，上層原生 `ytd-live-chat-frame` 套 `clip-path: inset(calc(100% - 84px) 0 0 0)` | `docs/poc-clip-path.md`（測試步驟、結論、Chrome 版本） | 使用者回報：上半部點擊/滾輪落到測試面板、下方輸入框可打字。成功 → 方案 A；失敗 → 方案 B（6.6），並更新本 SPEC |
+| D1 ⏸ | **設計稿**：依第 10 節做 `design/mockups.html`，提出 **2 種視覺方向**，每種含淺色/深色 | 設計稿 HTML | 使用者選定方向（可要求修改） |
+| D2 | 將選定方向落實為 `tokens.css` 與元件 CSS；更新第 10 節「已選定方向」 | commit | 設計稿與 token 一致 |
+| T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03） | commit | 以 DevTools 呼叫訊息 API 可寫入/查詢 |
+| T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02） | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50 |
+| T4 | viewer 核心：虛擬清單、訊息列、膠囊列、雙搜尋列、置頂卡片（F-04～F-07） | commit | 對既有場次資料可篩選、搜尋、高亮 |
+| T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09） | commit | 使用者在 VOD 與直播實測 |
+| T6 ⏸ | F-10 完整實作：輸入區/彈窗偵測、`CHAT_INPUT_STATE`、clip 狀態機、面板底部 padding、關閉還原（第 6 節） | commit | 使用者依 6.5 AC 1～7 實測 |
+| T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON、刪除 | commit | 匯出 HTML 離線開啟可搜尋 |
+| T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部，更新 `docs/test-checklist.md` | commit | 使用者確認測試清單全數通過 |
+| T9 | 發版 3.0.0：`manifest.json`、`VERSION`、`CHANGELOG.md` | `release: v3.0.0` | 見 `CLAUDE.md` 版本規則 |
 
 ---
 
@@ -316,3 +328,91 @@ yt-chat-archiver-saver/
 - 測試帳號：需為某頻道會員以測會員表符；`$` 流程測到確認頁即可取消。
 - Chrome：最新穩定版；記錄版本號於測試清單。
 - 記憶體量測：Chrome 工作管理員（Shift+Esc）記錄 0 / 30 / 60 / 120 分鐘。
+
+---
+
+## 10. UI 視覺設計規格（全部重新設計）
+
+### 10.1 設計原則
+1. **與 YouTube 共存、不冒充 YouTube**：內嵌在 YouTube 頁面時版面與密度要協調，但有自己的識別；不使用 YouTube 標誌、不照抄 YouTube 紅作為主色（「關閉優化面板」按鈕的紅色是功能狀態色，例外）。
+2. **閱讀優先**：聊天訊息是主角，工具列與篩選要精簡；內嵌模式（`embed=1`）垂直空間最大化。
+3. **一眼分辨訊息類型**：一般 / Super Chat / 超級貼圖 / 會員 / 里程碑 / 降落 / 置頂，各有一致的視覺語言。
+4. **深淺色雙主題**：所有顏色只能用 token，不得在元件中寫死色碼。
+5. **安靜的動態**：動畫只用在狀態轉換（展開、跟隨捲動、clip 切換），120～200ms；`prefers-reduced-motion` 時關閉。
+
+### 10.2 主題切換
+| 介面 | 依據 |
+|---|---|
+| 內嵌面板、注入按鈕 | 跟隨 YouTube：top frame 偵測 `html[dark]`，以 `postMessage` 或 URL 參數 `theme=dark|light` 傳給 viewer iframe，YouTube 切換主題時即時同步 |
+| 後台檢視器、popup | 預設跟隨 `prefers-color-scheme`，後台提供「系統 / 淺色 / 深色」切換（存 `chrome.storage.local`） |
+| 匯出 HTML | 內建兩套 token，跟隨閱讀者系統設定 |
+
+### 10.3 設計 Token（`src/styles/tokens.css`，D1/D2 定稿）
+必須至少定義下列變數（值由設計稿決定，以下為命名與用途）：
+
+```css
+:root {
+  /* 表面 */  --ytcas-bg; --ytcas-surface; --ytcas-surface-2; --ytcas-border; --ytcas-overlay;
+  /* 文字 */  --ytcas-text; --ytcas-text-2; --ytcas-text-3;
+  /* 品牌與互動 */ --ytcas-accent; --ytcas-accent-hover; --ytcas-accent-soft; --ytcas-focus-ring;
+  /* 語意 */  --ytcas-timecode;      /* 藍色系，時間碼 */
+              --ytcas-current-ring;  /* 藍框，VOD 當前訊息 */
+              --ytcas-highlight;     /* 搜尋 <mark> 底色 */
+              --ytcas-raid; --ytcas-raid-soft;   /* 實況主降落 */
+              --ytcas-member; --ytcas-owner; --ytcas-moderator;
+              --ytcas-danger;        /* 關閉優化面板按鈕 */
+  /* 字體 */  --ytcas-font: "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+              --ytcas-font-mono: ui-monospace,"SF Mono",Consolas,monospace;  /* 時間碼 */
+  /* 字級 */  --ytcas-fs-xs:11px; --ytcas-fs-sm:12px; --ytcas-fs-md:13px; --ytcas-fs-lg:15px; --ytcas-fs-xl:18px;
+  /* 間距 4px 基準 */ --ytcas-space-1:4px … --ytcas-space-6:24px;
+  /* 圓角 */  --ytcas-radius-sm:6px; --ytcas-radius-md:10px; --ytcas-radius-pill:999px;
+  /* 陰影 */  --ytcas-shadow-1; --ytcas-shadow-2;
+  /* 動態 */  --ytcas-ease: cubic-bezier(.2,.8,.2,1); --ytcas-dur:160ms;
+}
+[data-theme="dark"] { /* 同名變數的深色值 */ }
+```
+- Super Chat 底色**使用訊息本身的 SC 等級顏色**（`message.color`），文字色依底色自動選黑/白以符合對比。
+- 對比度：本文文字 ≥ 4.5:1，次要文字 ≥ 3:1（WCAG AA）。
+
+### 10.4 元件清單與規格
+| 元件 | 規格重點 |
+|---|---|
+| **注入按鈕**（F-09） | 與 YouTube「開啟面板」按鈕同高、水平並排；膠囊形；關閉狀態為次要按鈕樣式，開啟後變 `--ytcas-danger` 實心「關閉優化面板」；有 hover / focus-visible / active 狀態 |
+| **頂部工具區** | 由上而下：膠囊列 → 雙搜尋列 → 置頂卡片。embed 模式整體高度 ≤ 96px（置頂卡片收合時） |
+| **膠囊列**（F-05） | 「全部 N」「💰 Super Chat N」「✨ 降落 N」；選中為 `--ytcas-accent-soft` 底 + accent 文字；數字用 tabular-nums |
+| **雙搜尋列**（F-06） | 左「過濾使用者 (頻道名稱 / @代碼)...」、右「搜尋訊息關鍵字或表符...」；各帶圖示與清除鈕；過濾中的使用者以 chip 顯示，可點 × 移除 |
+| **置頂卡片**（F-07） | 浮在工具區下方；左側主播頭像 + 「置頂」標籤；收合時單行省略，點擊展開全文；`--ytcas-shadow-1` |
+| **訊息列** | 頭像 24px → 時間碼（mono、`--ytcas-timecode`、可點）→ 名稱（主名稱粗體 + 淡色 @Handle）→ 徽章 → 內容；表符與文字基線對齊，表符高 20px（會員貼圖 24px）；行高 1.45；hover 顯示淡底 |
+| **Super Chat / 超級貼圖卡** | 圓角卡片，上半金額列（頭像、名稱、金額），下半訊息；超級貼圖顯示貼圖 72px |
+| **會員 / 里程碑** | 左側 `--ytcas-member` 色條 + 標籤 |
+| **降落高光**（F-05） | Raid 橫幅：整列 `--ytcas-raid-soft` 底 + `--ytcas-raid` 左邊框 + 「✨ 降落」標籤；認證實況主發言：名稱旁加 raid 色徽章 |
+| **VOD 當前訊息**（F-08） | `--ytcas-current-ring` 2px 內框，平滑移動 |
+| **「↓ 恢復自動捲動」** | 底部置中浮動膠囊按鈕，位於原生輸入區（`inputHeight`）之上 8px |
+| **空狀態 / 載入中** | 尚無訊息、搜尋無結果、資料庫載入中，各有簡短文字與圖示 |
+| **後台檢視器** | 左側欄：場次清單（標題、頻道、日期、訊息數、直播/重播標籤、搜尋）；主區：同內嵌面板元件；頂部動作列：匯出 HTML、匯出 JSON、刪除（刪除需確認對話框） |
+| **popup**（寬 360px） | 目前分頁狀態（是否在擷取、本場訊息數）→「開啟檢視器」主按鈕 → 最近 5 個場次 |
+| **匯出 HTML** | 單一檔案、離線可用；頂部標題列（場次資訊）+ 搜尋框 + 訊息清單，沿用同一套 token |
+
+### 10.5 版面
+- 內嵌面板寬度跟隨 YouTube 右側欄（約 400px），最窄 300px 時仍不破版（名稱省略、搜尋列可改上下排列）。
+- 後台檢視器：≥ 1024px 雙欄（側欄 280px）；< 1024px 側欄收成抽屜。
+
+### 10.6 無障礙
+- 所有可點元素可用鍵盤操作，`:focus-visible` 顯示 `--ytcas-focus-ring`。
+- 圖示按鈕有 `aria-label`（繁體中文）；膠囊列用 `role="tablist"`。
+- 時間碼按鈕 `aria-label="跳轉至 2:02:10"`。
+
+### 10.7 注入 YouTube 頁面的樣式隔離
+- 優化面板以 iframe（`viewer.html?embed=1`）呈現，樣式天然隔離。
+- 注入在 YouTube DOM 的元素（按鈕、容器）全部加 `ytcas-` class 前綴，或放入 Shadow DOM；不得修改 YouTube 原生元件外觀（第 6 節允許的 `clip-path`、隱藏 `#item-list`/header 除外）。
+
+### 10.8 設計稿交付（任務 D1）
+- `design/mockups.html`：單一靜態頁、無外部相依，可直接用 Chrome 開啟。
+- 提出 **方向 A、方向 B** 兩種風格（例如：A「沉穩工具感」——中性灰階、細邊框、高資訊密度；B「柔和現代感」——較大圓角、柔和陰影、彩度較高的強調色），每種皆含淺色與深色。
+- 每個方向需展示：內嵌面板（直播中含底部輸入區示意、VOD 含當前訊息藍框）、各訊息類型、置頂卡片展開/收合、後台檢視器、popup、注入按鈕兩種狀態。
+- 頁面頂部提供切換「方向 A / B」「淺色 / 深色」的按鈕。
+- 使用假資料（虛構頻道名稱與頭像色塊），不使用真實使用者頭像。
+
+### 10.9 已選定方向
+（D2 完成後由 Claude Code 填寫：方向、主色、調整紀錄）
+

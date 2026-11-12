@@ -16,8 +16,15 @@
 - **禁止**改變 `iframe#chatframe` 高度，或對 `yt-live-chat-app` / `#contents` / `#chat-messages` 設 `height`、`display`（見 SPEC 6.1）。
 - 使用者文字禁止未跳脫寫入 `innerHTML`。
 
+## 設計
+- 全新重寫，不沿用 v2.6.0 程式碼與樣式；UI 依 SPEC 第 10 節。
+- 顏色、字級、間距、圓角一律使用 `src/styles/tokens.css` 的 CSS 變數，元件內不得寫死色碼。
+- 寫 UI 程式前必須先完成 D1 設計稿並取得使用者選定方向。
+- 不使用 YouTube 標誌或模仿 YouTube 品牌識別；設計稿使用虛構假資料。
+
 ## 工作流程
-- 依 SPEC 第 8 節任務 T0 → T8 順序；每個任務一個（或數個）小 commit。
+- 依 SPEC 第 8 節任務順序（T0 → T1 → D1 → D2 → T2 … T9）；每個任務一個（或數個）小 commit。
+- 標示 ⏸ 的任務完成後必須停下，給使用者具體測試步驟，等回覆再繼續。
 - 每完成一項 F-xx 或 T-xx，更新 `docs/test-checklist.md` 對應項目狀態。
 - 無法自動化驗證的項目（需真實直播）列在 PR / 回報中，請使用者手動驗證，不可宣稱已通過。
 

@@ -2,8 +2,14 @@
 
 格式依循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號採 [語意化版本](https://semver.org/lang/zh-TW/)。
 
-## [未發布] — 目標 2.7.0
-### 規格（commit `5b48eb6`，2026-11-13）
+## [未發布] — 目標 3.0.0（全新重寫）
+### 規格 v20（2026-11-13）
+- 改為**全新重寫**、交由本機 Claude Code 開發，不沿用 v2.6.0 程式碼；目標版本改為 3.0.0。
+- 新增第 10 節「UI 視覺設計規格」：設計原則、深淺色主題、token 命名、元件規格、無障礙、設計稿交付方式。
+- 任務清單重排：T1 clip-path PoC 最先驗證，D1/D2 設計稿先行，⏸ 標示需使用者實測的關卡。
+- 新增 `docs/HANDOFF.md`：本機 Claude Code 交接與測試流程。
+
+### 規格 v19（commit `5b48eb6`，2026-11-13）
 - 規格書 v19：重寫為可交給 Claude Code 的開發規格（`SPEC.md`），新增資料模型、訊息協定、驗收條件與任務清單。
 - F-10 改採「原生 iframe 完整高度 + `clip-path` 動態裁切」（方案 A），方案 B 列為備案。
 - 新增 `selectors.js` / `constants.js` 集中管理選擇器與常數的要求。

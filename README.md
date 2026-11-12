@@ -5,15 +5,16 @@ Chrome 擴充功能（Manifest V3）：長時間觀看 YouTube 直播時降低�
 - 目前版本：見 [`VERSION`](VERSION) 與 [`CHANGELOG.md`](CHANGELOG.md)
 - 開發規格：[`SPEC.md`](SPEC.md)
 - Claude Code 工作規則：[`CLAUDE.md`](CLAUDE.md)
+- 本機交接說明：[`docs/HANDOFF.md`](docs/HANDOFF.md)
 - 測試清單：[`docs/test-checklist.md`](docs/test-checklist.md)
 
 ## 交給 Claude Code 開發
 ```bash
 git clone https://github.com/david2274627/yt-chat-archiver-saver.git
 cd yt-chat-archiver-saver
-claude   # 然後輸入：「請依 SPEC.md 第 8 節從 T0 開始開發」
+claude   # 開頭指令見 docs/HANDOFF.md
 ```
 
 ## 安裝（開發版）
 1. Chrome 開啟 `chrome://extensions`，打開「開發人員模式」
-2. 「載入未封裝項目」→ 選擇本資料夾（或 `src/`，依目前結構）
+2. 「載入未封裝項目」→ 選擇本資料夾（含 `manifest.json` 的那層）
