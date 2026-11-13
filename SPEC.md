@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v21**（前版：v20；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v22**（前版：v21；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -21,6 +21,7 @@
 - 方案 B（自建輸入框、呼叫 `youtubei/v1/live_chat/send_message`）列為**備案**，只在 T1 失敗時啟動，且不處理金流。
 - **設計先行**：寫 UI 程式前先產出靜態設計稿（`design/`），經使用者確認再實作。
 - **v21 調整**：viewer 可直接唯讀 IndexedDB（3.2）；frame 間 origin 檢查區分 youtube.com 與擴充功能 origin、補訊息 id 與直播 offset 規則（4.3）；圖片白名單加入 gstatic；匯出 HTML 圖片內嵌為 data URL，並新增對應 host_permissions（7）。
+- **v22 調整**：收起狀態 clip 改為從 `iframe#chatframe` 底邊往上露出 `inputHeight`（6.2、T1）；新增 top frame 付款視窗偵測（6.3）；新增 **F-11 v2.6.0 舊資料遷移與 JSON 匯入**，v3 資料庫改名 `ytcas-v3`（4.1、5.A）；`web_accessible_resources` 只開放 `src/viewer.html`（7）；T9 加入移除 PoC。
 
 ---
 
@@ -66,7 +67,7 @@
 
 ```text
 yt-chat-archiver-saver/
-├── manifest.json     # MV3：storage, unlimitedStorage, tabs；host_permissions 見第 7 節；web_accessible_resources: viewer 相關檔案
+├── manifest.json     # MV3：storage, unlimitedStorage, tabs；host_permissions 見第 7 節；web_accessible_resources: 僅 src/viewer.html（v22）
 ├── src/
 │   ├── selectors.js  # ★新增：集中管理所有 YouTube DOM 選擇器（YouTube 改版時只改這裡）
 │   ├── constants.js  # ★新增：上限數字、機器人名單、訊息類型常數
@@ -114,7 +115,9 @@ yt-chat-archiver-saver/
 
 ## 4. 資料模型與訊息協定
 
-### 4.1 IndexedDB（DB 名稱 `ytChatArchive`，版本號隨 schema 遞增，必須寫 `onupgradeneeded` 遷移）
+### 4.1 IndexedDB（DB 名稱 `ytcas-v3`（v22 起；`constants.js` 的 `DB_NAME`），版本號隨 schema 遞增，必須寫 `onupgradeneeded` 遷移）
+
+> v2.6.0 的舊資料庫（`YTLiveChatArchiverDB_V6`，結構見 `docs/legacy-v2.6.0-data.md`）**不得**以 v3 程式升級、修改或刪除，只能唯讀複製（F-11）。
 
 **streams**（keyPath `videoId`）
 ```js
@@ -193,11 +196,21 @@ yt-chat-archiver-saver/
 - 顯示：主名稱 = 頻道名稱，副標淡色 = `@Handle`。
 - AC：解析失敗時退回顯示 `@Handle`，不得顯示空白。
 
+**F-11 v2.6.0 舊資料遷移與 JSON 匯入**（v22 新增）
+- **自動遷移**：v3 第一次啟動時（及後台手動「重新遷移」），若偵測到 v2.6.0 的 IndexedDB（`YTLiveChatArchiverDB_V6`，結構與欄位對照見 `docs/legacy-v2.6.0-data.md`），由 background **唯讀開啟並複製轉換**到 `ytcas-v3`。
+  - 開啟舊資料庫時**不得**指定版本號或觸發 `onupgradeneeded`；若開啟時意外進入 `onupgradeneeded`（代表舊資料庫不存在），必須 `abort()` 該交易，不得建立空的舊資料庫。
+  - **不得**升級、修改或刪除舊資料庫。
+  - 以 `id` 去重，可重複執行；完成後在 `chrome.storage.local` 記錄 `legacyMigratedAt`、`legacyCounts`（舊庫各 store 筆數）與 `migratedCounts`（實際寫入／略過筆數）。
+  - 舊資料庫保留；後台提供「刪除舊版資料」按鈕，需二次確認，且僅在遷移筆數核對一致後才可按。
+- **JSON 匯入**：後台檢視器「匯入 JSON」，支援 (1) v2.6.0 匯出格式、(2) v3 匯出格式；以 `id` 去重；匯入前顯示預覽（場次數、訊息數、重複數），完成後顯示結果。
+- **v3 JSON 匯出**含 `formatVersion` 欄位（初版 `1`），確保可匯入回來。
+- AC：遷移後舊資料庫筆數不變；v3 場次數與訊息數與舊資料一致；同一檔案匯入兩次不產生重複；匯入格式錯誤時顯示錯誤，不寫入任何資料。
+
 ### B. 檢視器 UI（`viewer.html` / `viewer.js`）
 
 **F-04 前後台介面分離**（v2.6.0 已驗證可行）
 - `embed=1`：隱藏場次下拉、匯出/刪除列。
-- 後台：場次切換、匯出離線 HTML（v21：表符、會員貼圖、頭像一律由 background 抓取並內嵌為 data URL，同一網址只抓一次；抓取失敗時退回 alt 文字/色塊；內建離線搜尋框）、匯出 JSON、刪除。
+- 後台：場次切換、匯入 JSON（F-11）、匯出離線 HTML（v21：表符、會員貼圖、頭像一律由 background 抓取並內嵌為 data URL，同一網址只抓一次；抓取失敗時退回 alt 文字/色塊；內建離線搜尋框）、匯出 JSON（含 `formatVersion`）、刪除。
 
 **F-05 快速分類膠囊列**（v2.6.0 已驗證可行）
 - 「全部訊息（N）」、「💰 Super Chat」（含超級貼圖）、「✨ 實況主降落」。
@@ -251,8 +264,9 @@ yt-chat-archiver-saver/
 
 | 狀態 | 條件 | clip-path |
 |---|---|---|
-| 收起（平常） | `hasInput && !popupOpen` | `inset(calc(100% - ${inputHeight}px) 0 0 0)` |
+| 收起（平常） | `hasInput && !popupOpen` | `inset(${iframeBottom - frameTop - inputHeight}px 0 0 0)`（v22：從 `iframe#chatframe` 底邊往上露出 `inputHeight`；`iframeBottom`/`frameTop` 為兩者 `getBoundingClientRect()`。iframe 下方的原生「隱藏聊天室」列一併露出，F-09 按鈕即放在該列） |
 | 彈窗展開 | `popupOpen` | `inset(${max(0, popupTop - 8)}px 0 0 0)`（只露出彈窗以下，彈窗自然向上長出覆蓋面板，不露出上方空白） |
+| top frame 付款視窗（v22） | top frame 偵測到 `top.popups` 可見（見 6.3） | 待 T1 實測決定：維持目前 clip，或解除為 `none`。視窗本身在 top frame，不受 clip-path 影響，但狀態機須視同 `popupOpen`，不得在此期間切回「收起」造成閃動 |
 | 無輸入區 | `!hasInput`（VOD 重播、未登入、聊天室關閉、僅會員可留言而非會員…） | `inset(100% 0 0 0)`，面板佔滿全高 |
 | 優化面板關閉 | 使用者關閉面板 | 移除 `clip-path` 與所有套件樣式，完全還原 |
 
@@ -269,6 +283,7 @@ yt-chat-archiver-saver/
   - 其他：任何「可見」的 `tp-yt-iron-dropdown`、`tp-yt-paper-dialog`
   - 「可見」定義：`getBoundingClientRect().height > 0` 且計算樣式非 `display:none`/`visibility:hidden`。
   - `popupTop` = 所有可見彈窗 `rect.top` 最小值。
+- **top frame 彈窗偵測**（v22）：部分 `$` 付款確認視窗開在整頁中央（top frame），不在 chat frame 內。top frame 以 `MutationObserver` 監看 `ytd-popup-container`，其中可見的 `tp-yt-paper-dialog` 與 `ytd-*` 付款相關元件（選擇器放 `selectors.js` 的 `top.popups`）視同 `popupOpen`，與 chat frame 回報的狀態取聯集。
 - 狀態有變化才送 `CHAT_INPUT_STATE`（相同狀態 debounce 50ms 合併），避免洗訊息。
 - 購買流程進入第二步時，原生會自行處理層級；套件**不得**再對 dropdown 加任何 `display`/`z-index` 覆寫（v18 重疊問題來自混合覆寫）。
 
@@ -305,6 +320,7 @@ yt-chat-archiver-saver/
 | 效能 | viewer 開啟 10 萬則訊息場次 ≤ 2 秒顯示首屏（使用虛擬清單或分批渲染）；搜尋 ≤ 300ms |
 | 安全 | 匯出 HTML 與 viewer 渲染時，所有使用者文字一律 `textContent` / 跳脫，禁止 `innerHTML` 拼接未跳脫文字；圖片只接受 `https://` 且網域為 `*.ggpht.com`、`*.ytimg.com`、`*.googleusercontent.com`、`yt3.ggpht.com`、`fonts.gstatic.com`、`www.gstatic.com`（v21 加入 gstatic：YouTube 標準 Unicode 表符圖片來源）；不在白名單的圖片以 `alt` 文字顯示 |
 | 隱私 | 資料只存本機；外部網路請求僅限：頻道頁抓取（`www.youtube.com`）、匯出 HTML 時抓取上列白名單網域的圖片轉 data URL（v21） |
+| 網頁可存取資源 | `web_accessible_resources` 只開放 `src/viewer.html`（PoC 期間另加 `src/poc/poc-panel.html`），並設 `use_dynamic_url: true`，降低網頁偵測擴充功能的可能；viewer 的 js/css 由擴充功能頁面自行載入，不需開放（v22） |
 | 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions：`https://www.youtube.com/*`，以及匯出內嵌圖片用的 `https://*.ggpht.com/*`、`https://*.ytimg.com/*`、`https://*.googleusercontent.com/*`、`https://fonts.gstatic.com/*`、`https://www.gstatic.com/*`（v21 經使用者同意）。再新增權限需先徵得使用者同意 |
 | 相容 | YouTube 改版時只需修改 `selectors.js`；所有選擇器找不到時須 graceful degrade（console.warn 一次，不拋錯） |
 
@@ -317,17 +333,17 @@ yt-chat-archiver-saver/
 | # | 任務 | 產出 | 完成條件 |
 |---|---|---|---|
 | T0 | 專案骨架：`manifest.json`、`src/` 結構、`selectors.js`、`constants.js`、空白 `tokens.css`、套件圖示 | commit | Chrome「載入未封裝項目」無錯誤 |
-| T1 ⏸ | **clip-path PoC**：最小 content script，在 top frame 建立重疊容器，下層放一個可捲動/可點擊的測試面板，上層原生 `ytd-live-chat-frame` 套 `clip-path: inset(calc(100% - 84px) 0 0 0)` | `docs/poc-clip-path.md`（測試步驟、結論、Chrome 版本） | 使用者回報：上半部點擊/滾輪落到測試面板、下方輸入框可打字。成功 → 方案 A；失敗 → 方案 B（6.6），並更新本 SPEC |
+| T1 ⏸ | **clip-path PoC**：最小 content script，在 top frame 建立重疊容器，下層放一個可捲動/可點擊的測試面板，上層原生 `ytd-live-chat-frame` 套 `clip-path`，從 `iframe#chatframe` 底邊往上露出 84px（可調），即 `inset(${iframeBottom - frameTop - 84}px 0 0 0)`；下層可切換 div / 擴充功能 iframe，另可「完全不裁切」並觀察 top frame 付款視窗（v22） | `docs/poc-clip-path.md`（測試步驟、結論、Chrome 版本） | 使用者回報：上半部點擊/滾輪落到測試面板、下方輸入框可打字。成功 → 方案 A；失敗 → 方案 B（6.6），並更新本 SPEC |
 | D1 ⏸ | **設計稿**：依第 10 節做 `design/mockups.html`，提出 **2 種視覺方向**，每種含淺色/深色 | 設計稿 HTML | 使用者選定方向（可要求修改） |
 | D2 | 將選定方向落實為 `tokens.css` 與元件 CSS；更新第 10 節「已選定方向」 | commit | 設計稿與 token 一致 |
-| T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03） | commit | 以 DevTools 呼叫訊息 API 可寫入/查詢 |
+| T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03）；F-11 自動遷移（唯讀複製，不動舊資料庫） | commit | 以 DevTools 呼叫訊息 API 可寫入/查詢；遷移後舊庫筆數不變、新舊筆數一致 |
 | T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02） | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50 |
 | T4 | viewer 核心：虛擬清單、訊息列、膠囊列、雙搜尋列、置頂卡片（F-04～F-07） | commit | 對既有場次資料可篩選、搜尋、高亮 |
 | T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09） | commit | 使用者在 VOD 與直播實測 |
 | T6 ⏸ | F-10 完整實作：輸入區/彈窗偵測、`CHAT_INPUT_STATE`、clip 狀態機、面板底部 padding、關閉還原（第 6 節） | commit | 使用者依 6.5 AC 1～7 實測 |
-| T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON、刪除 | commit | 匯出 HTML 離線開啟可搜尋 |
+| T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON（含 `formatVersion`）、刪除；F-11 JSON 匯入 UI（v2.6.0 / v3 格式、預覽、去重）與「刪除舊版資料」按鈕 | commit | 匯出 HTML 離線開啟可搜尋；同一 JSON 匯入兩次無重複 |
 | T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部，更新 `docs/test-checklist.md` | commit | 使用者確認測試清單全數通過 |
-| T9 | 發版 3.0.0：`manifest.json`、`VERSION`、`CHANGELOG.md` | `release: v3.0.0` | 見 `CLAUDE.md` 版本規則 |
+| T9 | 發版 3.0.0：移除 `src/poc/` 與 manifest 中 PoC 的 content script、`web_accessible_resources` 的 `poc-panel.html`；更新 `manifest.json`、`VERSION`、`CHANGELOG.md` | `release: v3.0.0` | 見 `CLAUDE.md` 版本規則 |
 
 ---
 
