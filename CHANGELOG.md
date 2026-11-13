@@ -5,6 +5,7 @@
 ## [未發布] — 目標 3.0.0（全新重寫）
 ### 開發進度
 - T0 專案骨架：`manifest.json`（3.0.0-dev）、`src/` 結構、`selectors.js`、`constants.js`、空白 `tokens.css`、套件圖示（自繪 SVG → PNG）。
+- T1 clip-path PoC：`src/poc/clip-path-poc.js`、`docs/poc-clip-path.md`（待使用者在真實直播實測）。
 
 ### 規格 v21（2026-11-13）
 - viewer（擴充功能頁面）可直接唯讀 IndexedDB，寫入仍只由 background 執行。

@@ -8,7 +8,7 @@
 | 任務 | 狀態 | 備註 |
 |---|---|---|
 | T0 骨架：Chrome「載入未封裝項目」無錯誤 | ⬜ | 靜態檢查通過（manifest 路徑齊全、JS 語法正確）；待使用者在 Chrome 載入確認 |
-| T1 clip-path PoC：上半部點擊/滾輪落到測試面板 | ⬜ | 見 `docs/poc-clip-path.md` |
+| T1 clip-path PoC：上半部點擊/滾輪落到測試面板 | ⬜ | 見 `docs/poc-clip-path.md`；模擬頁面命中測試已通過，待 YouTube 實測 |
 | T1 clip-path PoC：下方原生輸入框可打字 | ⬜ | 需真實直播 |
 
 ## 回歸（F-01 ～ F-09）
