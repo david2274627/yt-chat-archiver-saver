@@ -13,6 +13,17 @@
   - 進度報告與 CHANGELOG commit 對照（commit `34aa959`）。
   - CLAUDE.md 新增「資料保護」「瀏覽器」操作規則（本段落所在的 commit）。
 
+### 規格 v23（2026-11-14）
+- T1 實測通過，**F-10 定案方案 A**（Chrome 157.0.8103.51）。
+- 6.2／6.4：面板改為插入 `ytd-live-chat-frame` 內（`iframe#chatframe` 前一個兄弟），`clip-path` 改套在 `iframe#chatframe`，不再換算座標或輪詢重排（修正劇院模式錯位）。
+- 6.2 狀態表：頁面層付款視窗（`topPopupOpen`）開啟期間 clip 維持解除，兩邊都關閉才回到收起。
+- 6.3：`inputHeight` 一律以 `#input-panel` 實際高度動態量測，禁止常數（實測出現 84px 與 58px）。
+- 6.4：頁面層「完成購買程序」視窗不在 `ytd-popup-container` 內，選擇器待補測診斷後定案。
+- 10.1 新增原則 6「不遮擋影片與頁面主體」；第 7 節新增「版面侵入」列，列為每個 ⏸ 關卡檢查項。
+- F-09 新增待決事項：預設開啟與記住狀態。
+- F-11：遷移資料的時間碼與 VOD 同步為盡力而為。
+- 第 8 節 T1 標註通過。
+
 ### 規格 v22（commit `88dc272`、`a3c66e8`，2026-11-13）
 - 6.2／T1：收起狀態 clip 改為從 `iframe#chatframe` 底邊往上露出 `inputHeight`，「隱藏聊天室」列一併露出。
 - 6.3：新增 top frame 付款視窗偵測（`ytd-popup-container`），6.2 狀態表新增對應列。
