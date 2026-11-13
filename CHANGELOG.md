@@ -11,9 +11,15 @@
   - PoC 補強（commit `2bd8f92`）：下層可切換 div / 擴充功能 iframe、完全不裁切、付款視窗位置觀察。
   - 縮小 `web_accessible_resources`（commit `a3c66e8`）。
   - 進度報告與 CHANGELOG commit 對照（commit `34aa959`）。
-  - CLAUDE.md 新增「資料保護」「瀏覽器」操作規則（本段落所在的 commit）。
+  - CLAUDE.md 新增「資料保護」「瀏覽器」操作規則（commit `df2a4fd`）。
+  - 每輪 `.md` 報告規則與審查修正回報（commit `6384aa7`）。
+- T1 實測通過，**F-10 定案方案 A**（`docs/review-2026-11-14.md`）：
+  - 規格 v23（commit `56cff01`）。
+  - T1 實測結果與方案 A 定案記錄（commit `de3a999`）。
+  - PoC 改為錨定聊天室內部、移除浮動控制盒、自動量測輸入區（commit `f1679d6`）。
+  - 本輪報告 `docs/reports/2026-11-14-t1-results.md`（本段落所在的 commit）。
 
-### 規格 v23（2026-11-14）
+### 規格 v23（commit `56cff01`，2026-11-14）
 - T1 實測通過，**F-10 定案方案 A**（Chrome 157.0.8103.51）。
 - 6.2／6.4：面板改為插入 `ytd-live-chat-frame` 內（`iframe#chatframe` 前一個兄弟），`clip-path` 改套在 `iframe#chatframe`，不再換算座標或輪詢重排（修正劇院模式錯位）。
 - 6.2 狀態表：頁面層付款視窗（`topPopupOpen`）開啟期間 clip 維持解除，兩邊都關閉才回到收起。
