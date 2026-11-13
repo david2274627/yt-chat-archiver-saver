@@ -44,6 +44,12 @@
       "js": ["src/constants.js", "src/selectors.js", "src/poc/clip-path-poc.js"],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": ["https://www.youtube.com/live_chat*", "https://www.youtube.com/live_chat_replay*"],
+      "js": ["src/constants.js", "src/selectors.js", "src/poc/poc-chat.js"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "web_accessible_resources": [

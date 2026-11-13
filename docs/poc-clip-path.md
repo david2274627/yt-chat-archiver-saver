@@ -1,26 +1,27 @@
 # T1：clip-path PoC 測試
 
-> 目的：驗證 SPEC 第 6 節方案 A 的關鍵前提。對 `ytd-live-chat-frame` 套 `clip-path` 後，被裁掉的上半部收到的點擊和滾輪，要穿透到下層的測試面板；底部露出的原生輸入框仍要能正常打字。
+> 目的：驗證 SPEC 第 6 節方案 A 的關鍵前提。對原生聊天室套 `clip-path` 後，被裁掉的上半部收到的點擊和滾輪，要穿透到下層的測試面板；底部露出的原生輸入框仍要能正常打字。
 > 另外觀察：「完全不裁切」時原生彈窗的展開情形，以及 `$` 付款視窗開在聊天室內還是頁面中央。
-> PoC 程式：`src/poc/clip-path-poc.js`、`src/poc/poc-panel.html/js`（T9 發版前移除）。
+> PoC 程式：`src/poc/clip-path-poc.js`（top frame）、`src/poc/poc-chat.js`（chat frame 量測）、`src/poc/poc-panel.html/js`（擴充功能 iframe 下層）。T9 發版前全部移除。
 
 ## 狀態
-- 模擬頁面（非 YouTube）自動檢查：✅ Chrome 156.0.8078.75 下以 `elementFromPoint` 確認：裁切區域命中測試面板（div），未裁切區域命中 iframe 和「隱藏聊天室」列。
-- **真實 YouTube 直播：⬜ 待使用者實測**（以下步驟）。擴充功能 iframe 下層、不裁切時的彈窗、付款視窗位置，都只能在真實環境驗證。
+- 第一次實測（2026-11-14）：**通過，F-10 定案方案 A**。劇院模式錯位、頁面層付款視窗未偵測到兩項待修，結果見文末「結論」。
+- v23 修正版 PoC：⬜ **待使用者補測**（見「補測（v23）」）。
+- 模擬頁面（非 YouTube）自動檢查（v23 版）：✅ 面板插入 `ytd-live-chat-frame` 內、與 iframe 位置尺寸完全一致；把聊天室搬到其他容器（模擬劇院模式）後，面板仍與 iframe 重疊；面板被移除後會自動重新插入；裁切與不裁切的命中結果正確；`position:fixed` 的大型浮層能被偵測；頁面上沒有任何 `position:fixed` 的 PoC 元素；關閉後完全還原。
 
-## PoC 行為
-- 頁面左下角有藍色「PoC：開啟」按鈕（快速鍵 Alt+Shift+P）。
+## PoC 行為（v23）
+- **沒有任何浮在影片或頁面上的元素**（SPEC 10.1 原則 6）。
+- 開關按鈕：原生聊天室底部「隱藏聊天室」那一列的右側，藍色「**PoC 測試**」（F-09 按鈕的預定位置）。快速鍵 Alt+Shift+P。
 - 開啟後：
-  - 在原生聊天室正後方放一個同位置、同尺寸、虛線框的**測試面板**（z-index 10），裡面有 200 個「測試列」按鈕。
-  - 原生 `ytd-live-chat-frame` 移到上層（z-index 20）並套用 `clip-path`：從 iframe 底邊往上露出 **84px**，iframe 下方的「隱藏聊天室」列也一起露出。
-  - 左下角出現 **PoC 控制盒**（不在面板內，所以不裁切時也按得到），內容如下：
-    - 點擊／滾輪次數、最後點擊的列
-    - 露出高度滑桿（40–240px）
-    - 裁切對象：`ytd-live-chat-frame`（預設，SPEC 方案）或 `iframe#chatframe`
-    - **下層類型**：`div`（藍色面板）或 `擴充功能 iframe`（橘色面板，等同正式版 `viewer.html?embed=1` 的情境）
-    - **完全不裁切**（`clip-path: none`，原生聊天室仍在上層）
-    - **目前可見彈窗／最近一次可見彈窗**：標示在「頁面」（top frame 的 `ytd-popup-container`）或「聊天室」（iframe 內），並顯示元素名稱和位置
-- 再按一次（紅色「PoC：關閉」）完全還原。
+  - 測試面板插入 `ytd-live-chat-frame` 內、`iframe#chatframe` 的正後方（z-index 10），跟著聊天室一起被 YouTube 搬移，不計算座標。
+  - `clip-path` 直接套在 `iframe#chatframe`（z-index 20）。「隱藏聊天室」列不在 iframe 內，維持可見。
+  - 「PoC 測試」旁出現「**不裁切**」按鈕（快速鍵 Alt+Shift+U），切換「完全不裁切」。不裁切時原生聊天室會蓋住面板，用這個按鈕或快速鍵切回即可。
+  - 測試面板頂部有一列狀態：點擊／滾輪次數、最後點擊、目前露出高度。按「展開 ▼」可看到：
+    - **露出模式**：自動（預設，用 chat frame 量測到的 `#input-panel` 頂端到 iframe 底邊的距離）／手動（滑桿 40–240px）
+    - **量測**：`#input-panel` 高度、頂端距 iframe 底邊的距離、輸入區子元素（只有標籤名稱和高度，不含文字）
+    - **下層類型**：`div`（藍色）／擴充功能 iframe（橘色）
+    - **目前可見彈窗／最近一次可見彈窗**：分為「頁面」（`ytd-popup-container` 內）、「頁面浮層」（頁面上可見的大型 `position:fixed` 元素）、「聊天室」（iframe 內）
+- 按「關閉 PoC」完全還原。「PoC 測試」按鈕會留在聊天室列上。
 
 ## 測試前準備
 
@@ -35,7 +36,8 @@
    - 檢查 T0：卡片上沒有紅色「錯誤」，名稱是「YT 加強版聊天室」，版本顯示 `3.0.0-dev`，圖示是藍綠色對話泡泡，ID 與第 0 步記下的相同。
 2. 開一個**你能留言的直播**，確認右側原生聊天室是展開的。
 
-## 測試步驟
+## 第一次實測步驟（已於 2026-11-14 完成；v22 版 PoC，僅保留紀錄）
+> v23 起控制盒已移除，請改照下方「補測（v23）」操作。
 1. 按左下角「PoC：開啟」。
 2. **看畫面**：聊天室區域變成藍色虛線框的測試面板，底部只露出原生輸入框（約 84px）和「隱藏聊天室」列。
    - 如果露出的高度不剛好（露出太多訊息，或輸入框被切掉），用控制盒的「露出高度」滑桿調到剛好，**記下數字**。
@@ -70,6 +72,73 @@ T0 卡片無錯誤、版本 3.0.0-dev：是 / 否
 步驟 9 劇院模式：
 步驟 10 關閉還原：
 （失敗時附截圖，以及 F12 Console 中 [ytcas-poc] 開頭的訊息）
+```
+
+## 補測（v23）
+
+### 準備
+1. `chrome://extensions` → 在**原本的擴充功能項目**上按 🔄 重新載入（不要移除）。
+2. 看卡片上的「**ID**」欄位（一串 32 個英文字母，**不是**版本號），核對是否為 `ejdhefdjjjlajfilfijnanippgdcdeoi`。
+3. 開一個你能留言的直播，重新整理頁面，確認聊天室展開。
+4. 確認聊天室底部「隱藏聊天室」那一列右側有藍色「**PoC 測試**」按鈕。
+
+### 步驟
+1. **不遮擋**：開啟 PoC 前後都檢查，影片、標題、說明、留言區上**沒有任何** PoC 元素（左下角不應再有按鈕或控制盒）。
+2. 按「PoC 測試」，再按面板頂部的「展開 ▼」，確認露出模式是「自動」。
+3. **自動量測**：
+   1. 一般狀態下，底部是否剛好露出輸入列？記下「量測」顯示的兩個數字，以及「輸入區子元素」。
+   2. 想辦法重現上次只需約 58px 的狀態（例如點一下輸入框再點開、切換其他直播、或會員限定／慢速模式的直播），同樣記下量測值，並描述當時輸入框周圍看得到哪些列（例如帳號名稱列、提示列、表符和 `$` 按鈕列）。
+   3. 兩種狀態下露出的範圍是否都剛好（不多露訊息、也不切到輸入框）？
+4. **劇院模式**：來回切換 3 次（快速鍵 `t`）。每次面板是否都與聊天室重疊？上半部點擊和滾輪是否仍落到面板？
+5. **視窗縮放**：把瀏覽器視窗拉窄，直到右側欄移到影片下方，再拉回來。面板是否始終跟著聊天室？
+6. **付款視窗診斷**：按「不裁切」（或 Alt+Shift+U）→ 點 `$` → 超級留言 → 走到「完成購買程序」視窗出現（**不要付款**）。
+   1. 記下面板頂部「目前可見彈窗」的內容；如果被聊天室蓋住看不到，關閉付款視窗後看「最近一次可見彈窗」。
+   2. 付款視窗**開著時**，按 F12 → Console，左上角的 frame 選單選「**top**」，貼上下方「診斷指令」並按 Enter。第一次貼上時 Chrome 可能要求先輸入 `allow pasting`。
+   3. 指令會把結果複製到剪貼簿，請把結果貼回給我（只含元素標籤、id、class、位置與 iframe 網域，**不含任何文字或付款資訊**）。
+   4. 取消付款流程，再按「恢復裁切」。
+7. 按「關閉 PoC」：聊天室完全還原，「PoC 測試」按鈕留在聊天室列上。
+
+### 診斷指令（付款視窗開著時，在 top frame 的 Console 執行）
+```js
+(() => {
+  const vp = innerWidth * innerHeight, out = [];
+  const host = (u) => { try { return new URL(u, location.href).host; } catch { return '(無)'; } };
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' && cs.position !== 'absolute') continue;
+    if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height < vp * 0.05) continue;
+    const z = parseInt(cs.zIndex, 10) || 0;
+    if (cs.position === 'absolute' && z < 100) continue;
+    const path = [];
+    for (let p = el, i = 0; p && p !== document.body && i < 5; p = p.parentElement, i++)
+      path.unshift(p.tagName.toLowerCase() + (p.id ? '#' + p.id : ''));
+    out.push({
+      tag: el.tagName.toLowerCase(), id: el.id, cls: String(el.className).slice(0, 80),
+      pos: cs.position, z: cs.zIndex, rect: [r.left, r.top, r.width, r.height].map(Math.round).join(','),
+      path: path.join(' > '),
+      iframes: (el.tagName === 'IFRAME' ? [el] : [...el.querySelectorAll('iframe')]).map((f) => host(f.src)).join(' '),
+    });
+  }
+  console.table(out);
+  copy(JSON.stringify(out, null, 1));
+  return `找到 ${out.length} 個元素，已複製到剪貼簿`;
+})();
+```
+
+### 補測回報格式
+```
+擴充功能 ID（卡片上的 ID 欄位）：
+步驟 1 影片與頁面主體上沒有 PoC 元素：是 / 否
+步驟 3-1 一般狀態：量測 高＿＿px／距底＿＿px；子元素：＿＿；露出剛好：是 / 否
+步驟 3-2 另一種狀態：量測 高＿＿px／距底＿＿px；子元素：＿＿；當時輸入框周圍有哪些列：＿＿；露出剛好：是 / 否
+步驟 4 劇院模式 3 次：面板始終重疊 是 / 否；點擊滾輪穿透 是 / 否
+步驟 5 視窗縮放：面板跟著聊天室 是 / 否
+步驟 6 面板顯示的可見彈窗：
+步驟 6 診斷指令結果：（貼上剪貼簿內容）
+步驟 7 關閉還原：
+（失敗時附截圖；截圖請避開付款資訊，或不要附付款視窗的截圖）
 ```
 
 ## 結論（2026-11-14，第一次實測）
