@@ -161,7 +161,7 @@ yt-chat-archiver-saver/
 
 所有訊息格式：`{ __ytcas: true, type, ... }`。接收端**必須**檢查 `__ytcas === true`、`event.source` 為預期的 frame，以及 `event.origin`：
 - chat frame ↔ top frame：`event.origin === 'https://www.youtube.com'`。
-- top frame ↔ viewer iframe：top 端檢查 `event.origin === 'chrome-extension://' + chrome.runtime.id`；viewer 端檢查 `event.origin === 'https://www.youtube.com'`。
+- top frame ↔ viewer iframe：top 端檢查 `event.origin` 等於 `new URL(viewerIframe.src).origin` 或 `'chrome-extension://' + chrome.runtime.id`（v22：`use_dynamic_url: true` 時 `chrome.runtime.getURL()` 可能回傳動態 ID，origin 不一定等於 `runtime.id`）；viewer 端檢查 `event.origin === 'https://www.youtube.com'`。
 
 **訊息 id 補救**（v21）：置頂、降落橫幅等取不到 YouTube 訊息 id 時，以 `type + authorHandle/authorChannelId + 內容文字 + timestampAbs` 計算雜湊作為 `id`（前綴 `ytcas-`）。
 
