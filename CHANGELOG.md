@@ -10,6 +10,8 @@
   - v2.6.0 舊資料保護與結構記錄（commit `e960c82`）：備份第 0 步、禁止移除擴充功能項目、`docs/legacy-v2.6.0-data.md`、`DB_NAME` 改為 `ytcas-v3`、`.gitignore` 排除 `bak/`。
   - PoC 補強（commit `2bd8f92`）：下層可切換 div / 擴充功能 iframe、完全不裁切、付款視窗位置觀察。
   - 縮小 `web_accessible_resources`（commit `a3c66e8`）。
+  - 進度報告與 CHANGELOG commit 對照（commit `34aa959`）。
+  - CLAUDE.md 新增「資料保護」「瀏覽器」操作規則（本段落所在的 commit）。
 
 ### 規格 v22（commit `88dc272`、`a3c66e8`，2026-11-13）
 - 6.2／T1：收起狀態 clip 改為從 `iframe#chatframe` 底邊往上露出 `inputHeight`，「隱藏聊天室」列一併露出。
