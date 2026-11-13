@@ -3,3 +3,8 @@ node_modules/
 *.crx
 *.pem
 .DS_Store
+
+# 使用者的 IndexedDB 備份（私人聊天資料，禁止 commit）
+bak/
+*.indexeddb.leveldb/
+*.indexeddb.blob/

@@ -30,8 +30,10 @@
     POPUP_TOP_MARGIN_PX: 8,
 
     // IndexedDB
-    DB_NAME: 'ytChatArchive',
+    DB_NAME: 'ytcas-v3',
     DB_VERSION: 1,
+    // v2.6.0 舊資料庫（F-11：只能唯讀複製，不得升級、修改或刪除；結構見 docs/legacy-v2.6.0-data.md）
+    LEGACY_DB_NAME: 'YTLiveChatArchiverDB_V6',
 
     // 訊息類型
     MSG_TYPE: Object.freeze({

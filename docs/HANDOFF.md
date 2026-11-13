@@ -27,8 +27,20 @@ Claude Code 會自動讀取 `CLAUDE.md`。進入後貼上：
 ```
 
 ## 三、每一輪的測試方式
+
+> ⚠️ **保護 v2.6.0 舊資料**
+> - 未封裝擴充功能的 ID 由資料夾路徑決定。v3 與 v2.6.0 都從 `E:\Tool\ChromeExtensions\yt-chat-archiver-saver` 載入，所以 Chrome 裡**原本那個擴充功能項目**現在跑的就是 v3 程式碼，而舊資料（IndexedDB `YTLiveChatArchiverDB_V6`）還在這個項目底下。
+> - **絕對不要移除原本的擴充功能項目**：移除會連同 IndexedDB 一起永久刪除。只能在該項目上按 🔄 重新載入。
+> - **不要對同一路徑再按「載入未封裝項目」**，以免產生重複或取代的項目。
+> - 第一次實測前，先做第 0 步「資料備份」。
+
+0. **資料備份（第一次實測前必做，之後每個大版本前建議重做）**
+   1. 在 `chrome://extensions` 記下該擴充功能項目的 **ID**。
+   2. 完全關閉 Chrome（確認工作列和系統匣都沒有 Chrome）。
+   3. 把資料夾 `%LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\chrome-extension_<ID>_0.indexeddb.leveldb` 複製到安全位置；如果有同名的 `.indexeddb.blob` 資料夾，也一起複製。使用其他 Chrome 設定檔時，把 `Default` 換成該設定檔的資料夾名稱（例如 `Profile 1`）。
+   4. 備份放在 repo 內 `bak/` 也可以（已列入 `.gitignore`，不會被 commit）。但最好另存一份到 repo 以外的位置，以免執行 `git clean -fdx` 之類的指令時被刪除。
 1. Chrome 開啟 `chrome://extensions`，打開右上角「開發人員模式」。
-2. 第一次：點「載入未封裝項目」，選 repo 資料夾（有 `manifest.json` 的那層）。
+2. 已經有原本的擴充功能項目時：**直接在該項目按 🔄 重新載入**，不要移除，也不要重新載入未封裝項目。只有全新電腦、從未載入過時，才點「載入未封裝項目」選 repo 資料夾。
 3. 之後每次改完：在擴充功能卡片上按 🔄 重新載入，再**重新整理 YouTube 分頁**。
 4. 有問題時：
    - YouTube 頁面按 F12 看 Console（頁面與聊天室 iframe 可在 Console 左上角切換 frame）

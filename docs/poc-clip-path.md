@@ -16,10 +16,17 @@
 - 再按一次（紅色「PoC：關閉」）完全還原。
 
 ## 測試前準備
-1. **停用舊版 v2.6.0 套件**：到 `chrome://extensions` 關閉舊的「YT Live Chat Memory Saver & Archiver」（它的資料夾已改名成 `yt-chat-archiver-saver_v2.6.0_backup`，可能已顯示錯誤，關掉或移除都可以）。
-2. 點「載入未封裝項目」，選 `E:\Tool\ChromeExtensions\yt-chat-archiver-saver`。
-   - 檢查 T0：卡片上沒有紅色「錯誤」按鈕，版本顯示 `3.0.0-dev`，圖示是藍綠色對話泡泡。
-3. 開一個**你能留言的直播**，確認右側原生聊天室是展開的。
+
+> ⚠️ **絕對不要移除原本的擴充功能項目**：移除會連同 v2.6.0 的 IndexedDB 舊資料一起永久刪除。只能在該項目上按 🔄 重新載入。也**不要**對同一路徑再按「載入未封裝項目」。
+
+0. **資料備份（必做）**
+   1. `chrome://extensions` → 開啟「開發人員模式」→ 在原本的擴充功能項目上記下 **ID**。
+   2. 完全關閉 Chrome。
+   3. 把 `%LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\chrome-extension_<ID>_0.indexeddb.leveldb`（以及同名的 `.indexeddb.blob`，如果有的話）複製到安全位置。使用其他 Chrome 設定檔時，把 `Default` 換成該設定檔資料夾名稱。
+   4. 如果你已經把備份放在 repo 的 `bak/`：該資料夾已列入 `.gitignore`。建議再另存一份到 repo 以外的位置。
+1. 重新開啟 Chrome → `chrome://extensions` → 在**原本的擴充功能項目**上按 🔄 重新載入（該路徑現在是 v3 程式碼）。
+   - 檢查 T0：卡片上沒有紅色「錯誤」，名稱是「YT 加強版聊天室」，版本顯示 `3.0.0-dev`，圖示是藍綠色對話泡泡，ID 與第 0 步記下的相同。
+2. 開一個**你能留言的直播**，確認右側原生聊天室是展開的。
 
 ## 測試步驟
 1. 按左下角「PoC：開啟」。
