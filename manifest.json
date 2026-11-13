@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "YT 加強版聊天室",
+  "short_name": "YT 聊天室加強",
+  "version": "3.0.0",
+  "version_name": "3.0.0-dev",
+  "description": "降低 YouTube 直播聊天室記憶體佔用，完整保存聊天紀錄於本機，支援搜尋、篩選、VOD 時間軸同步與離線匯出。",
+  "minimum_chrome_version": "120",
+  "icons": {
+    "16": "src/icons/icon16.png",
+    "32": "src/icons/icon32.png",
+    "48": "src/icons/icon48.png",
+    "128": "src/icons/icon128.png"
+  },
+  "permissions": ["storage", "unlimitedStorage", "tabs"],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://*.ggpht.com/*",
+    "https://*.ytimg.com/*",
+    "https://*.googleusercontent.com/*",
+    "https://fonts.gstatic.com/*",
+    "https://www.gstatic.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "YT 加強版聊天室",
+    "default_icon": {
+      "16": "src/icons/icon16.png",
+      "32": "src/icons/icon32.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["src/constants.js", "src/selectors.js", "src/content.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/viewer.html",
+        "src/viewer.js",
+        "src/db.js",
+        "src/constants.js",
+        "src/styles/tokens.css",
+        "src/styles/viewer.css"
+      ],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ]
+}

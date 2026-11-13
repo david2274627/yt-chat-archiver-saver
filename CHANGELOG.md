@@ -3,6 +3,9 @@
 格式依循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號採 [語意化版本](https://semver.org/lang/zh-TW/)。
 
 ## [未發布] — 目標 3.0.0（全新重寫）
+### 開發進度
+- T0 專案骨架：`manifest.json`（3.0.0-dev）、`src/` 結構、`selectors.js`、`constants.js`、空白 `tokens.css`、套件圖示（自繪 SVG → PNG）。
+
 ### 規格 v21（2026-11-13）
 - viewer（擴充功能頁面）可直接唯讀 IndexedDB，寫入仍只由 background 執行。
 - frame 間訊息 origin 檢查改為區分 youtube.com 與擴充功能 origin；補上訊息 id 雜湊與直播 `videoOffsetSec` 推算規則。

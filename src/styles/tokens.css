@@ -1,0 +1,63 @@
+/* 設計 token（SPEC 10.3）。顏色值於 D2 依選定設計方向定稿。 */
+:root {
+  /* 字體 */
+  --ytcas-font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --ytcas-font-mono: ui-monospace, "SF Mono", Consolas, monospace;
+
+  /* 字級 */
+  --ytcas-fs-xs: 11px;
+  --ytcas-fs-sm: 12px;
+  --ytcas-fs-md: 13px;
+  --ytcas-fs-lg: 15px;
+  --ytcas-fs-xl: 18px;
+
+  /* 間距（4px 基準） */
+  --ytcas-space-1: 4px;
+  --ytcas-space-2: 8px;
+  --ytcas-space-3: 12px;
+  --ytcas-space-4: 16px;
+  --ytcas-space-5: 20px;
+  --ytcas-space-6: 24px;
+
+  /* 圓角 */
+  --ytcas-radius-sm: 6px;
+  --ytcas-radius-md: 10px;
+  --ytcas-radius-pill: 999px;
+
+  /* 動態 */
+  --ytcas-ease: cubic-bezier(.2, .8, .2, 1);
+  --ytcas-dur: 160ms;
+
+  /* 顏色（D2 定稿） */
+  --ytcas-bg: ;
+  --ytcas-surface: ;
+  --ytcas-surface-2: ;
+  --ytcas-border: ;
+  --ytcas-overlay: ;
+  --ytcas-text: ;
+  --ytcas-text-2: ;
+  --ytcas-text-3: ;
+  --ytcas-accent: ;
+  --ytcas-accent-hover: ;
+  --ytcas-accent-soft: ;
+  --ytcas-focus-ring: ;
+  --ytcas-timecode: ;
+  --ytcas-current-ring: ;
+  --ytcas-highlight: ;
+  --ytcas-raid: ;
+  --ytcas-raid-soft: ;
+  --ytcas-member: ;
+  --ytcas-owner: ;
+  --ytcas-moderator: ;
+  --ytcas-danger: ;
+  --ytcas-shadow-1: ;
+  --ytcas-shadow-2: ;
+}
+
+[data-theme="dark"] {
+  /* 同名變數的深色值（D2 定稿） */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --ytcas-dur: 0ms; }
+}
