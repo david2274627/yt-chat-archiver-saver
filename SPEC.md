@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v20**（前版：v19；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v21**（前版：v20；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -20,6 +20,7 @@
 - **F-10 採方案 A**：原生 iframe 維持完整高度 + CSS `clip-path` 動態裁切（第 6 節）。v13～v18 的「壓扁 iframe」路線全部禁止。
 - 方案 B（自建輸入框、呼叫 `youtubei/v1/live_chat/send_message`）列為**備案**，只在 T1 失敗時啟動，且不處理金流。
 - **設計先行**：寫 UI 程式前先產出靜態設計稿（`design/`），經使用者確認再實作。
+- **v21 調整**：viewer 可直接唯讀 IndexedDB（3.2）；frame 間 origin 檢查區分 youtube.com 與擴充功能 origin、補訊息 id 與直播 offset 規則（4.3）；圖片白名單加入 gstatic；匯出 HTML 圖片內嵌為 data URL，並新增對應 host_permissions（7）。
 
 ---
 
@@ -65,7 +66,7 @@
 
 ```text
 yt-chat-archiver-saver/
-├── manifest.json     # MV3：storage, unlimitedStorage, tabs；web_accessible_resources: viewer.html/js
+├── manifest.json     # MV3：storage, unlimitedStorage, tabs；host_permissions 見第 7 節；web_accessible_resources: viewer 相關檔案
 ├── src/
 │   ├── selectors.js  # ★新增：集中管理所有 YouTube DOM 選擇器（YouTube 改版時只改這裡）
 │   ├── constants.js  # ★新增：上限數字、機器人名單、訊息類型常數
@@ -97,16 +98,17 @@ yt-chat-archiver-saver/
    監聽輸入區/彈窗狀態 → window.top.postMessage（給 top frame 控制 clip-path）
             │
             ▼
-[background.js  Service Worker]  ← 唯一能讀寫 chrome-extension:// IndexedDB 的地方
+[background.js  Service Worker]  ← 唯一的 IndexedDB「寫入者」
    寫入 IndexedDB → 推播 NEW_MESSAGES 給所有已開啟的 viewer
    頻道 @Handle → 名稱/頭像解析（併發節流、快取 7 天）
             │
             ▼
-[viewer.js（內嵌 embed=1 / 後台獨立分頁）]
+[viewer.js（內嵌 embed=1 / 後台獨立分頁）]  ← chrome-extension:// 頁面，可直接「唯讀」開啟 IndexedDB
    查詢、篩選、搜尋、置頂卡片、VOD 時間軸同步、匯出
 ```
 
-**Origin 隔離原則**：`youtube.com` 頁面內的腳本**禁止**直接開 IndexedDB 存聊天資料，一律經由 `background.js`。
+**Origin 隔離原則**：`youtube.com` 頁面內的腳本（content.js）**禁止**直接開 IndexedDB 存聊天資料，一律經由 `background.js`。
+**讀寫分工**（v21）：所有寫入（新增、刪除、頻道快取）只由 `background.js` 執行；`viewer.js` 屬擴充功能 origin，為了大量資料效能可直接以 `readonly` 交易查詢 IndexedDB，不經 `sendMessage` 序列化。`QUERY_MESSAGES` 保留給 popup 等輕量查詢。
 
 ---
 
@@ -152,9 +154,15 @@ yt-chat-archiver-saver/
 | `RESOLVE_CHANNELS` | bg 內部 | `handles[]` |
 | `CHANNEL_RESOLVED` | bg → viewers | `{ handleOrId, displayName, avatar }` |
 
-### 4.3 frame 間訊息（`window.postMessage`，只在 youtube.com 同源 frame 之間）
+### 4.3 frame 間訊息（`window.postMessage`）
 
-所有訊息格式：`{ __ytcas: true, type, ... }`。接收端**必須**檢查 `event.origin === 'https://www.youtube.com'` 且 `__ytcas === true`。
+所有訊息格式：`{ __ytcas: true, type, ... }`。接收端**必須**檢查 `__ytcas === true`、`event.source` 為預期的 frame，以及 `event.origin`：
+- chat frame ↔ top frame：`event.origin === 'https://www.youtube.com'`。
+- top frame ↔ viewer iframe：top 端檢查 `event.origin === 'chrome-extension://' + chrome.runtime.id`；viewer 端檢查 `event.origin === 'https://www.youtube.com'`。
+
+**訊息 id 補救**（v21）：置頂、降落橫幅等取不到 YouTube 訊息 id 時，以 `type + authorHandle/authorChannelId + 內容文字 + timestampAbs` 計算雜湊作為 `id`（前綴 `ytcas-`）。
+
+**直播中 `videoOffsetSec`**（v21）：由直播開始時間（top frame 的 `meta[itemprop="startDate"]` 或等效來源，選擇器放 `selectors.js`）推算 `(timestampAbs - startedAt) / 1000`；取不到時存 `null`。
 
 | type | 方向 | payload |
 |---|---|---|
@@ -189,7 +197,7 @@ yt-chat-archiver-saver/
 
 **F-04 前後台介面分離**（v2.6.0 已驗證可行）
 - `embed=1`：隱藏場次下拉、匯出/刪除列。
-- 後台：場次切換、匯出離線 HTML（內嵌表符圖片為 data URL 或保留原網址，內建離線搜尋框）、匯出 JSON、刪除。
+- 後台：場次切換、匯出離線 HTML（v21：表符、會員貼圖、頭像一律由 background 抓取並內嵌為 data URL，同一網址只抓一次；抓取失敗時退回 alt 文字/色塊；內建離線搜尋框）、匯出 JSON、刪除。
 
 **F-05 快速分類膠囊列**（v2.6.0 已驗證可行）
 - 「全部訊息（N）」、「💰 Super Chat」（含超級貼圖）、「✨ 實況主降落」。
@@ -295,9 +303,9 @@ yt-chat-archiver-saver/
 |---|---|
 | 記憶體 | 直播 2 小時、每分鐘 500+ 則訊息，分頁記憶體較未安裝套件時下降，chat frame DOM 訊息節點 ≤ 50 |
 | 效能 | viewer 開啟 10 萬則訊息場次 ≤ 2 秒顯示首屏（使用虛擬清單或分批渲染）；搜尋 ≤ 300ms |
-| 安全 | 匯出 HTML 與 viewer 渲染時，所有使用者文字一律 `textContent` / 跳脫，禁止 `innerHTML` 拼接未跳脫文字；圖片只接受 `https://` 且網域為 `*.ggpht.com`、`*.ytimg.com`、`*.googleusercontent.com`、`yt3.ggpht.com` |
-| 隱私 | 資料只存本機；不新增任何外部網路請求（頻道頁抓取除外，僅限 `www.youtube.com`） |
-| 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions 僅 `https://www.youtube.com/*`。新增權限需先徵得使用者同意 |
+| 安全 | 匯出 HTML 與 viewer 渲染時，所有使用者文字一律 `textContent` / 跳脫，禁止 `innerHTML` 拼接未跳脫文字；圖片只接受 `https://` 且網域為 `*.ggpht.com`、`*.ytimg.com`、`*.googleusercontent.com`、`yt3.ggpht.com`、`fonts.gstatic.com`、`www.gstatic.com`（v21 加入 gstatic：YouTube 標準 Unicode 表符圖片來源）；不在白名單的圖片以 `alt` 文字顯示 |
+| 隱私 | 資料只存本機；外部網路請求僅限：頻道頁抓取（`www.youtube.com`）、匯出 HTML 時抓取上列白名單網域的圖片轉 data URL（v21） |
+| 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions：`https://www.youtube.com/*`，以及匯出內嵌圖片用的 `https://*.ggpht.com/*`、`https://*.ytimg.com/*`、`https://*.googleusercontent.com/*`、`https://fonts.gstatic.com/*`、`https://www.gstatic.com/*`（v21 經使用者同意）。再新增權限需先徵得使用者同意 |
 | 相容 | YouTube 改版時只需修改 `selectors.js`；所有選擇器找不到時須 graceful degrade（console.warn 一次，不拋錯） |
 
 ---

@@ -3,6 +3,13 @@
 格式依循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本號採 [語意化版本](https://semver.org/lang/zh-TW/)。
 
 ## [未發布] — 目標 3.0.0（全新重寫）
+### 規格 v21（2026-11-13）
+- viewer（擴充功能頁面）可直接唯讀 IndexedDB，寫入仍只由 background 執行。
+- frame 間訊息 origin 檢查改為區分 youtube.com 與擴充功能 origin；補上訊息 id 雜湊與直播 `videoOffsetSec` 推算規則。
+- 圖片白名單加入 `fonts.gstatic.com`、`www.gstatic.com`。
+- 匯出離線 HTML 的圖片改為內嵌 data URL，新增圖片網域 host_permissions（經使用者同意）。
+- CLAUDE.md：本機發版直接打 tag；開發期間版本號加 `-dev`。
+
 ### 規格 v20（2026-11-13）
 - 改為**全新重寫**、交由本機 Claude Code 開發，不沿用 v2.6.0 程式碼；目標版本改為 3.0.0。
 - 新增第 10 節「UI 視覺設計規格」：設計原則、深淺色主題、token 命名、元件規格、無障礙、設計稿交付方式。

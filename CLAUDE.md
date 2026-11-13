@@ -32,9 +32,10 @@
 - `manifest.json` 的 `version`、根目錄 `VERSION`、`CHANGELOG.md` 三處必須一致。
 - MAJOR：資料庫不相容變更；MINOR：新功能或重大修正（如 F-10）；PATCH：小修正、選擇器更新。
 - 規格書版本（`SPEC.md` 表頭 `規格版本 vNN`）在規格內容改動時 +1，並於 CHANGELOG 記錄。
-- 發版：更新三處版本 → commit `release: vX.Y.Z` → push。
+- 開發期間：`manifest.json` 為 `version: X.Y.Z` + `version_name: X.Y.Z-dev`，`VERSION` 為 `X.Y.Z-dev`；發版時拿掉 `-dev`。
+- 發版：更新三處版本 → commit `release: vX.Y.Z` → push → `git tag vX.Y.Z && git push origin vX.Y.Z`。
 - `CHANGELOG.md` 是版本資訊的主要紀錄，每個版本段落需註明對應 commit 短 SHA。
-- Git tag（`vX.Y.Z`）為選用：雲端 Claude 工作階段推送 tag 會被擋，tag 由使用者在本機執行 `git tag vX.Y.Z <sha> && git push origin --tags` 補上。
+- Git tag（`vX.Y.Z`）：本機 Claude Code 發版時直接打 tag 並推送（雲端工作階段推 tag 會被擋，才由使用者補上）。
 
 ## Commit 訊息格式
 ```
