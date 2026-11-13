@@ -17,6 +17,14 @@
       titleMeta: 'meta[name="title"]',
       channelLink: 'ytd-watch-metadata ytd-channel-name a, #owner ytd-channel-name a',
       darkThemeAttr: 'html[dark]',
+      // F-10 top frame 彈窗偵測（v22：$ 付款確認視窗可能開在整頁中央）
+      popupContainer: 'ytd-popup-container',
+      popups: [
+        'tp-yt-paper-dialog',
+        'tp-yt-iron-dropdown',
+        'yt-dialog-view-model',
+        'ytd-popup-container > *', // 未知的 ytd-* 付款元件：T1 實測後補上實際標籤名稱
+      ],
     },
 
     // ---------- chat frame（www.youtube.com/live_chat、live_chat_replay） ----------

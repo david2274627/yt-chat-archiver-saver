@@ -54,7 +54,8 @@
         "src/db.js",
         "src/constants.js",
         "src/styles/tokens.css",
-        "src/styles/viewer.css"
+        "src/styles/viewer.css",
+        "src/poc/poc-panel.html"
       ],
       "matches": ["https://www.youtube.com/*"]
     }
