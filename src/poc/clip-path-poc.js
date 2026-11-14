@@ -7,7 +7,8 @@
 //   - 頁面層付款視窗以明確選擇器（top.pagePopups）偵測為主，position:fixed 掃描為輔
 //   - review-3：自動量測 v2（底部互動區）、版面診斷與「複製診斷」（Alt+Shift+D）、
 //     露出值 clamp 在 [0, iframe 高度]、摺疊保護（iframe 太矮 → 解除 clip、隱藏面板，恢復後自動重啟）
-// 快速鍵：Alt+Shift+P 開關 PoC；Alt+Shift+U 切換「完全不裁切」。
+// v24.1：量測 v3（白名單）＋合理性退回；控制列單列化；鍵盤調整（焦點在聊天室時由 poc-chat.js 轉送）。
+// 快速鍵：Alt+Shift+P 開關、U 不裁切、D 複製診斷、M 自動／手動、↑／↓ 手動 ±8px（加 Ctrl ±32px）。
 (function () {
   'use strict';
   if (window !== window.top) return;
@@ -119,8 +120,9 @@
         font: 12px/1.45 "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif; }
       html[dark] #${PANEL_ID} { background: #1b1f2a; color: #e6e9f2; }
       #${PANEL_ID} .bar { padding: 6px 10px; border-bottom: 1px solid #3b5bdb55; display: grid; gap: 4px; }
-      #${PANEL_ID} .bar .sum { display: flex; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; }
-      #${PANEL_ID} .bar .sum span.grow { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #${PANEL_ID} .bar .sum { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; overflow: hidden; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      #${PANEL_ID} .bar .sum button.mini { flex: none; }
+      #${PANEL_ID} .bar .sum span.grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       #${PANEL_ID} .bar button.mini { font: inherit; padding: 2px 8px; border-radius: 999px; border: 1px solid #3b5bdb; background: transparent; color: inherit; cursor: pointer; white-space: nowrap; }
       #${PANEL_ID} .bar button.mini.danger { background: #c92a2a; border-color: #c92a2a; color: #fff; }
       #${PANEL_ID} .bar button.mini.on { background: #e8590c; border-color: #e8590c; color: #fff; }
@@ -289,13 +291,14 @@
     const bar = document.createElement('div');
     bar.className = 'bar';
     bar.innerHTML = `
-      <div class="sum"><span class="grow" data-k="sum"></span>
+      <div class="sum">
+        <button type="button" class="mini" data-k="expand"></button>
         <button type="button" class="mini" data-k="noClip"></button>
         <button type="button" class="mini" data-k="copy">複製診斷</button>
-        <button type="button" class="mini" data-k="expand"></button>
-        <button type="button" class="mini danger" data-k="close">關閉 PoC</button></div>
+        <button type="button" class="mini danger" data-k="close">關閉 PoC</button>
+        <span class="grow" data-k="sum"></span></div>
       <div class="more">
-        <div class="r">露出：${radio('ytcas-poc-mode', 'auto', '自動（量測 v2）', state.auto ? 'auto' : 'manual')}${radio('ytcas-poc-mode', 'manual', '手動', state.auto ? 'auto' : 'manual')}
+        <div class="r">露出：${radio('ytcas-poc-mode', 'auto', '自動（量測 v3）', state.auto ? 'auto' : 'manual')}${radio('ytcas-poc-mode', 'manual', '手動', state.auto ? 'auto' : 'manual')}
           <input type="range" min="0" max="240" step="2" data-k="range"> <span data-k="rangeVal"></span>px</div>
         <div class="r">量測：<span data-k="measure">—</span></div>
         <div class="pop">底部互動區：<span data-k="zone">—</span></div>
@@ -305,7 +308,7 @@
         <div class="r">下層類型：${radio('ytcas-poc-lower', 'div', 'div', state.lower)}${radio('ytcas-poc-lower', 'iframe', '擴充功能 iframe', state.lower)}</div>
         <div class="pop">目前可見彈窗：<span data-k="popNow">—</span></div>
         <div class="pop">最近一次可見彈窗：<span data-k="popLast">—</span></div>
-        <div class="r" style="opacity:.7">Chrome ${chromeVer}　快速鍵：Alt+Shift+P 開關、Alt+Shift+U 不裁切、Alt+Shift+D 複製診斷</div>
+        <div class="r" style="opacity:.7">Chrome ${chromeVer}　快速鍵：Alt+Shift+P 開關、Alt+Shift+U 不裁切、Alt+Shift+D 複製診斷、Alt+Shift+M 自動／手動、Alt+Shift+↑／↓ 手動 ±8px（加 Ctrl ±32px）</div>
       </div>`;
     const body = document.createElement('div');
     body.className = 'body';
@@ -384,7 +387,8 @@
     const set = (k, v) => { const e = p.querySelector(`[data-k="${k}"]`); if (e) e.textContent = String(v); };
     const r = revealPx();
     const m = state.measure;
-    set('sum', `點擊 ${state.clicks}｜滾輪 ${state.wheels}｜最後 ${state.lastClick}｜露出 ${state.noClip ? '不裁切' : (r == null ? '量測不到' : r + 'px')}${state.auto ? '（自動）' : '（手動）'}`);
+    const src = state.auto ? (autoReveal().suspect ? '（自動・後備）' : '（自動）') : '（手動）';
+    set('sum', `露出 ${state.noClip ? '不裁切' : (r == null ? '量測不到' : r + 'px')}${src}｜${state.auto ? 'Alt+Shift+M 手動' : 'Alt+Shift+↑↓ 調整'}｜點擊 ${state.clicks}｜滾輪 ${state.wheels}｜最後 ${state.lastClick}`);
     set('expand', state.expanded ? '收合 ▲' : '展開 ▼');
     set('noClip', state.noClip ? '恢復裁切' : '不裁切');
     p.querySelector('[data-k="noClip"]').classList.toggle('on', state.noClip);
@@ -595,6 +599,12 @@
       render();
       return;
     }
+    if (d.type === 'POC_KEY') {
+      // 焦點在聊天室（例如輸入框）時，快速鍵由 poc-chat.js 轉送過來
+      if (!fromChat) return;
+      handleKey(String(d.code), !!d.ctrl);
+      return;
+    }
     if (d.type === C.FM.TOGGLE_PANEL) {
       if (!fromChat) { log('拒絕 TOGGLE_PANEL 來源', e.origin); return; }
       toggle();
@@ -756,13 +766,56 @@
     renderEntries();
   }
 
+  // ---------------- 鍵盤（review-2026-11-15 §3.2：不依賴畫面控制項的逃生路徑） ----------------
+  const MANUAL_STEP = 8;
+  const MANUAL_STEP_BIG = 32;
+
+  function setMode(auto) {
+    if (!auto && state.auto) {
+      // 切到手動時，從目前實際露出值開始調
+      const cur = revealPx();
+      if (cur != null) state.manualPx = cur;
+    }
+    state.auto = auto;
+    const p = document.getElementById(PANEL_ID);
+    if (p) {
+      p.querySelectorAll('input[name="ytcas-poc-mode"]').forEach((r) => { r.checked = (r.value === 'auto') === auto; });
+      const range = p.querySelector('[data-k="range"]');
+      if (range) range.value = String(state.manualPx);
+    }
+    applyClip();
+    render();
+    log('露出模式', auto ? 'auto' : 'manual', state.manualPx);
+  }
+
+  function nudge(delta) {
+    if (!state.on) return;
+    if (state.auto) setMode(false);
+    const h = iframeH();
+    state.manualPx = Math.min(Math.max(0, state.manualPx + delta), h > 0 ? h : state.manualPx + delta);
+    const range = document.querySelector(`#${PANEL_ID} [data-k="range"]`);
+    if (range) range.value = String(state.manualPx);
+    applyClip();
+    render();
+  }
+
+  // 回傳 true 表示已處理（呼叫端 preventDefault）。code 用 KeyboardEvent.code，避免 Alt+Shift 組合在不同鍵盤配置下 key 值不同
+  function handleKey(code, ctrl) {
+    switch (code) {
+      case 'KeyP': toggle(); return true;
+      case 'KeyU': toggleNoClip(); return true;
+      case 'KeyD': copyDiagnostics(); return true; // 摺疊暫停時面板隱藏，用快速鍵複製診斷
+      case 'KeyM': if (state.on) setMode(!state.auto); return true;
+      case 'ArrowUp': nudge(ctrl ? MANUAL_STEP_BIG : MANUAL_STEP); return true;
+      case 'ArrowDown': nudge(-(ctrl ? MANUAL_STEP_BIG : MANUAL_STEP)); return true;
+      default: return false;
+    }
+  }
+
   document.addEventListener('keydown', (e) => {
     if (!e.altKey || !e.shiftKey) return;
-    const k = e.key.toLowerCase();
-    if (k === 'p') { e.preventDefault(); toggle(); }
-    if (k === 'u') { e.preventDefault(); toggleNoClip(); }
-    if (k === 'd') { e.preventDefault(); copyDiagnostics(); } // 摺疊暫停時面板隱藏，用快速鍵複製診斷
-  });
+    if (handleKey(e.code, e.ctrlKey)) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
   document.addEventListener('yt-navigate-finish', () => {
     if (state.on) disable();
     state.pageStart = Date.now();

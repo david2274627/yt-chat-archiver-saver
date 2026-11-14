@@ -223,6 +223,14 @@
       if (btn) btn.textContent = label;
     }
   });
+  // 焦點在聊天室內時，PoC 快速鍵（Alt+Shift+P/U/D/M/↑/↓）轉送給 top frame
+  const POC_KEYS = new Set(['KeyP', 'KeyU', 'KeyD', 'KeyM', 'ArrowUp', 'ArrowDown']);
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey || !e.shiftKey || !POC_KEYS.has(e.code)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    post('POC_KEY', { code: e.code, ctrl: e.ctrlKey });
+  }, true);
   window.addEventListener('resize', measure);
   setInterval(attach, 1000); // #input-panel、頂部列可能延遲出現或被重建；底部卡片出現時也靠這個保底重量
   attach();
