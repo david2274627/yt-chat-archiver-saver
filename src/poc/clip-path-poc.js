@@ -22,6 +22,8 @@
   const TEASER_BTN_ID = 'ytcas-poc-teaser-btn';
   const EXPAND_WAIT_MS = 8000;
   const COLLAPSE_MIN_H = 200; // iframe 高度低於此值視為「聊天室摺疊」（PoC 用；正式值於 T6 依診斷定案）
+  const SUSPECT_RATIO = 0.6;        // 量測 v3 超過 iframe 高度的此比例 → 可疑
+  const MIN_PANEL_VISIBLE_PX = 160; // 面板至少保留的可見高度（含頂部控制列）
   const PANEL_PAGE = 'src/poc/poc-panel.html';
   const ANCHOR_GRACE_MS = 6000;
 
@@ -68,15 +70,24 @@
     return { frame, iframe, showHide };
   }
 
-  // 原始露出值（未 clamp）。自動 v2 = iframe 底邊 − 最高的底部互動區元素頂端；v2 量不到時退回 #input-panel 算法
-  function rawRevealPx() {
-    if (state.auto) {
-      const m = state.measure;
-      if (!m) return null;
-      if (m.zoneFromBottom != null) return m.zoneFromBottom;
-      return m.found ? m.fromBottom : null; // null = 量測不到 → 視同無輸入區
+  // 自動量測的結果與來源。v3 = iframe 底邊 − 白名單／覆蓋層子元素中最高者的頂端；
+  // 合理性檢查（review-2026-11-15 §3.1-3）：v3 > iframe 高 × 0.6，或面板可見高度 < 160px → 可疑，退回 #input-panel 算法
+  function autoReveal() {
+    const m = state.measure;
+    if (!m) return { px: null, src: '等待量測', suspect: '' };
+    const h = iframeH();
+    const fallback = m.found ? m.fromBottom : null; // null = 量測不到 → 視同無輸入區
+    const v3 = m.zoneFromBottom;
+    if (v3 == null) return { px: fallback, src: '後備（#input-panel）', suspect: 'v3 量不到' };
+    if (h > 0 && (v3 > h * SUSPECT_RATIO || h - v3 < MIN_PANEL_VISIBLE_PX)) {
+      return { px: fallback, src: '後備（#input-panel）', suspect: `v3 ${v3}px 可疑（${v3 > h * SUSPECT_RATIO ? '> iframe 高 60%' : '面板可見 < ' + MIN_PANEL_VISIBLE_PX + 'px'}）` };
     }
-    return state.manualPx;
+    return { px: v3, src: 'v3', suspect: '' };
+  }
+
+  // 原始露出值（未 clamp）
+  function rawRevealPx() {
+    return state.auto ? autoReveal().px : state.manualPx;
   }
 
   function iframeH() {
@@ -155,7 +166,9 @@
   // 錨點 4：舊版面「隱藏聊天室」列
   function mountLegacy() {
     const { showHide } = els();
-    if (!showHide) { document.getElementById(LEGACY_BTN_ID)?.remove(); state.anchors.legacy = false; return; }
+    // 實機（2026-11-15）：#show-hide-button 可能以隱藏狀態殘留 → 只有可見（rect 寬高 > 0）時才掛載
+    const r = showHide && showHide.getBoundingClientRect();
+    if (!showHide || r.width <= 0 || r.height <= 0) { document.getElementById(LEGACY_BTN_ID)?.remove(); state.anchors.legacy = false; return; }
     if (document.getElementById(LEGACY_BTN_ID)?.parentElement !== showHide) {
       document.getElementById(LEGACY_BTN_ID)?.remove();
       ensureStyle();
@@ -357,7 +370,7 @@
   function anchorText() {
     const a = state.anchors;
     return [
-      `頂部列 ${a.header ? '✅（' + a.headerHow + '）' : '❌'}`,
+      `頂部列 ${a.header ? '✅（' + a.headerHow + '；父元素 ' + (a.headerParent || '—') + '）' : '❌'}`,
       `影片下方卡片 ${a.teaser ? '✅（' + a.teaserHow + '）' : '❌'}`,
       `舊版列 ${a.legacy ? '✅' : '—'}`,
       a.headerKids.length ? `頂部列結構：${a.headerKids.join(' ')}` : '',
@@ -379,10 +392,11 @@
     const range = p.querySelector('[data-k="range"]');
     const h = iframeH();
     if (range && h > 0 && Number(range.max) !== h) range.max = String(h); // 滑桿上限 = iframe 高度
-    const v2 = m && m.zoneFromBottom != null ? `v2 底部互動區 ${m.zoneFromBottom}px` : 'v2 量測不到';
-    const v1 = m ? (m.found ? `舊算法 #input-panel 高 ${m.height}px／頂端距底 ${m.fromBottom}px` : '舊算法 找不到 #input-panel') : '';
-    set('measure', m ? `${v2}；${v1}；iframe 高 ${h}px` : '等待 chat frame 回報…');
-    set('zone', m && m.zone && m.zone.length ? m.zone.map((z) => `${z.el}@${z.top}+${z.h}`).join('、') : '—');
+    const a = autoReveal();
+    const v3 = m && m.zoneFromBottom != null ? `v3 底部互動區 ${m.zoneFromBottom}px` : 'v3 量測不到';
+    const v1 = m ? (m.found ? `後備 #input-panel 高 ${m.height}px／頂端距底 ${m.fromBottom}px` : '後備 找不到 #input-panel') : '';
+    set('measure', m ? `${v3}；${v1}；iframe 高 ${h}px；採用：${a.src}${a.suspect ? '（' + a.suspect + '）' : ''}` : '等待 chat frame 回報…');
+    set('zone', m && m.zone && m.zone.length ? m.zone.map((z) => `${z.el}@${z.top}+${z.h}［${z.use}］`).join('、') : '—');
     set('rows', m && m.rows ? m.rows.join('、') : '—');
     set('layout', layoutText());
     set('anchors', anchorText());
@@ -474,8 +488,11 @@
 
   function diagnostics() {
     return {
-      poc: 'v24', chrome: chromeVer, time: new Date().toISOString(),
+      poc: 'v24.1', chrome: chromeVer, time: new Date().toISOString(),
       layout: layoutInfo(),
+      mode: state.auto ? 'auto' : 'manual',
+      manualPx: state.manualPx,
+      auto: autoReveal(),
       measure: state.measure,
       anchors: state.anchors,
       popupNow: state.popupNow,
@@ -562,7 +579,8 @@
         found: !!d.found, height: num(d.height), fromBottom: num(d.fromBottom),
         rows: Array.isArray(d.rows) ? d.rows.slice(0, 12).map(String) : [],
         vh: num(d.vh), zoneFromBottom: num(d.zoneFromBottom),
-        zone: Array.isArray(d.zone) ? d.zone.slice(0, 40).map((z) => ({ el: String(z.el), top: num(z.top), h: num(z.h), parents: String(z.parents || '') })) : [],
+        zone: Array.isArray(d.zone) ? d.zone.slice(0, 40).map((z) => ({ el: String(z.el), top: num(z.top), h: num(z.h), parents: String(z.parents || ''), use: String(z.use || '') })) : [],
+        algo: String(d.algo || ''),
       };
       if (state.on) { log('量測', state.measure); applyClip(); render(); }
       return;
@@ -572,6 +590,7 @@
       state.anchors.header = !!d.header;
       state.anchors.headerHow = d.how || '—';
       state.anchors.headerKids = Array.isArray(d.kids) ? d.kids.slice(0, 16).map(String) : [];
+      state.anchors.headerParent = typeof d.parent === 'string' ? d.parent.slice(0, 80) : '—';
       lastPosted = ''; // 可能是新的 chat 文件：重送一次按鈕狀態
       render();
       return;
