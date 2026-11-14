@@ -27,6 +27,16 @@
       ],
       // v24 定案：頁面層「完成購買程序」視窗是 body 的直接子元素，不在 ytd-app / ytd-popup-container 內。
       // 內部 iframe 為跨來源 payments.youtube.com：不讀取、不注入。不得使用 #:0.contentEl（動態 id）。
+      // v24：影片下方「聊天室／開啟面板」卡片（F-09 錨點 3）。只用標籤名稱與 id 定位，
+      // 不依賴 ytSpecButtonShapeNext*、ytVideoMetadataCarouselViewModel* 等版本化 class。
+      chatTeaser: {
+        metadata: 'ytd-watch-metadata',
+        item: 'ytd-watch-metadata #teaser-carousel yt-text-carousel-item-view-model',
+        card: 'yt-carousel-item-view-model',
+        buttonHost: 'button-view-model',
+        button: 'button-view-model button',
+        icon: 'yt-icon, svg',
+      },
       buyFlow: '#buyFlowDivId',
       pagePopups: [
         '#buyFlowDivId',
@@ -87,6 +97,30 @@
     if (warned.has(key)) return;
     warned.add(key);
     console.warn('[ytcas] 找不到 YouTube 元素：' + key, detail || '');
+  };
+
+  // 找出影片下方輪播中「聊天室」那張卡片（同一輪播可能還有會員福利等其他卡片）。
+  // 判斷順序：1. 按鈕文字等於已知在地化字串（labels）；2. 有按鈕且卡片內含圖示的第一張；都找不到回傳 null。
+  // 回傳 { item, host, button }；呼叫端負責 warnOnce。
+  S.findChatTeaser = function (doc, labels) {
+    const T = S.top.chatTeaser;
+    const items = Array.from(doc.querySelectorAll(T.item));
+    const pick = (item) => {
+      const host = item.querySelector(T.buttonHost);
+      const button = item.querySelector(T.button);
+      return host && button ? { item, host, button } : null;
+    };
+    const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    for (const item of items) {
+      const p = pick(item);
+      if (p && labels.includes(norm(p.button.textContent))) return p;
+    }
+    for (const item of items) {
+      const p = pick(item);
+      const card = item.closest(T.card) || item;
+      if (p && card.querySelector(T.icon)) return p;
+    }
+    return null;
   };
 
   root.YTCAS_SEL = S;

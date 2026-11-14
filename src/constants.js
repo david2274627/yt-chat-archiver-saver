@@ -24,6 +24,9 @@
     // F-08 VOD 時間同步
     VOD_TIME_INTERVAL_MS: 250,
 
+    // F-09 影片下方「聊天室」卡片的原生按鈕文字（用來挑出聊天室那張卡片）
+    OPEN_PANEL_LABELS: Object.freeze(['開啟面板', '开启面板', 'Open panel', 'パネルを開く']),
+
     // F-10 輸入區狀態
     INPUT_STATE_DEBOUNCE_MS: 50,
     POPUP_POLL_INTERVAL_MS: 500,

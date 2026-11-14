@@ -1,7 +1,8 @@
 // T1 clip-path PoC：top frame 端（T9 發版前移除）
 // v23：面板插入 ytd-live-chat-frame 內（iframe#chatframe 前一個兄弟），clip-path 套在 iframe 本身；無任何 position:fixed 元素。
 // v24：
-//   - 開關改為多重錨點（SPEC F-09）：聊天室頂部列（poc-chat.js 注入）→ PoC 面板頂部列 → 舊版「隱藏聊天室」列；
+//   - 開關改為多重錨點（SPEC F-09）：聊天室頂部列（poc-chat.js 注入）→ PoC 面板頂部列 → 影片下方「聊天室」卡片
+//     （聊天室關閉時先展開）→ 舊版「隱藏聊天室」列；
 //     全部找不到時 console.warn，快速鍵 Alt+Shift+P 仍可用
 //   - 頁面層付款視窗以明確選擇器（top.pagePopups）偵測為主，position:fixed 掃描為輔
 // 快速鍵：Alt+Shift+P 開關 PoC；Alt+Shift+U 切換「完全不裁切」。
@@ -16,6 +17,8 @@
   const STYLE_ID = 'ytcas-poc-style';
   const PANEL_ID = 'ytcas-poc-panel';
   const LEGACY_BTN_ID = 'ytcas-poc-legacy-btn';
+  const TEASER_BTN_ID = 'ytcas-poc-teaser-btn';
+  const EXPAND_WAIT_MS = 8000;
   const PANEL_PAGE = 'src/poc/poc-panel.html';
   const ANCHOR_GRACE_MS = 6000;
 
@@ -27,7 +30,10 @@
     noClip: false,
     expanded: false,       // 面板頂部控制列是否展開
     measure: null,         // { found, height, fromBottom, rows }
-    anchors: { header: false, headerHow: '—', headerKids: [], legacy: false },
+    anchors: { header: false, headerHow: '—', headerKids: [], legacy: false, teaser: false, teaserHow: '—' },
+    metaMo: null,
+    metaRaf: 0,
+    expanding: false,
     anchorWarned: false,
     pageStart: Date.now(),
     clicks: 0,
@@ -95,6 +101,7 @@
       .ytcas-poc-entry { padding: 4px 10px; border-radius: 999px; border: 0; background: #3b5bdb; color: #fff;
         font: 600 12px system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
       .ytcas-poc-entry.on { background: #c92a2a; }
+      .ytcas-poc-teaser { margin-left: 8px; align-self: center; }
     `;
   }
 
@@ -107,12 +114,12 @@
   }
 
   // ---------------- 開關錨點（SPEC F-09 多重錨點） ----------------
-  function entryButton(id) {
+  function entryButton(id, onClick = toggle) {
     const b = document.createElement('button');
     b.type = 'button';
     b.id = id;
     b.className = 'ytcas-poc-entry';
-    b.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
     return b;
   }
 
@@ -129,8 +136,64 @@
     state.anchors.legacy = true;
   }
 
+  function chatOpen() {
+    const { frame, iframe } = els();
+    return !!(frame && iframe && iframe.offsetHeight > 0);
+  }
+
+  // 錨點 3：影片下方「聊天室／開啟面板」卡片
+  function onTeaserClick() {
+    if (chatOpen()) { toggle(); return; }
+    // 聊天室已關閉：先按原生「開啟面板」展開，再開啟 PoC
+    const t = S.findChatTeaser(document, C.OPEN_PANEL_LABELS);
+    if (!t || t.button.disabled) { log('無法展開聊天室：找不到可用的「開啟面板」'); return; }
+    if (state.expanding) return;
+    state.expanding = true;
+    t.button.click();
+    const t0 = Date.now();
+    const wait = setInterval(() => {
+      if (chatOpen()) { clearInterval(wait); state.expanding = false; if (!state.on) enable(); renderEntries(); }
+      else if (Date.now() - t0 > EXPAND_WAIT_MS) { clearInterval(wait); state.expanding = false; log('等待聊天室展開逾時'); }
+    }, 200);
+  }
+
+  function mountTeaser() {
+    const t = S.findChatTeaser(document, C.OPEN_PANEL_LABELS);
+    const old = document.getElementById(TEASER_BTN_ID);
+    if (!t) { old?.remove(); state.anchors.teaser = false; return; }
+    if (!old || old.previousElementSibling !== t.host) {
+      old?.remove();
+      ensureStyle();
+      // 卡片按鈕要先處理「聊天室已關閉」的情況
+      const b = entryButton(TEASER_BTN_ID, onTeaserClick);
+      b.classList.add('ytcas-poc-teaser');
+      t.host.after(b);
+    }
+    state.anchors.teaser = true;
+    state.anchors.teaserHow = C.OPEN_PANEL_LABELS.includes((t.button.textContent || '').trim()) ? '文字比對' : '圖示比對';
+  }
+
+  // #teaser-carousel 會隨導航重建：監看 ytd-watch-metadata（以 rAF 合併）
+  function watchMetadata() {
+    const meta = document.querySelector(S.top.chatTeaser.metadata);
+    if (!meta || state.metaMo?.__target === meta) return;
+    state.metaMo?.disconnect();
+    state.metaMo = new MutationObserver(() => {
+      if (state.metaRaf) return;
+      state.metaRaf = requestAnimationFrame(() => { state.metaRaf = 0; mountTeaser(); renderEntries(); });
+    });
+    state.metaMo.observe(meta, { childList: true, subtree: true });
+    state.metaMo.__target = meta;
+  }
+
   function mountAnchors() {
+    if (!els().iframe) {
+      state.anchors.header = false; // 聊天室關閉時頂部列不存在
+      if (state.on) disable();      // 聊天室被 ✕ 關閉：PoC 一併關閉並還原
+    }
     mountLegacy();
+    watchMetadata();
+    mountTeaser();
     renderEntries();
     checkAnchors();
   }
@@ -141,10 +204,12 @@
     const a = state.anchors;
     if (!a.header) S.warnOnce('poc:anchor:header', '聊天室頂部列 ' + S.chat.header + '（chat frame 未回報）');
     if (!a.legacy) S.warnOnce('poc:anchor:legacy', '舊版「隱藏聊天室」列 ' + S.top.showHideButton + '（目前版面沒有屬正常）');
-    if (!a.header && !a.legacy && !state.anchorWarned) {
+    if (!a.teaser) S.warnOnce('poc:anchor:teaser', '影片下方「聊天室」卡片 ' + S.top.chatTeaser.item);
+    if (!a.header && !a.legacy && !a.teaser && !state.anchorWarned) {
       state.anchorWarned = true;
       console.warn('[ytcas-poc] 找不到開關錨點', [
         'chat frame 頂部列：' + S.chat.header + ' / ' + S.chat.headerOverflow.join(', '),
+        '影片下方卡片：' + S.top.chatTeaser.item,
         '舊版列：' + S.top.showHideButton,
       ], '→ 請用 Alt+Shift+P 開啟');
     }
@@ -247,6 +312,7 @@
     const a = state.anchors;
     return [
       `頂部列 ${a.header ? '✅（' + a.headerHow + '）' : '❌'}`,
+      `影片下方卡片 ${a.teaser ? '✅（' + a.teaserHow + '）' : '❌'}`,
       `舊版列 ${a.legacy ? '✅' : '—'}`,
       a.headerKids.length ? `頂部列結構：${a.headerKids.join(' ')}` : '',
     ].filter(Boolean).join('｜');
