@@ -19,6 +19,16 @@
   - PoC 改為錨定聊天室內部、移除浮動控制盒、自動量測輸入區（commit `f1679d6`）。
   - 本輪報告 `docs/reports/2026-11-14-t1-results.md`（本段落所在的 commit）。
 
+### 規格 v24（2026-11-15，依 `docs/review-2026-11-14-2.md`）
+- **v23 依據的審查內容有遺失，本版補回**：repo 內的 `docs/review-2026-11-14.md` 是修訂前的舊版，缺少付款視窗診斷結果與 Holodex+ 說明。
+- F-09 依目前 YouTube 版面（聊天室右上角 `✕`、無「隱藏聊天室」列、影片下方「聊天室／開啟面板」卡片）改為多重錨點：聊天室頂部列 → 優化面板頂部列 → 影片下方卡片 → 舊版「隱藏聊天室」列 → popup／快速鍵備援；每個錨點找不到都要 `warnOnce()`。
+- F-09 預設開啟已決：有聊天室的影片頁預設開啟，不記住關閉狀態。
+- 4.3 新增 frame 訊息 `TOGGLE_PANEL`（chat frame → top）。
+- 6.3／6.4：頁面層付款視窗定案為 `body > div#buyFlowDivId`（內含跨來源 `iframe#buyFlowDivIdIframe`），移除 `ytd-popup-container > *` 萬用規則；明確選擇器為主、fixed 掃描為輔。
+- 6.5 AC 新增第 10、11 條（兩種版面都有開關、預設開啟）。
+- 第 9 節：回歸測試需在有／無 Holodex+ 各測一次，並測目前版面與舊版面。
+- 10.4 注入按鈕改為三種形態。
+
 ### 規格 v23（commit `56cff01`，2026-11-14）
 - T1 實測通過，**F-10 定案方案 A**（Chrome 157.0.8103.51）。
 - 6.2／6.4：面板改為插入 `ytd-live-chat-frame` 內（`iframe#chatframe` 前一個兄弟），`clip-path` 改套在 `iframe#chatframe`，不再換算座標或輪詢重排（修正劇院模式錯位）。
