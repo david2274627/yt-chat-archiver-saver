@@ -42,11 +42,17 @@
         '#buyFlowDivId',
         'iframe#buyFlowDivIdIframe',
       ],
+      // 付款視窗的全頁遮罩（position:absolute，與 #buyFlowDivId 同為 body 直接子元素）：輔助判斷，不可單獨依賴
+      // b3-modal-dialog* 等 class 只能作次要比對
+      pageMasks: [
+        'body > .modal-dialog-bg',
+      ],
     },
 
     // ---------- chat frame（www.youtube.com/live_chat、live_chat_replay） ----------
     chat: {
       app: 'yt-live-chat-app',
+      renderer: 'yt-live-chat-renderer',
       header: 'yt-live-chat-header-renderer',
       // 頂部列 ⋮ 按鈕候選（F-09 開關插在其左側；v24 待真實版面確認，找不到時退為附加在頂部列末端並警告）
       headerOverflow: [

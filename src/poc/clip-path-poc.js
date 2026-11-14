@@ -5,6 +5,8 @@
 //     （聊天室關閉時先展開）→ 舊版「隱藏聊天室」列；
 //     全部找不到時 console.warn，快速鍵 Alt+Shift+P 仍可用
 //   - 頁面層付款視窗以明確選擇器（top.pagePopups）偵測為主，position:fixed 掃描為輔
+//   - review-3：自動量測 v2（底部互動區）、版面診斷與「複製診斷」（Alt+Shift+D）、
+//     露出值 clamp 在 [0, iframe 高度]、摺疊保護（iframe 太矮 → 解除 clip、隱藏面板，恢復後自動重啟）
 // 快速鍵：Alt+Shift+P 開關 PoC；Alt+Shift+U 切換「完全不裁切」。
 (function () {
   'use strict';
@@ -19,6 +21,7 @@
   const LEGACY_BTN_ID = 'ytcas-poc-legacy-btn';
   const TEASER_BTN_ID = 'ytcas-poc-teaser-btn';
   const EXPAND_WAIT_MS = 8000;
+  const COLLAPSE_MIN_H = 200; // iframe 高度低於此值視為「聊天室摺疊」（PoC 用；正式值於 T6 依診斷定案）
   const PANEL_PAGE = 'src/poc/poc-panel.html';
   const ANCHOR_GRACE_MS = 6000;
 
@@ -34,6 +37,11 @@
     metaMo: null,
     metaRaf: 0,
     expanding: false,
+    paused: false,         // 摺疊保護中
+    layoutMo: null,
+    flexyMo: null,
+    flexyTreeMo: null,
+    layoutRaf: 0,
     anchorWarned: false,
     pageStart: Date.now(),
     clicks: 0,
@@ -60,12 +68,33 @@
     return { frame, iframe, showHide };
   }
 
-  function revealPx() {
+  // 原始露出值（未 clamp）。自動 v2 = iframe 底邊 − 最高的底部互動區元素頂端；v2 量不到時退回 #input-panel 算法
+  function rawRevealPx() {
     if (state.auto) {
       const m = state.measure;
-      return m && m.found ? m.fromBottom : null; // null = 量測不到 → 視同無輸入區
+      if (!m) return null;
+      if (m.zoneFromBottom != null) return m.zoneFromBottom;
+      return m.found ? m.fromBottom : null; // null = 量測不到 → 視同無輸入區
     }
     return state.manualPx;
+  }
+
+  function iframeH() {
+    const { iframe } = els();
+    return iframe ? iframe.offsetHeight : 0;
+  }
+
+  // clamp 在 [0, iframe 高度]
+  function revealPx() {
+    const r = rawRevealPx();
+    return r == null ? null : Math.min(Math.max(0, r), iframeH());
+  }
+
+  // 摺疊保護：iframe 太矮或露出值 ≥ iframe 高度 → 解除 clip、隱藏面板
+  function isCollapsed() {
+    const h = iframeH();
+    const r = rawRevealPx();
+    return h < COLLAPSE_MIN_H || (r != null && r >= h);
   }
 
   // ---------------- 樣式（全部在聊天室元素內，無 position:fixed） ----------------
@@ -215,11 +244,24 @@
     }
   }
 
+  function entryLabel() {
+    if (!state.on) return 'PoC 測試';
+    return state.paused ? 'PoC 暫停（聊天室摺疊）' : '關閉 PoC';
+  }
+
+  let lastPosted = '';
   function renderEntries() {
     document.querySelectorAll('.ytcas-poc-entry').forEach((b) => {
-      b.textContent = state.on ? '關閉 PoC' : 'PoC 測試';
+      b.textContent = entryLabel();
       b.classList.toggle('on', state.on);
     });
+    // 頂部列按鈕在 chat frame 內：把狀態告訴它（摺疊暫停時面板隱藏，頂部列是唯一看得到狀態的地方）
+    const key = entryLabel();
+    const { iframe } = els();
+    if (iframe?.contentWindow && key !== lastPosted) {
+      lastPosted = key;
+      iframe.contentWindow.postMessage({ __ytcas: true, type: 'POC_STATE', on: state.on, paused: state.paused, label: key }, YT);
+    }
   }
 
   // ---------------- 測試面板 ----------------
@@ -236,18 +278,21 @@
     bar.innerHTML = `
       <div class="sum"><span class="grow" data-k="sum"></span>
         <button type="button" class="mini" data-k="noClip"></button>
+        <button type="button" class="mini" data-k="copy">複製診斷</button>
         <button type="button" class="mini" data-k="expand"></button>
         <button type="button" class="mini danger" data-k="close">關閉 PoC</button></div>
       <div class="more">
-        <div class="r">露出：${radio('ytcas-poc-mode', 'auto', '自動（量測）', state.auto ? 'auto' : 'manual')}${radio('ytcas-poc-mode', 'manual', '手動', state.auto ? 'auto' : 'manual')}
-          <input type="range" min="40" max="240" step="2" data-k="range"> <span data-k="rangeVal"></span>px</div>
+        <div class="r">露出：${radio('ytcas-poc-mode', 'auto', '自動（量測 v2）', state.auto ? 'auto' : 'manual')}${radio('ytcas-poc-mode', 'manual', '手動', state.auto ? 'auto' : 'manual')}
+          <input type="range" min="0" max="240" step="2" data-k="range"> <span data-k="rangeVal"></span>px</div>
         <div class="r">量測：<span data-k="measure">—</span></div>
+        <div class="pop">底部互動區：<span data-k="zone">—</span></div>
         <div class="pop">輸入區子元素：<span data-k="rows">—</span></div>
+        <div class="pop">版面：<span data-k="layout">—</span></div>
         <div class="pop">開關錨點：<span data-k="anchors">—</span></div>
         <div class="r">下層類型：${radio('ytcas-poc-lower', 'div', 'div', state.lower)}${radio('ytcas-poc-lower', 'iframe', '擴充功能 iframe', state.lower)}</div>
         <div class="pop">目前可見彈窗：<span data-k="popNow">—</span></div>
         <div class="pop">最近一次可見彈窗：<span data-k="popLast">—</span></div>
-        <div class="r" style="opacity:.7">Chrome ${chromeVer}　快速鍵：Alt+Shift+P 開關、Alt+Shift+U 不裁切</div>
+        <div class="r" style="opacity:.7">Chrome ${chromeVer}　快速鍵：Alt+Shift+P 開關、Alt+Shift+U 不裁切、Alt+Shift+D 複製診斷</div>
       </div>`;
     const body = document.createElement('div');
     body.className = 'body';
@@ -259,6 +304,7 @@
       render();
     });
     bar.querySelector('[data-k="noClip"]').addEventListener('click', toggleNoClip);
+    bar.querySelector('[data-k="copy"]').addEventListener('click', copyDiagnostics);
     bar.querySelector('[data-k="close"]').addEventListener('click', () => toggle());
     const range = bar.querySelector('[data-k="range"]');
     range.value = String(state.manualPx);
@@ -330,8 +376,15 @@
     set('noClip', state.noClip ? '恢復裁切' : '不裁切');
     p.querySelector('[data-k="noClip"]').classList.toggle('on', state.noClip);
     set('rangeVal', state.manualPx);
-    set('measure', m ? (m.found ? `#input-panel 高 ${m.height}px；頂端距 iframe 底 ${m.fromBottom}px` : '找不到 #input-panel') : '等待 chat frame 回報…');
+    const range = p.querySelector('[data-k="range"]');
+    const h = iframeH();
+    if (range && h > 0 && Number(range.max) !== h) range.max = String(h); // 滑桿上限 = iframe 高度
+    const v2 = m && m.zoneFromBottom != null ? `v2 底部互動區 ${m.zoneFromBottom}px` : 'v2 量測不到';
+    const v1 = m ? (m.found ? `舊算法 #input-panel 高 ${m.height}px／頂端距底 ${m.fromBottom}px` : '舊算法 找不到 #input-panel') : '';
+    set('measure', m ? `${v2}；${v1}；iframe 高 ${h}px` : '等待 chat frame 回報…');
+    set('zone', m && m.zone && m.zone.length ? m.zone.map((z) => `${z.el}@${z.top}+${z.h}`).join('、') : '—');
     set('rows', m && m.rows ? m.rows.join('、') : '—');
+    set('layout', layoutText());
     set('anchors', anchorText());
     set('popNow', state.popupNow);
     set('popLast', state.popupLast);
@@ -349,21 +402,143 @@
     p.style.height = iframe.offsetHeight + 'px';
     if (state.ro?.__target !== iframe) {
       state.ro?.disconnect();
-      state.ro = new ResizeObserver(() => { const q = document.getElementById(PANEL_ID); if (q) q.style.height = iframe.offsetHeight + 'px'; });
+      state.ro = new ResizeObserver(() => {
+        const q = document.getElementById(PANEL_ID);
+        if (q) q.style.height = iframe.offsetHeight + 'px';
+        applyClip();
+        render();
+      });
       state.ro.observe(iframe);
       state.ro.__target = iframe;
     }
+    watchLayout();
     applyClip();
     render();
+  }
+
+  function clipValue() {
+    const r = revealPx();
+    return r == null ? 'inset(100% 0 0 0)' : `inset(calc(100% - ${r}px) 0 0 0)`;
   }
 
   function applyClip() {
     const { iframe } = els();
     if (!iframe) return;
-    if (state.noClip || !state.on) { iframe.style.removeProperty('clip-path'); return; }
-    const r = revealPx();
-    const v = r == null ? 'inset(100% 0 0 0)' : `inset(calc(100% - ${r}px) 0 0 0)`;
-    iframe.style.setProperty('clip-path', v, 'important');
+    const p = document.getElementById(PANEL_ID);
+    if (!state.on) { iframe.style.removeProperty('clip-path'); return; }
+    // 摺疊保護（review-3 §3.2）：解除 clip、隱藏面板，不干擾原生聊天室；高度恢復後自動重啟
+    const collapsed = isCollapsed();
+    if (collapsed !== state.paused) {
+      state.paused = collapsed;
+      log(collapsed ? '聊天室摺疊，PoC 暫停' : '聊天室恢復，PoC 重啟', layoutInfo());
+    }
+    if (p) p.style.display = state.paused ? 'none' : '';
+    if (state.noClip || state.paused) { iframe.style.removeProperty('clip-path'); return; }
+    iframe.style.setProperty('clip-path', clipValue(), 'important');
+  }
+
+  // ---------------- 版面診斷（review-3 §4.1-3） ----------------
+  const rectStr = (el) => {
+    if (!el) return '—';
+    const r = el.getBoundingClientRect();
+    return [r.left, r.top, r.width, r.height].map(Math.round).join(',');
+  };
+  const tagIdOf = (el) => (el ? el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') : '—');
+
+  function layoutInfo() {
+    const { frame, iframe } = els();
+    const p = document.getElementById(PANEL_ID);
+    const flexy = document.querySelector(S.top.watchFlexy);
+    const attrs = (el, skip = []) => (el ? Array.from(el.attributes)
+      .filter((a) => !skip.includes(a.name))
+      .map((a) => (a.value ? `${a.name}=${a.value.slice(0, 40)}` : a.name)) : []);
+    return {
+      frameParent: frame ? `${tagIdOf(frame.parentElement)} < ${tagIdOf(frame.parentElement?.parentElement)}` : '—',
+      frameAttrs: attrs(frame, ['style']),
+      flexyAttrs: attrs(flexy, ['style']).filter((a) => !a.startsWith('video-id')).slice(0, 30),
+      frameRect: rectStr(frame),
+      iframeRect: rectStr(iframe),
+      panelRect: rectStr(p),
+      iframeH: iframeH(),
+      reveal: rawRevealPx(),
+      clip: iframe ? (iframe.style.clipPath || 'none') : '—',
+      collapsed: state.paused,
+      noClip: state.noClip,
+    };
+  }
+
+  function layoutText() {
+    const L = layoutInfo();
+    return `父元素 ${L.frameParent}｜frame [${L.frameAttrs.join(' ')}] ${L.frameRect}｜iframe ${L.iframeRect}｜面板 ${L.panelRect}｜clip ${L.clip}｜摺疊保護 ${L.collapsed ? '觸發' : '否'}`;
+  }
+
+  function diagnostics() {
+    return {
+      poc: 'v24', chrome: chromeVer, time: new Date().toISOString(),
+      layout: layoutInfo(),
+      measure: state.measure,
+      anchors: state.anchors,
+      popupNow: state.popupNow,
+      popupLast: state.popupLast,
+    };
+  }
+
+  // 需使用者手勢（按鈕或 Alt+Shift+D）才能寫剪貼簿；失敗時改用暫存 textarea（放在面板內，非浮動元素）
+  async function copyDiagnostics() {
+    const text = JSON.stringify(diagnostics(), null, 1);
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
+      const host = document.getElementById(PANEL_ID) || els().frame || document.body;
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;';
+      host.appendChild(ta);
+      ta.select();
+      try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+      ta.remove();
+    }
+    log(ok ? '診斷已複製到剪貼簿' : '複製失敗，請從下方訊息複製', ok ? '' : text);
+    const b = document.querySelector(`#${PANEL_ID} [data-k="copy"]`);
+    if (b) { b.textContent = ok ? '已複製 ✓' : '複製失敗'; setTimeout(() => { b.textContent = '複製診斷'; }, 1500); }
+  }
+
+  // 劇院模式／窄版面：監看 ytd-live-chat-frame 屬性與子元素、ytd-watch-flexy 屬性與子樹（rAF 合併）
+  function watchLayout() {
+    const { frame } = els();
+    const flexy = document.querySelector(S.top.watchFlexy);
+    const schedule = () => {
+      if (state.layoutRaf) return;
+      state.layoutRaf = requestAnimationFrame(() => {
+        state.layoutRaf = 0;
+        if (!state.on) return;
+        const { iframe: f } = els();
+        const q = document.getElementById(PANEL_ID);
+        if (!q || !f || q.nextElementSibling !== f) { placePanel(); return; }
+        q.style.height = f.offsetHeight + 'px';
+        applyClip();
+        render();
+      });
+    };
+    if (frame && state.layoutMo?.__target !== frame) {
+      state.layoutMo?.disconnect();
+      state.layoutMo = new MutationObserver(schedule);
+      state.layoutMo.observe(frame, { attributes: true, childList: true });
+      state.layoutMo.__target = frame;
+    }
+    if (flexy && state.flexyMo?.__target !== flexy) {
+      state.flexyMo?.disconnect();
+      state.flexyTreeMo?.disconnect();
+      // ytd-watch-flexy 本身的屬性（theater、fullscreen 等），不含子樹（避免播放進度等頻繁變化）
+      state.flexyMo = new MutationObserver(schedule);
+      state.flexyMo.observe(flexy, { attributes: true });
+      state.flexyMo.__target = flexy;
+      // 聊天室被搬到其他容器
+      const movesChat = (n) => n.nodeType === 1 && (n.matches(S.top.liveChatFrame) || !!n.querySelector(S.top.liveChatFrame));
+      state.flexyTreeMo = new MutationObserver((list) => {
+        if (list.some((m) => Array.from(m.addedNodes).some(movesChat))) schedule();
+      });
+      state.flexyTreeMo.observe(flexy, { childList: true, subtree: true });
+    }
   }
 
   function toggleNoClip() {
@@ -382,7 +557,13 @@
     const fromChat = iframe && e.source === iframe.contentWindow && e.origin === YT;
     if (d.type === 'POC_INPUT') {
       if (!fromChat) return;
-      state.measure = { found: !!d.found, height: d.height, fromBottom: d.fromBottom, rows: d.rows };
+      const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null);
+      state.measure = {
+        found: !!d.found, height: num(d.height), fromBottom: num(d.fromBottom),
+        rows: Array.isArray(d.rows) ? d.rows.slice(0, 12).map(String) : [],
+        vh: num(d.vh), zoneFromBottom: num(d.zoneFromBottom),
+        zone: Array.isArray(d.zone) ? d.zone.slice(0, 40).map((z) => ({ el: String(z.el), top: num(z.top), h: num(z.h), parents: String(z.parents || '') })) : [],
+      };
       if (state.on) { log('量測', state.measure); applyClip(); render(); }
       return;
     }
@@ -391,6 +572,7 @@
       state.anchors.header = !!d.header;
       state.anchors.headerHow = d.how || '—';
       state.anchors.headerKids = Array.isArray(d.kids) ? d.kids.slice(0, 16).map(String) : [];
+      lastPosted = ''; // 可能是新的 chat 文件：重送一次按鈕狀態
       render();
       return;
     }
@@ -447,6 +629,10 @@
     // 1. 明確選擇器：頁面層付款視窗（v24 定案）
     S.top.pagePopups.forEach((sel) => document.querySelectorAll(sel).forEach((el) => {
       if (isVisible(el)) { known.push(el); found.push(describe(el, '頁面')); }
+    }));
+    // 1b. 付款視窗遮罩（輔助）
+    S.top.pageMasks.forEach((sel) => document.querySelectorAll(sel).forEach((el) => {
+      if (isVisible(el)) { known.push(el); found.push(describe(el, '頁面遮罩')); }
     }));
     // 2. ytd-popup-container 內的一般對話框（備援）
     const container = document.querySelector(S.top.popupContainer);
@@ -529,6 +715,13 @@
     state.bodyMo?.disconnect();
     state.buyMo?.disconnect();
     state.buyMo = null;
+    state.layoutMo?.disconnect();
+    state.layoutMo = null;
+    state.flexyMo?.disconnect();
+    state.flexyMo = null;
+    state.flexyTreeMo?.disconnect();
+    state.flexyTreeMo = null;
+    state.paused = false;
     document.getElementById(PANEL_ID)?.remove();
     frame?.classList.remove('ytcas-poc-frame');
     if (iframe) {
@@ -549,6 +742,7 @@
     const k = e.key.toLowerCase();
     if (k === 'p') { e.preventDefault(); toggle(); }
     if (k === 'u') { e.preventDefault(); toggleNoClip(); }
+    if (k === 'd') { e.preventDefault(); copyDiagnostics(); } // 摺疊暫停時面板隱藏，用快速鍵複製診斷
   });
   document.addEventListener('yt-navigate-finish', () => {
     if (state.on) disable();
