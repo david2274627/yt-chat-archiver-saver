@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v24**（前版：v23；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v25**（前版：v24；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -24,6 +24,7 @@
 - **v22 調整**：收起狀態 clip 改為從 `iframe#chatframe` 底邊往上露出 `inputHeight`（6.2、T1）；新增 top frame 付款視窗偵測（6.3）；新增 **F-11 v2.6.0 舊資料遷移與 JSON 匯入**，v3 資料庫改名 `ytcas-v3`（4.1、5.A）；`web_accessible_resources` 只開放 `src/viewer.html`（7）；T9 加入移除 PoC。
 - **v23 調整**：T1 通過，**F-10 定案方案 A**；面板改為插入 `ytd-live-chat-frame` 內、clip 改套在 `iframe#chatframe`（6.2、6.4，修正劇院模式錯位）；頁面層付款視窗開啟期間 clip 維持解除（6.2、6.4）；`inputHeight` 一律動態量測（6.3）；新增 10.1 原則 6「不遮擋影片與頁面主體」與第 7 節「版面侵入」；F-09 新增待決事項（預設開啟）；F-11 遷移資料時間碼為盡力而為。
 - **v24 調整**：F-09 依目前 YouTube 版面（聊天室右上角 `✕`、無「隱藏聊天室」列、影片下方「聊天室／開啟面板」卡片）改為**多重錨點**，並決定**預設開啟、不記住關閉狀態**（5.C、6.5）；新增 frame 訊息 `TOGGLE_PANEL`（4.3）；頁面層付款視窗選擇器定案為 `#buyFlowDivId`，移除萬用規則（6.3、6.4）；第 9 節加入 Holodex+ 相容性測試。v23 依據的審查內容有遺失，本版補回。另依 v23 PoC 補測：`inputHeight` 改為 **`bottomZoneHeight`（底部互動區高度，含置頂列、投票卡）**（4.3、6.2、6.3）；6.2 新增「聊天室摺疊」狀態，劇院模式／窄版面監看要求（6.4）；F-07 與原生置頂列的關係、F-02 置頂來源待確認；6.5 AC 新增第 12、13 條；第 9 節新增置頂列／投票卡必測情境。
+- **v25 調整**（依 `docs/youtube-dom-notes.md` 實機結構）：依賴 YouTube DOM 的功能一律以該筆記為準（第 9 節）；底部互動區改為**白名單**量測並加合理性退回（6.3）；F-09 頂部列按鈕位置定案（`#live-chat-header-context-menu` 前）；彈窗選擇器定案（6.3）；F-02 直播訊息改讀 `#timestamp`、身分改讀 `author-type` 屬性、未知訊息元件存為 `system`；F-03 以 `@handle` 為鍵；新增 **F-12 自動切換「即時聊天室」**；1.3 新增「只能保存 YouTube 實際送到分頁的訊息」；6.4 版面狀態判斷屬性。
 
 ---
 
@@ -46,6 +47,7 @@
 - 不做雲端同步、不上傳任何聊天資料到外部伺服器。
 - 不自行實作 SC 付款流程（一律交給 YouTube 原生 UI）。
 - 不支援 Firefox / Safari / 行動版。
+- （v25）**套件只能保存 YouTube 實際送到此分頁的訊息**：被封鎖、被管理員隱藏、被 YouTube 垃圾訊息過濾的訊息不在存檔內；F-12 會自動切到「即時聊天室」以盡量取得完整訊息流，但仍以 YouTube 實際送出的為限。
 
 ---
 
@@ -131,8 +133,8 @@ yt-chat-archiver-saver/
 ```js
 { id /* YouTube 訊息 id，去重用 */, videoId,
   type: 'text'|'superchat'|'supersticker'|'membership'|'milestone'|'raid'|'system',
-  authorHandle /* '@xxx' 或空 */, authorChannelId /* 'UC...' 或空 */,
-  authorUrl /* https://www.youtube.com/@xxx 或 /channel/UC... */,
+  authorHandle /* '@xxx' 或空 */, authorChannelId /* 'UC...' 或空；v25：直播訊息沒有作者連結，多數情況取不到 */,
+  authorUrl /* v25：以 https://www.youtube.com/@handle 組成；有 channelId 時才用 /channel/UC... */,
   authorAvatar, authorBadges: string[] /* 'owner'|'moderator'|'member'|'verified' */,
   runs: Array<{ text } | { emoji: { src, alt, shortcut } }>,  // 富媒體內容
   amount?: string, color?: string,      // SC / 超級貼圖
@@ -192,12 +194,16 @@ yt-chat-archiver-saver/
 **F-02 完整富媒體歷史保存**（v2.6.0 已驗證可行，重寫照做）
 - 保存文字、官方 Emoji、會員貼圖（`src` + `alt`）、雙時間軸、頭像、頻道直連網址。
 - 被修剪前一定先完成擷取（擷取在 MutationObserver 回呼內同步完成，修剪只動已擷取節點：以 `data-ytcas-saved="1"` 標記）。
-- 置頂訊息擷取（v24）：新版面置頂訊息位於輸入列上方，DOM 來源不一定是 `yt-live-chat-banner-manager`；`selectors.js` 的 `chat.bannerContainer` **待確認**（併入底部互動區診斷），T3 實作前定案。
+- 置頂訊息擷取（v25 確認）：新版面置頂列位於輸入列上方，來源仍是 `yt-live-chat-banner-manager`（`chat.bannerContainer`）＞ `yt-live-chat-banner-renderer` ＞ `#contents` 內的 `yt-live-chat-text-message-renderer#<訊息 id>`（結構同一般訊息），見 `docs/youtube-dom-notes.md` 2.4。
+- **時間戳**（v25）：直播訊息的 `span#timestamp` **有值**，`yt-live-chat-renderer[hide-timestamps]` 只是以 CSS 隱藏。擷取時直接讀 `#timestamp` 文字（當地時間字串；實機長度約 7 字元，確切格式待 T3 實作時確認，解析需容許上午／下午與 AM／PM 兩種寫法），配合擷取當下的日期還原 `timestampAbs`；還原結果比擷取時間晚超過 12 小時時視為前一天（跨日校正）；解析失敗時以擷取時間為準。`videoOffsetSec` 仍以 `startDate` 推算（4.3）。
+- **身分**（v25）：以 `yt-live-chat-text-message-renderer[author-type]`（`owner`／`moderator`／`member`…）為主，`#chat-badges` 內的徽章為輔（例如 `verified`）。
+- **未知訊息元件**（v25）：`#items` 下出現不認識的元件標籤時，`console.info('[ytcas] 未知訊息元件', tagName)`（每種標籤一次），並以 `type: 'system'` 保存，不丟棄。尚未在實機出現的類型（SC 文字版、會員、禮物、降落、投票）在 `selectors.js` 標「待實機確認」。
 - AC：同一訊息不重複寫入（以 `id` 去重）；匯出 JSON 與畫面數量一致。
 
 **F-03 全自動頻道名稱解析**（v2.6.0 已驗證可行，重寫照做）
 - 無手動改名按鈕。`@Handle` 由 bg 抓頻道頁 `og:title`、`og:image` 解析；併發上限 **3**，失敗指數退避，快取 **7 天**。
 - 顯示：主名稱 = 頻道名稱，副標淡色 = `@Handle`。
+- （v25）直播訊息沒有作者連結，`authorChannelId` 多數情況取不到：解析與快取（`channels` store 的 `handleOrId`）**以 `@handle` 為鍵**；`authorUrl` 以 `https://www.youtube.com/@handle` 組成。
 - AC：解析失敗時退回顯示 `@Handle`，不得顯示空白。
 
 **F-11 v2.6.0 舊資料遷移與 JSON 匯入**（v22 新增）
@@ -243,7 +249,7 @@ yt-chat-archiver-saver/
 
 | 狀態 | 位置 | 說明 |
 |---|---|---|
-| 聊天室展開、優化面板**關閉** | **聊天室頂部列**（`chat.header` = `yt-live-chat-header-renderer`，chat frame 內），`⋮` 左側；小型圖示按鈕＋提示文字「開啟優化面板」 | 由 chat frame content script 注入；點擊後送 `TOGGLE_PANEL`（4.3）給 top frame 執行開啟 |
+| 聊天室展開、優化面板**關閉** | **聊天室頂部列**（`chat.header` = `yt-live-chat-header-renderer`，chat frame 內），`⋮`（v25 實機確認：`yt-live-chat-button#live-chat-header-context-menu`）之前、同一父層；**不得**放進 `#view-selector`（v24 PoC 誤放於此）；小型圖示按鈕＋提示文字「開啟優化面板」 | 由 chat frame content script 注入；點擊後送 `TOGGLE_PANEL`（4.3）給 top frame 執行開啟 |
 | 聊天室展開、優化面板**開啟** | **優化面板自己的頂部列**，紅色「關閉優化面板」 | 原生頂部列此時已被 clip 裁掉，看不到也點不到，開關必須在面板內 |
 | 聊天室已關閉（`✕`） | 影片下方「聊天室／開啟面板」卡片（`top.chatTeaser`，判定規則見 `selectors.js`），「開啟面板」按鈕右側 | 點擊時先展開原生聊天室，再開啟優化面板（自動喚醒展開）。聊天室展開時原生「開啟面板」為停用但卡片仍在，此時注入按鈕仍可用，點擊直接開啟優化面板 |
 | 舊版面（有 `top.showHideButton`） | 該列右側 | 相容用，YouTube A/B 測試仍可能出現 |
@@ -255,6 +261,14 @@ yt-chat-archiver-saver/
 - **預設開啟（v24 已決，使用者 2026-11-15）**：進入有聊天室的影片頁（直播或有聊天重播的 VOD）時，優化面板**預設開啟**；**不記住**上次關閉狀態（使用者在某頁關閉只對該次頁面有效）；沒有聊天室的影片不顯示任何東西。
 
 **F-10 直播中保留底部原生互動輸入區**（v2.6.0 未解決，本版重點，詳見第 6 節）
+
+**F-12 自動切換「即時聊天室」**（v25 新增，使用者 2026-11-15 決定）
+- 目的：YouTube 預設的「重點聊天室訊息」會過濾部分訊息；切到「即時聊天室」才能盡量保存完整訊息流（仍受 1.3 的限制）。
+- 開啟優化面板時（含預設開啟），在 chat frame 檢查 `chat.viewSelector.items`（`#live-chat-view-selector-sub-menu tp-yt-paper-listbox#menu > a`）：若第 1 個 `a` 為 `aria-selected="true"`（重點），點擊第 2 個 `a` 切到「即時聊天室」。
+- 是否需要先展開選單（點 `chat.viewSelector.trigger`）才能點擊：**待實測**；實作時先直接點，切換失敗（第 2 個仍非 `aria-selected="true"`）再改為「展開 → 點擊」，仍失敗則 `warnOnce` 並放棄，不重試迴圈。
+- 不依賴選單文字（多語系），只依位置與 `aria-selected`。
+- 關閉優化面板時**不**切回。使用者之後自行切回「重點」時，同一頁面不再自動切換。
+- AC：開啟面板後 2 秒內頂部列顯示為「即時聊天室」；已是「即時聊天室」時不做任何操作；關閉面板後保持「即時聊天室」；使用者手動切回「重點」後，本頁不再被切換；VOD 重播頁若沒有此選單則不做任何事、不報錯（只 `warnOnce`）。
 
 ---
 
@@ -299,12 +313,18 @@ yt-chat-archiver-saver/
   - 目前 YouTube 版面在訊息列表與輸入列之間，還會出現**置頂訊息列**、**投票／問答卡**、（可能）會員里程碑橫幅等「底部錨定」元素。它們都屬於原生互動區，**都必須露出**，否則被裁掉後使用者看不到也點不到。
   - 定義：`bottomZoneHeight` = iframe 底邊 − 所有**可見**底部錨定元素中**最高者的頂端**（即 `innerHeight − min(rect.top)`）。
   - 實測依據（v23 PoC 補測，2026-11-14）：`#input-panel` 只有 56px，但上方另有置頂訊息列，合計約 114px 才剛好（前次 58px／84px 差異也來自此）；有投票卡時超過 240px。只量 `#input-panel` 不夠。
-  - 候選元素清單寫在 `selectors.js` 的 `chat.bottomZone`，**待 PoC 底部互動區診斷結果填入**（不得憑猜測寫選擇器）；PoC 期間以「iframe 底部 400px 內、排除 `#item-list` 與頂部列的可見元素」近似。
+  - **v25 定案：白名單量測**（實機結構見 `docs/youtube-dom-notes.md` 2.1；v24 的「底部 400px 內任何元素」近似法在實機把全高透明覆蓋層 `ytls-widget-overlay-manager` 算進去，得到 545px 的錯誤值）：
+    - `chat.bottomZone`（白名單，依畫面由上而下）：`yt-live-chat-banner-manager`（置頂列）、`#panel-pages`、`#input-panel`。
+    - `chat.bottomZoneOverlay` = `ytls-widget-overlay-manager`（YouTube 原生，蓋在訊息列表上；投票卡推測掛在此）：**容器本身不計**，只計其可見子元素。
+    - `chat.bottomZoneExclude`：`#item-list`、`yt-live-chat-header-renderer`、`yt-live-chat-ticker-renderer`、`ytls-widget-overlay-manager` 本身。
+    - `bottomZoneHeight` = iframe 高度 − min(白名單可見元素 `top`, 覆蓋層可見子元素 `top`)。實機 iframe 594px 時為 594 − 485 = 109px（與使用者手動調整的 114px 相符）。
+    - **合理性檢查**：結果 > iframe 高度 × 0.6，或面板可見高度 < 160px → 判為可疑，退回「`#input-panel` 頂端到 iframe 底邊」的後備算法，並在 console 記錄一次。
+    - 投票卡的實際標籤待實機診斷後補入白名單或確認位於覆蓋層內。
   - 以 `ResizeObserver` 監看各候選元素與其父容器，另以 `MutationObserver` 監看候選元素的出現／消失。
   - **一律動態量測，不得使用常數**；`constants.js` 不得出現 84 之類的預設裁切值（PoC 除外）。量測不到時視同 `!hasInput`。
-- 彈窗偵測（選擇器放 `selectors.js`，以 `MutationObserver` 監聽屬性/子樹 + 每 500ms 保底輪詢）：
-  - 表符選單：`yt-emoji-picker-renderer`、`#emoji-picker-button` 展開後的 `tp-yt-iron-dropdown`
-  - `$` 選單：`yt-live-chat-product-picker-renderer`
+- 彈窗偵測（選擇器放 `selectors.js`，以 `MutationObserver` 監聽屬性/子樹 + 每 500ms 保底輪詢；v25 依實機結構定案，見 `docs/youtube-dom-notes.md` 2.5）：
+  - 表符按鈕：`#emoji-picker-button` ＞ `yt-live-chat-icon-toggle-button-renderer#emoji`；表符選單：`yt-emoji-picker-renderer`
+  - `$` 按鈕：`yt-live-chat-icon-toggle-button-renderer#product-picker`；`$` 選單：`tp-yt-iron-pages#pickers > yt-live-chat-product-picker-panel-view-model#product-picker`。**`$` 選單長在 `#input-panel` 內**，展開時 `#input-panel` 高度本身會變，`bottomZoneHeight` 會自然涵蓋；關閉時該元素是否仍「可見」待實機確認（若仍可見，不得列為 `popupOpen` 條件）
   - 購買流程：`yt-live-chat-message-buy-flow-renderer`
   - 其他：任何「可見」的 `tp-yt-iron-dropdown`、`tp-yt-paper-dialog`
   - 「可見」定義：`getBoundingClientRect().height > 0` 且計算樣式非 `display:none`/`visibility:hidden`。
@@ -326,7 +346,15 @@ yt-chat-archiver-saver/
 - **劇院模式與窄版面**（v24）：v23 PoC 補測顯示，劇院模式與窄版面下原生聊天室本身被 YouTube 縮成約 150px，面板只剩頂部列、原生訊息蓋住面板（`inset(calc(100% - 114px) …)` 在矮 iframe 上等同無效）。要求：
   - 露出值 clamp 在 `[0, iframe 高度]`；符合 6.2「聊天室摺疊」條件時解除 clip、隱藏面板，不干擾原生聊天室。
   - 以 `MutationObserver` 監看 `ytd-live-chat-frame` 的屬性（`collapsed`、`theater`、`class` 等）與子元素，以及 `ytd-watch-flexy` 的屬性與聊天室被搬到其他容器（如 `#panels-full-bleed-container`）；變化時重新計算面板高度、clip 與摺疊狀態。`ytd-watch-flexy` 的子樹只看 childList，不看子樹屬性（避免播放進度等頻繁變化）。
-  - 實際原因（父容器、屬性、高度）待 PoC 版面診斷結果確認後補入本節。
+  - **v25 實機確認的版面狀態**（`docs/youtube-dom-notes.md` 1.1，Chrome 157）：
+
+| 版面 | 判斷依據（`selectors.js` 的 `top.layout`） | `ytd-live-chat-frame` 父鏈 | 聊天室框尺寸 | 套件行為 |
+|---|---|---|---|---|
+| 雙欄（預設） | `ytd-watch-flexy[is-two-columns_]`（無 `theater`） | `div#chat-container < div#secondary-inner` | 339×596 | 正常 |
+| 單欄（視窗窄） | `ytd-watch-flexy[is-single-column]` | `div#chat-container < div#below < div#primary-inner < div#primary < div#columns` | 427×596（全高，在影片下方） | 正常 |
+| 劇院模式 | `ytd-watch-flexy[theater]`、`ytd-live-chat-frame[theater-watch-while]` | `div#chat-container < div#columns` | **402×152**（被壓矮） | 摺疊保護（6.2「聊天室摺疊」） |
+
+  - 屬性只作輔助與診斷；是否摺疊仍以 iframe 實際高度判斷（6.2），不依賴屬性名稱。
 - **頁面層付款視窗**（v24 定案）：「完成購買程序」視窗為 `body` 直接子元素 `div#buyFlowDivId`（內含跨來源 `iframe#buyFlowDivIdIframe`），選擇器與監看方式見 6.3。偵測結果以 `topPopupOpen` 參與 6.2 狀態表。
 
 ### 6.5 F-10 驗收條件
@@ -381,7 +409,7 @@ yt-chat-archiver-saver/
 | T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03）；F-11 自動遷移（唯讀複製，不動舊資料庫） | commit | 以 DevTools 呼叫訊息 API 可寫入/查詢；遷移後舊庫筆數不變、新舊筆數一致 |
 | T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02） | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50 |
 | T4 | viewer 核心：虛擬清單、訊息列、膠囊列、雙搜尋列、置頂卡片（F-04～F-07） | commit | 對既有場次資料可篩選、搜尋、高亮 |
-| T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09） | commit | 使用者在 VOD 與直播實測 |
+| T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09）；自動切換「即時聊天室」（F-12，v25） | commit | 使用者在 VOD 與直播實測 |
 | T6 ⏸ | F-10 完整實作：輸入區/彈窗偵測、`CHAT_INPUT_STATE`、clip 狀態機、面板底部 padding、關閉還原（第 6 節） | commit | 使用者依 6.5 AC 1～7 實測 |
 | T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON（含 `formatVersion`）、刪除；F-11 JSON 匯入 UI（v2.6.0 / v3 格式、預覽、去重）與「刪除舊版資料」按鈕 | commit | 匯出 HTML 離線開啟可搜尋；同一 JSON 匯入兩次無重複 |
 | T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部，更新 `docs/test-checklist.md` | commit | 使用者確認測試清單全數通過 |
@@ -394,6 +422,7 @@ yt-chat-archiver-saver/
 - 測試帳號：需為某頻道會員以測會員表符；`$` 流程測到確認頁即可取消。
 - Chrome：最新穩定版；記錄版本號於測試清單。
 - 記憶體量測：Chrome 工作管理員（Shift+Esc）記錄 0 / 30 / 60 / 120 分鐘。
+- **YouTube DOM 依據**（v25）：所有依賴 YouTube DOM 結構的功能（量測、錨點、彈窗偵測、擷取）以 `docs/youtube-dom-notes.md` 記錄的實機結構為準。模擬頁測試只能證明「程式邏輯沒錯」，報告中標為「模擬頁：邏輯檢查通過；真實結構待實機」，實機確認後才可標 ✅。新取得的診斷資料寫入該筆記（標註日期與 Chrome 版本），原始輸出存於 `docs/diag/`。
 - **相容性**（v24）：使用者裝有 Holodex+（Console 會出現 `[Holodex+] live chat overrides injected`，它也會修改直播聊天室）。回歸測試需在**有／無 Holodex+** 兩種情況下各測一次；實測遇到錯位或樣式異常時，先停用 Holodex+ 重測以排除干擾。
 - **必測情境**（v24）：有**置頂訊息列**的直播、有**投票卡**的直播（底部互動區高度會變）；劇院模式與窄版面。
 - **版面**（v24）：需同時測目前版面（聊天室右上角 `✕`、影片下方「聊天室／開啟面板」卡片）與舊版面（有「隱藏聊天室」列，若仍能遇到）。

@@ -13,6 +13,7 @@
 - Chrome MV3，純 JavaScript（不引入打包工具、框架或 npm 相依，除非 SPEC 改版允許）。
 - `youtube.com` 頁面內的腳本不得直接存取聊天資料 IndexedDB，必須透過 `background.js`。
 - 所有 YouTube DOM 選擇器只能寫在 `selectors.js`。
+- **依賴 YouTube DOM 的功能以 `docs/youtube-dom-notes.md` 為準**（實機確認的結構，標註日期與 Chrome 版本）。筆記沒有記錄的結構一律標「待實機確認」，不得憑猜測寫選擇器；模擬頁的 YouTube 內部結構也只能依筆記建構。
 - **禁止**改變 `iframe#chatframe` 高度，或對 `yt-live-chat-app` / `#contents` / `#chat-messages` 設 `height`、`display`（見 SPEC 6.1）。
 - 使用者文字禁止未跳脫寫入 `innerHTML`。
 
@@ -39,6 +40,7 @@
 - 標示 ⏸ 的任務完成後必須停下，給使用者具體測試步驟，等回覆再繼續。
 - 每完成一項 F-xx 或 T-xx，更新 `docs/test-checklist.md` 對應項目狀態。
 - 無法自動化驗證的項目（需真實直播）列在 PR / 回報中，請使用者手動驗證，不可宣稱已通過。
+- 依賴 YouTube DOM 的功能（量測、錨點、彈窗偵測、擷取）：模擬頁結果只能標「**模擬頁：邏輯檢查通過；真實結構待實機**」，實機確認後才可標 ✅。使用者貼回的新結構資料寫入 `docs/youtube-dom-notes.md`（標註日期與 Chrome 版本），原始診斷輸出存於 `docs/diag/`（只含標籤、id、屬性名、尺寸，不含訊息文字）。
 - **每輪作業完成後必須寫成 `.md` 報告**，放在 `docs/reports/YYYY-MM-DD-<主題>.md`，與成果一起 commit、push，並傳給使用者；對話中只附簡短摘要。報告至少包含：
   1. 摘要與目前關卡
   2. 完成項目與對應 commit 短 SHA

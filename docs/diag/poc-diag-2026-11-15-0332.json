@@ -1,0 +1,318 @@
+{
+ "poc": "v24",
+ "chrome": "157.0.0.0",
+ "time": "2026-11-14T19:32:31.961Z",
+ "layout": {
+  "frameParent": "div#chat-container < div#secondary-inner",
+  "frameAttrs": [
+   "id=chat",
+   "class=style-scope ytd-watch-flexy ytcas-poc-fr",
+   "modern-buttons",
+   "rounded-container",
+   "round-background"
+  ],
+  "flexyAttrs": [
+   "class=style-scope ytd-page-manager watch-root-",
+   "reduced-top-margin",
+   "view-transition-enabled",
+   "respect-aspect-ratio",
+   "is-four-three-to-sixteen-nine-video_",
+   "default-layout",
+   "rounded-player",
+   "hidden-action-button-target-ids=[]",
+   "is-two-columns_",
+   "default-two-column-layout",
+   "flexy-small-window_",
+   "role=main",
+   "should-stamp-chat",
+   "cinematic-light-theme",
+   "should-collapse-donation-shelf",
+   "live-chat-present-and-expanded",
+   "panel-expanded",
+   "watch-metadata-refresh",
+   "has-metadata"
+  ],
+  "frameRect": "893,68,339,596",
+  "iframeRect": "894,69,337,594",
+  "panelRect": "894,69,337,594",
+  "iframeH": 594,
+  "reveal": 545,
+  "clip": "inset(calc(100% - 545px) 0px 0px)",
+  "collapsed": false,
+  "noClip": false
+ },
+ "measure": {
+  "found": true,
+  "height": 56,
+  "fromBottom": 56,
+  "rows": [
+   "yt-live-chat-message-input-renderer#live-chat-message-input:56",
+   "div#container:36"
+  ],
+  "vh": 594,
+  "zoneFromBottom": 545,
+  "zone": [
+   {
+    "el": "ytls-widget-overlay-manager",
+    "top": 49,
+    "h": 436,
+    "parents": "div#chat < div#contents < div#chat-messages"
+   },
+   {
+    "el": "yt-live-chat-banner-manager#live-chat-banner",
+    "top": 485,
+    "h": 52,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages"
+   },
+   {
+    "el": "div#visible-banners",
+    "top": 485,
+    "h": 48,
+    "parents": "yt-live-chat-banner-manager#live-chat-banner < div#contents < div#chat-messages"
+   },
+   {
+    "el": "yt-live-chat-banner-renderer",
+    "top": 485,
+    "h": 48,
+    "parents": "div#visible-banners < yt-live-chat-banner-manager#live-chat-banner < div#contents"
+   },
+   {
+    "el": "div#banner-container",
+    "top": 493,
+    "h": 32,
+    "parents": "yt-live-chat-banner-renderer < div#visible-banners < yt-live-chat-banner-manager#live-chat-banner"
+   },
+   {
+    "el": "div#header",
+    "top": 493,
+    "h": 32,
+    "parents": "div#banner-container < yt-live-chat-banner-renderer < div#visible-banners"
+   },
+   {
+    "el": "yt-live-chat-banner-header-renderer",
+    "top": 493,
+    "h": 32,
+    "parents": "div#header < div#banner-container < yt-live-chat-banner-renderer"
+   },
+   {
+    "el": "div#menu",
+    "top": 497,
+    "h": 24,
+    "parents": "yt-live-chat-banner-header-renderer < div#header < div#banner-container"
+   },
+   {
+    "el": "yt-button-renderer#menu-button",
+    "top": 493,
+    "h": 32,
+    "parents": "div#menu < yt-live-chat-banner-header-renderer < div#header"
+   },
+   {
+    "el": "yt-button-shape",
+    "top": 493,
+    "h": 32,
+    "parents": "yt-button-renderer#menu-button < div#menu < yt-live-chat-banner-header-renderer"
+   },
+   {
+    "el": "button",
+    "top": 493,
+    "h": 32,
+    "parents": "yt-button-shape < yt-button-renderer#menu-button < div#menu"
+   },
+   {
+    "el": "div",
+    "top": 497,
+    "h": 24,
+    "parents": "button < yt-button-shape < yt-button-renderer#menu-button"
+   },
+   {
+    "el": "span",
+    "top": 497,
+    "h": 24,
+    "parents": "div < button < yt-button-shape"
+   },
+   {
+    "el": "span",
+    "top": 497,
+    "h": 24,
+    "parents": "span < div < button"
+   },
+   {
+    "el": "div",
+    "top": 497,
+    "h": 24,
+    "parents": "span < span < div"
+   },
+   {
+    "el": "svg",
+    "top": 497,
+    "h": 24,
+    "parents": "div < span < span"
+   },
+   {
+    "el": "path",
+    "top": 501,
+    "h": 16,
+    "parents": "svg < div < span"
+   },
+   {
+    "el": "yt-touch-feedback-shape",
+    "top": 493,
+    "h": 32,
+    "parents": "button < yt-button-shape < yt-button-renderer#menu-button"
+   },
+   {
+    "el": "div#contents",
+    "top": 493,
+    "h": 32,
+    "parents": "div#banner-container < yt-live-chat-banner-renderer < div#visible-banners"
+   },
+   {
+    "el": "yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R",
+    "top": 493,
+    "h": 32,
+    "parents": "div#contents < div#banner-container < yt-live-chat-banner-renderer"
+   },
+   {
+    "el": "yt-img-shadow#author-photo",
+    "top": 497,
+    "h": 24,
+    "parents": "yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R < div#contents < div#banner-container"
+   },
+   {
+    "el": "img#img",
+    "top": 497,
+    "h": 24,
+    "parents": "yt-img-shadow#author-photo < yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R < div#contents"
+   },
+   {
+    "el": "div#content",
+    "top": 497,
+    "h": 24,
+    "parents": "yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R < div#contents < div#banner-container"
+   },
+   {
+    "el": "yt-live-chat-author-chip",
+    "top": 500,
+    "h": 18,
+    "parents": "div#content < yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R < div#contents"
+   },
+   {
+    "el": "span#author-name",
+    "top": 500,
+    "h": 18,
+    "parents": "yt-live-chat-author-chip < div#content < yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R"
+   },
+   {
+    "el": "span#message-container",
+    "top": 500,
+    "h": 17,
+    "parents": "div#content < yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R < div#contents"
+   },
+   {
+    "el": "span#message",
+    "top": 500,
+    "h": 17,
+    "parents": "span#message-container < div#content < yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R"
+   },
+   {
+    "el": "img#emoji-121",
+    "top": 496,
+    "h": 24,
+    "parents": "span#message < span#message-container < div#content"
+   },
+   {
+    "el": "a",
+    "top": 500,
+    "h": 17,
+    "parents": "span#message < span#message-container < div#content"
+   },
+   {
+    "el": "img#emoji-122",
+    "top": 496,
+    "h": 24,
+    "parents": "span#message < span#message-container < div#content"
+   },
+   {
+    "el": "a",
+    "top": 500,
+    "h": 17,
+    "parents": "span#message < span#message-container < div#content"
+   },
+   {
+    "el": "tp-yt-iron-pages#panel-pages",
+    "top": 537,
+    "h": 57,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages"
+   },
+   {
+    "el": "div#input-panel",
+    "top": 538,
+    "h": 56,
+    "parents": "tp-yt-iron-pages#panel-pages < div#contents < div#chat-messages"
+   },
+   {
+    "el": "yt-live-chat-message-input-renderer#live-chat-message-input",
+    "top": 538,
+    "h": 56,
+    "parents": "div#input-panel < tp-yt-iron-pages#panel-pages < div#contents"
+   },
+   {
+    "el": "div#container",
+    "top": 548,
+    "h": 36,
+    "parents": "yt-live-chat-message-input-renderer#live-chat-message-input < div#input-panel < tp-yt-iron-pages#panel-pages"
+   },
+   {
+    "el": "div#top",
+    "top": 548,
+    "h": 36,
+    "parents": "div#container < yt-live-chat-message-input-renderer#live-chat-message-input < div#input-panel"
+   },
+   {
+    "el": "div#input-container",
+    "top": 548,
+    "h": 36,
+    "parents": "div#top < div#container < yt-live-chat-message-input-renderer#live-chat-message-input"
+   },
+   {
+    "el": "yt-live-chat-text-input-field-renderer#input",
+    "top": 554,
+    "h": 24,
+    "parents": "div#input-container < div#top < div#container"
+   },
+   {
+    "el": "label#label",
+    "top": 554,
+    "h": 24,
+    "parents": "yt-live-chat-text-input-field-renderer#input < div#input-container < div#top"
+   },
+   {
+    "el": "div#input",
+    "top": 554,
+    "h": 24,
+    "parents": "yt-live-chat-text-input-field-renderer#input < div#input-container < div#top"
+   }
+  ]
+ },
+ "anchors": {
+  "header": true,
+  "headerHow": "before-overflow",
+  "headerKids": [
+   "div#primary-content",
+   "span#title",
+   "span#view-selector",
+   "div#action-buttons",
+   "div#viewer-leaderboard-entry-point",
+   "ytvl-live-viewer-leaderboard-chat-entry-point-view-model",
+   "yt-live-chat-button#live-chat-header-context-menu",
+   "yt-button-renderer",
+   "div#close-button",
+   "yt-button-renderer"
+  ],
+  "legacy": true,
+  "teaser": true,
+  "teaserHow": "文字比對"
+ },
+ "popupNow": "—",
+ "popupLast": "—"
+}

@@ -1,0 +1,299 @@
+{
+ "page": "/live_chat",
+ "dark": false,
+ "rendererAttrs": [
+  "hide-timestamps",
+  "has-ticker",
+  "has-input-action-panel",
+  "enable-banner-update"
+ ],
+ "viewSelector": {
+  "attrs": [],
+  "kids": [
+   "yt-sort-filter-sub-menu-renderer#live-chat-view-selector-sub-menu",
+   "tp-yt-paper-tooltip",
+   "div#tooltip",
+   "yt-dropdown-menu",
+   "button#ytcas-poc-header-btn",
+   "tp-yt-paper-menu-button#menu-button",
+   "div#trigger",
+   "tp-yt-paper-button#label",
+   "dom-if",
+   "template",
+   "div#label-text",
+   "yt-icon#label-icon",
+   "span",
+   "div",
+   "svg"
+  ]
+ },
+ "items": {
+  "count": 136,
+  "parents": [
+   "div#item-offset",
+   "div#item-scroller",
+   "div#contents",
+   "yt-live-chat-item-list-renderer#live-chat-item-list-panel",
+   "div#item-list",
+   "div#chat"
+  ]
+ },
+ "hasTimestamp": true,
+ "inputButtons": [
+  "div#close-button []",
+  "div#help-button []",
+  "div#emoji-picker-button []",
+  "yt-icon-button#button []",
+  "button#button [加入表情符號]",
+  "div#send-button []",
+  "button [傳送]",
+  "div#jewels-gifts-button []",
+  "yt-icon-button#button []",
+  "button#button [表達你對「@ReLiveDaDa」的支持]",
+  "button []",
+  "button []",
+  "button []",
+  "button []",
+  "button []",
+  "div#collapsed-button []",
+  "button []",
+  "yt-icon-button#clear-search []",
+  "button#button [清除搜尋內容]",
+  "button#skin-tone [挑選表情符號的面板顏色]"
+ ],
+ "kinds": {
+  "yt-live-chat-text-message-renderer": {
+   "attrs": [
+    "modern",
+    "enable-improved-visibility-style",
+    "enable-banner-update",
+    "whole-message-clickable",
+    "author-type=moderator"
+   ],
+   "ids": [
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "div#content",
+    "span#timestamp",
+    "span#prepend-chat-badges",
+    "span#author-name",
+    "span#chip-badges",
+    "div#image",
+    "span#chat-badges",
+    "div#before-content-buttons",
+    "span#message-container",
+    "span#message-prefix-icon-container",
+    "span#message",
+    "span#hover-message",
+    "span#deleted-state",
+    "a#show-original",
+    "div#menu",
+    "yt-icon-button#menu-button",
+    "button#button",
+    "yt-interaction#interaction",
+    "div#inline-action-button-container",
+    "div#inline-action-buttons"
+   ],
+   "cssVars": [],
+   "authorLink": false
+  },
+  "yt-live-chat-paid-message-renderer": null,
+  "yt-live-chat-paid-sticker-renderer": {
+   "attrs": [
+    "modern",
+    "whole-message-clickable",
+    "is-v2-style"
+   ],
+   "ids": [
+    "div#card",
+    "div#author-info",
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "div#content",
+    "span#timestamp",
+    "div#content-primary-column",
+    "div#author-name-chip",
+    "span#prepend-chat-badges",
+    "span#author-name",
+    "span#chip-badges",
+    "span#chat-badges",
+    "div#image",
+    "div#purchase-description",
+    "span#price-column",
+    "yt-formatted-string#purchase-amount-chip",
+    "yt-formatted-string#deleted-state",
+    "div#sticker-container",
+    "yt-img-shadow#sticker",
+    "yt-formatted-string#dashboard-deleted-state",
+    "div#menu",
+    "yt-icon-button#menu-button",
+    "button#button",
+    "yt-interaction#interaction",
+    "div#gradient-container",
+    "div#gradient",
+    "div#creator-heart-button",
+    "div#lower-bumper",
+    "div#buy-flow-button",
+    "div#inline-action-button-container"
+   ],
+   "cssVars": [
+    "--yt-live-chat-paid-sticker-chip-background-color",
+    "--yt-live-chat-paid-sticker-chip-text-color",
+    "--yt-live-chat-disable-highlight-message-author-name-color",
+    "--yt-live-chat-paid-sticker-background-color"
+   ],
+   "authorLink": false
+  },
+  "yt-live-chat-membership-item-renderer": null,
+  "ytd-sponsorships-live-chat-gift-purchase-announcement-renderer": null,
+  "ytd-sponsorships-live-chat-header-renderer": null,
+  "yt-live-chat-viewer-engagement-message-renderer": {
+   "attrs": [
+    "modern",
+    "modern-style"
+   ],
+   "ids": [
+    "div#card",
+    "yt-icon#icon",
+    "div#content",
+    "div#message-container",
+    "yt-formatted-string#message",
+    "div#action-button",
+    "div#menu",
+    "yt-icon-button#menu-button",
+    "button#button",
+    "yt-interaction#interaction"
+   ],
+   "cssVars": [],
+   "authorLink": false
+  },
+  "yt-live-chat-banner-redirect-renderer": null,
+  "yt-live-chat-banner-renderer": {
+   "attrs": [
+    "enable-improved-visibility-style",
+    "tabindex=0",
+    "enable-banner-update",
+    "collapsed"
+   ],
+   "ids": [
+    "div#banner-container",
+    "div#header",
+    "div#menu",
+    "yt-button-renderer#menu-button",
+    "div#contents",
+    "yt-live-chat-text-message-renderer#ChwKGkNPaVo0clhUaDVnREZlN001d01kVXZndk9R",
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "div#content",
+    "span#timestamp",
+    "span#prepend-chat-badges",
+    "span#author-name",
+    "span#chip-badges",
+    "span#chat-badges",
+    "div#before-content-buttons",
+    "span#message-container",
+    "span#message-prefix-icon-container",
+    "span#message",
+    "img#emoji-88",
+    "img#emoji-89",
+    "span#hover-message",
+    "span#deleted-state",
+    "a#show-original",
+    "yt-icon-button#menu-button",
+    "button#button",
+    "yt-interaction#interaction",
+    "div#inline-action-button-container",
+    "div#inline-action-buttons",
+    "div#indeterminate-bar"
+   ],
+   "cssVars": [],
+   "authorLink": false
+  },
+  "yt-live-chat-ticker-renderer": {
+   "attrs": [
+    "hidden"
+   ],
+   "ids": [
+    "div#container",
+    "span#ticker-bar",
+    "div#goal-ticker",
+    "div#fanzone-ticker",
+    "div#ticker-items",
+    "div#left-arrow-container",
+    "div#right-arrow-container"
+   ],
+   "cssVars": [],
+   "authorLink": false
+  },
+  "yt-live-chat-poll-renderer": null,
+  "yt-live-chat-action-panel-renderer": null,
+  "yt-live-chat-header-renderer": {
+   "attrs": [
+    "role=heading",
+    "prevent-chat-header-overflow"
+   ],
+   "ids": [
+    "div#primary-content",
+    "span#title",
+    "span#view-selector",
+    "yt-sort-filter-sub-menu-renderer#live-chat-view-selector-sub-menu",
+    "div#tooltip",
+    "button#ytcas-poc-header-btn",
+    "tp-yt-paper-menu-button#menu-button",
+    "div#trigger",
+    "tp-yt-paper-button#label",
+    "div#label-text",
+    "yt-icon#label-icon",
+    "tp-yt-iron-dropdown#dropdown",
+    "div#contentWrapper",
+    "tp-yt-paper-listbox#menu",
+    "div#item-with-badge",
+    "div#subtitle",
+    "dom-repeat#repeat",
+    "div#notification",
+    "div#action-buttons",
+    "div#viewer-leaderboard-entry-point",
+    "yt-live-chat-button#live-chat-header-context-menu",
+    "div#close-button"
+   ],
+   "cssVars": [],
+   "authorLink": false
+  },
+  "yt-emoji-picker-renderer": {
+   "attrs": [],
+   "ids": [
+    "div#search-panel",
+    "tp-yt-paper-input#search",
+    "tp-yt-paper-input-container#container",
+    "div#labelAndInputContainer",
+    "label#paper-input-label-1",
+    "tp-yt-iron-input#input-1",
+    "yt-icon-button#clear-search",
+    "button#button",
+    "yt-interaction#interaction",
+    "button#skin-tone",
+    "tp-yt-iron-dropdown#dropdown",
+    "div#contentWrapper",
+    "div#dropdown-content",
+    "div#category-buttons",
+    "yt-emoji-picker-category-renderer",
+    "yt-formatted-string#title",
+    "div#emoji",
+    "dom-repeat#repeat",
+    "yt-formatted-string#search-empty",
+    "div#categories-wrapper",
+    "div#categories",
+    "div#emoji-variant-selector",
+    "div#emoji-multi-person-selector"
+   ],
+   "cssVars": [],
+   "authorLink": false
+  },
+  "yt-live-chat-product-picker-renderer": null
+ },
+ "overlayKids": [
+  "div:0",
+  "div:0",
+  "div:0"
+ ]
+}

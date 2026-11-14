@@ -26,7 +26,25 @@
 - v24 補充：v23 PoC 補測結果（`docs/review-2026-11-14-3.md`）：
   - PoC 底部互動區量測 v2、版面診斷、摺疊保護（commit `6c9714c`）。
   - 規格 v24 補充：`bottomZoneHeight`、聊天室摺疊狀態、劇院模式監看（commit `dcc27fe`）。
-  - 文件：v23 補測結果、新補測步驟、付款視窗診斷 JSON（本段落所在的 commit）。
+  - 文件：v23 補測結果、新補測步驟、付款視窗診斷 JSON（commit `7fa0332`）。
+  - 本輪報告 `docs/reports/2026-11-14-v24-f09-anchors.md`（commit `4a371e3`）。
+- v25：v24 PoC 實機量測誤判修正（`docs/review-2026-11-15.md`）：
+  - `selectors.js` 依實機結構筆記更新（commit `3e55e36`）。
+  - PoC 量測 v3（白名單）與合理性退回、頂部列按鈕位置修正（commit `fc5c17b`）。
+  - PoC 控制列單列化與鍵盤調整快速鍵（commit `8c44fe9`）。
+  - 規格 v25、DOM 筆記與診斷檔、CLAUDE.md 規則（本段落所在的 commit）。
+
+### 規格 v25（2026-11-15，依 `docs/review-2026-11-15.md`、`docs/youtube-dom-notes.md`）
+- 新增 `docs/youtube-dom-notes.md`（實機 DOM 結構筆記，`selectors.js` 與模擬頁的唯一依據）與 `docs/diag/`（原始診斷輸出）。
+- 第 9 節／CLAUDE.md：依賴 YouTube DOM 的功能以筆記為準；模擬頁結果只能標「邏輯檢查通過」，實機確認後才可標 ✅。
+- 6.3 底部互動區改為**白名單**量測（`yt-live-chat-banner-manager`、`#panel-pages`、`#input-panel`；覆蓋層 `ytls-widget-overlay-manager` 只計可見子元素），加合理性退回（> iframe 高 60% 或面板可見 < 160px）。v24 近似法在實機得到 545px。
+- 6.3 彈窗選擇器定案：`#emoji`、`#product-picker`、`#pickers` 內的 `$` 選單（長在 `#input-panel` 內）。
+- 6.4 版面狀態判斷屬性與三種版面的父容器、尺寸（劇院模式聊天室 402×152）。
+- F-09：頂部列按鈕插在 `#live-chat-header-context-menu`（⋮）之前；不得放進 `#view-selector`。
+- F-02：置頂來源確認為 `yt-live-chat-banner-manager`；直播 `#timestamp` 有值（CSS 隱藏），讀文字還原 `timestampAbs` 並做跨日校正；身分改讀 `author-type` 屬性；未知訊息元件 `console.info` 一次並存為 `system`。
+- F-03／4.1：直播訊息沒有作者連結，以 `@handle` 為鍵，`authorUrl` 由 handle 組成。
+- 新增 **F-12 自動切換「即時聊天室」**（使用者 2026-11-15 決定）與 AC；T5 納入。
+- 1.3 非目標：套件只能保存 YouTube 實際送到此分頁的訊息。
 
 ### 規格 v24（2026-11-15，依 `docs/review-2026-11-14-2.md`）
 - **v23 依據的審查內容有遺失，本版補回**：repo 內的 `docs/review-2026-11-14.md` 是修訂前的舊版，缺少付款視窗診斷結果與 Holodex+ 說明。
