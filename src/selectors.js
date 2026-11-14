@@ -8,7 +8,7 @@
     top: {
       liveChatFrame: 'ytd-live-chat-frame',
       chatIframe: 'iframe#chatframe',
-      // 原生聊天室收合/展開橫幅的按鈕（F-09 注入按鈕放在其右側）
+      // 舊版面：聊天室下方「隱藏聊天室」列（v24：目前版面已沒有，僅相容用；F-09 錨點 4）
       showHideButton: 'ytd-live-chat-frame #show-hide-button',
       watchFlexy: 'ytd-watch-flexy',
       video: 'video.html5-main-video',
@@ -17,13 +17,20 @@
       titleMeta: 'meta[name="title"]',
       channelLink: 'ytd-watch-metadata ytd-channel-name a, #owner ytd-channel-name a',
       darkThemeAttr: 'html[dark]',
-      // F-10 top frame 彈窗偵測（v22：$ 付款確認視窗可能開在整頁中央）
+      // F-10 top frame 彈窗偵測
+      // ytd-popup-container 內的一般對話框（備援）
       popupContainer: 'ytd-popup-container',
       popups: [
         'tp-yt-paper-dialog',
         'tp-yt-iron-dropdown',
         'yt-dialog-view-model',
-        'ytd-popup-container > *', // 未知的 ytd-* 付款元件：T1 實測後補上實際標籤名稱
+      ],
+      // v24 定案：頁面層「完成購買程序」視窗是 body 的直接子元素，不在 ytd-app / ytd-popup-container 內。
+      // 內部 iframe 為跨來源 payments.youtube.com：不讀取、不注入。不得使用 #:0.contentEl（動態 id）。
+      buyFlow: '#buyFlowDivId',
+      pagePopups: [
+        '#buyFlowDivId',
+        'iframe#buyFlowDivIdIframe',
       ],
     },
 
@@ -31,6 +38,11 @@
     chat: {
       app: 'yt-live-chat-app',
       header: 'yt-live-chat-header-renderer',
+      // 頂部列 ⋮ 按鈕候選（F-09 開關插在其左側；v24 待真實版面確認，找不到時退為附加在頂部列末端並警告）
+      headerOverflow: [
+        'yt-live-chat-header-renderer #overflow',
+        'yt-live-chat-header-renderer #menu-button',
+      ],
       itemList: '#item-list',
       items: '#item-list #items',
       inputPanel: '#input-panel',

@@ -64,6 +64,7 @@
       CHAT_INPUT_STATE: 'CHAT_INPUT_STATE',
       VOD_TIME: 'VOD_TIME',
       SEEK_TO: 'SEEK_TO',
+      TOGGLE_PANEL: 'TOGGLE_PANEL', // v24：chat frame 頂部列的 F-09 開關被點擊
     }),
 
     // F-05 機器人排除名單（比對不分大小寫，同時比對名稱與 @Handle）
