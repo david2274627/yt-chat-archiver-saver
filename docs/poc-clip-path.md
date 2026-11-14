@@ -7,29 +7,32 @@
 ## 狀態
 - 第一次實測（2026-11-14）：**通過，F-10 定案方案 A**。結果見文末「結論」。
 - v23 版 PoC：使用者已補測（2026-11-14 20:48，以 Alt+Shift+P 開啟），結果見下方「v23 補測結果」：付款視窗偵測成立；露出高度量測對象錯誤；劇院模式與窄版面不可用；開關在目前版面不出現。
-- v24 版 PoC：⬜ **待使用者補測**（見「補測（v24）」）。
-- 模擬頁面（非 YouTube）自動檢查（v24 版）：✅ 目前版面（頂部列有 `✕`、無「隱藏聊天室」列、影片下方有「聊天室／開啟面板」卡片）與舊版面兩種模擬頁都通過，細節見 `docs/reports/` 本輪報告。
+- v24 版 PoC：使用者補測第 1 項（2026-11-15 03:27）時，自動量測 v2 算出 545px（實際應為 109px），面板只剩約 45px，且「展開 ▼」被擠掉，無法切換手動，補測中斷。原因是全高透明覆蓋層 `ytls-widget-overlay-manager` 被算進底部互動區（見 `docs/review-2026-11-15.md`）。
+- v24.1 版 PoC：⬜ **待使用者補測**（見「補測（v24.1）」）。
+- 模擬頁（非 YouTube）：**邏輯檢查通過；真實結構待實機**。v24.1 起模擬頁的聊天室內部結構依 `docs/youtube-dom-notes.md` 建構（含全高覆蓋層），量測 v3 得到 109px。依 SPEC 第 9 節（v25），模擬頁結果不可視為 ✅。
 
 ## 測試環境注意事項
 - 使用者裝有 **Holodex+**（Console 會出現 `[Holodex+] live chat overrides injected`），它也會修改直播聊天室。**實測遇到錯位或樣式異常時，先停用 Holodex+ 重測一次**，以排除干擾。
 - 目前 YouTube 版面：聊天室右上角有 `✕`（關閉聊天室），聊天室下方**沒有**「隱藏聊天室」列；聊天室關閉後，影片下方資訊區有「聊天室／加入對話…／開啟面板」卡片。
 
-## PoC 行為（v24）
+## PoC 行為（v24.1）
 - **沒有任何浮在影片或頁面上的元素**（SPEC 10.1 原則 6）。
 - **開關位置（多重錨點，SPEC F-09）**：
-  1. 聊天室展開時：**聊天室頂部列**、`⋮` 左側的藍色「**PoC 測試**」。
-  2. PoC 開啟後：**測試面板頂部列**右側有「不裁切」「展開 ▼」與紅色「**關閉 PoC**」（原生頂部列此時被裁掉）。
+  1. 聊天室展開時：**聊天室頂部列**、`⋮` 左側的藍色「**PoC 測試**」。v24.1 修正：v24 誤插進「重點聊天室訊息 ▾」選單內，現在插在 `⋮`（`#live-chat-header-context-menu`）正前方。
+  2. PoC 開啟後：**測試面板頂部列最左邊**依序是「展開 ▼」「不裁切」「複製診斷」與紅色「**關閉 PoC**」，後面才是狀態文字。狀態列固定單列，文字過長時以「…」截斷，按鈕不會被擠掉。
   3. 聊天室用 `✕` 關閉後：影片下方「聊天室」卡片中，「開啟面板」右側的「**PoC 測試**」。點擊會先展開聊天室，再開啟測試面板。聊天室展開時這顆按鈕仍可用（原生「開啟面板」會變灰，屬正常）。
-  4. 舊版面（有「隱藏聊天室」列）：該列右側。
+  4. 舊版面（有「隱藏聊天室」列）：該列右側。v24.1 起只有在該列**看得見**時才掛上（實機上該元素可能以隱藏狀態殘留）。
   5. 備援：快速鍵 **Alt+Shift+P**。以上位置都找不到時，Console 會出現 `[ytcas-poc] 找不到開關錨點`。
 - 開啟後：
   - 測試面板插入 `ytd-live-chat-frame` 內、`iframe#chatframe` 的正後方（z-index 10），跟著聊天室一起被 YouTube 搬移，不計算座標。
   - `clip-path` 直接套在 `iframe#chatframe`（z-index 20）。
   - 「不裁切」（Alt+Shift+U）切換「完全不裁切」。不裁切時原生聊天室會蓋住面板，用快速鍵切回即可。
-  - 面板頂部狀態列：點擊／滾輪次數、最後點擊、目前露出高度，以及「不裁切」「**複製診斷**」「展開 ▼」「關閉 PoC」。按「展開 ▼」可看到：
-    - **露出模式**：自動（預設，**量測 v2**：iframe 底邊 − 最高的底部互動區元素頂端）／手動（滑桿，上限 = iframe 高度）
-    - **量測**：v2 數值、舊算法（`#input-panel`）數值、iframe 高度
-    - **底部互動區**：iframe 底部 400px 內的可見元素（排除訊息列表與頂部列），格式 `標籤#id@頂端+高度`
+  - 面板頂部狀態列：目前露出高度與來源（自動／自動・後備／手動）、快速鍵提示（自動時顯示「Alt+Shift+M 手動」）、點擊／滾輪次數、最後點擊。按「展開 ▼」可看到：
+    - **露出模式**：自動（預設，**量測 v3**）／手動（滑桿，上限 = iframe 高度）
+      - 量測 v3 = iframe 高度 − 下列元素中最高者的頂端：置頂列 `yt-live-chat-banner-manager`、`#panel-pages`、`#input-panel`，以及覆蓋層 `ytls-widget-overlay-manager` 的**可見子元素**（例如投票卡；覆蓋層本身不計）。
+      - **合理性檢查**：v3 超過 iframe 高度的 60%，或面板可見高度不到 160px → 判為可疑，改用後備算法（`#input-panel` 頂端到 iframe 底邊），狀態列顯示「（自動・後備）」。
+    - **量測**：v3 數值、後備算法數值、iframe 高度、目前採用哪一個與可疑原因
+    - **底部互動區**：所有候選元素，格式 `標籤#id@頂端+高度［處理方式］`，處理方式為「計入：白名單…」「計入：覆蓋層子元素」「排除：…」「未列入」
     - **輸入區子元素**（只有標籤名稱和高度，不含文字）
     - **版面**：`ytd-live-chat-frame` 的父元素與屬性、frame／iframe／面板位置、目前 clip、摺疊保護是否觸發
     - **開關錨點**：頂部列／影片下方卡片／舊版列各自是否掛上，以及頂部列的元素結構（只有標籤與 id）
@@ -39,6 +42,18 @@
 - **複製診斷**（按鈕或 Alt+Shift+D）：把版面、量測、底部互動區、開關錨點、彈窗狀態複製到剪貼簿（只有標籤、id、位置與尺寸，**不含任何文字**）。複製失敗時會改印在 Console（`[ytcas-poc] 複製失敗…`）。
 - 用 `✕` 關閉聊天室時，PoC 會自動關閉並還原。
 
+### 快速鍵（v24.1）
+焦點在頁面或聊天室內（包括輸入框）都可以用，不依賴畫面上的按鈕：
+
+| 快速鍵 | 作用 |
+|---|---|
+| Alt+Shift+P | 開關 PoC |
+| Alt+Shift+U | 不裁切／恢復裁切 |
+| Alt+Shift+D | 複製診斷（摺疊暫停、面板看不到時也能用） |
+| Alt+Shift+M | 自動／手動切換（切到手動時，從目前實際露出值開始） |
+| Alt+Shift+↑／↓ | 手動露出值 +8／−8px（自動模式下按會先切到手動） |
+| Ctrl+Alt+Shift+↑／↓ | 手動露出值 +32／−32px |
+
 ## 測試前準備
 
 > ⚠️ **絕對不要移除原本的擴充功能項目**：移除會連同 v2.6.0 的 IndexedDB 舊資料一起永久刪除。只能在該項目上按 🔄 重新載入。也**不要**對同一路徑再按「載入未封裝項目」。
@@ -47,39 +62,42 @@
 1. `chrome://extensions` → 在**原本的擴充功能項目**上按 🔄 重新載入。擴充功能 ID 已核對為 `ejdhefdjjjlajfilfijnanippgdcdeoi`，不需再測。
 2. 開一個**你能留言的直播**，重新整理頁面。
 
-## 補測（v24）
+## 補測（v24.1）
 
-> 步驟依 `docs/review-2026-11-14-3.md` 第 5 節，並併入 `docs/review-2026-11-14-2.md` 第 5 節的開關與付款視窗項目。「複製診斷」的結果只含標籤、id、位置與尺寸，可以直接貼回。
+> 步驟依 `docs/review-2026-11-15.md` 第 5 節。「複製診斷」與附錄腳本的結果只含標籤、id、屬性名、位置與尺寸，可以直接貼回。
+> F-12（自動切換「即時聊天室」）尚未實作（規格 v25 已寫入，實作在 T5）。PoC 不會自動切換，所以步驟 3a 只需觀察記錄。
 
 ### 步驟
+0. `chrome://extensions` → 在原本的項目上按 🔄 重新載入（**不要移除**）→ 重新整理直播頁。
 1. **一般直播（有置頂訊息列）**：
-   1. 聊天室展開時，聊天室**頂部列**（`⋮` 左側）出現「PoC 測試」→ 點擊，出現測試面板。
-   2. 底部露出的範圍是否**剛好**是「置頂訊息列＋輸入列」（不切到、也不多露訊息）？
-   3. 按面板頂部「**複製診斷**」，把結果貼回（內含底部互動區清單與量測 v2）。
-2. **有投票卡的直播**：同步驟 1-2、1-3（投票卡是否完整露出、可以投票）。
-3. **劇院模式**：按 `t` 切換劇院模式。
-   1. 觀察：是否出現頂部列按鈕顯示「PoC 暫停（聊天室摺疊）」？原生聊天室是否**完全正常**（看得到訊息、可以打字）？
-   2. 在劇院模式下按 **Alt+Shift+D**，把版面診斷貼回。
-   3. 再按 `t` 切回，PoC 是否自動恢復？來回切換共 3 次。
-4. **窄版面**：把視窗拉窄到右側欄移到影片下方，同步驟 3（觀察、Alt+Shift+D 貼回、拉回後是否恢復）。
-5. **開關位置**：
-   1. 聊天室展開時：頂部列有「PoC 測試」（步驟 1 已確認）。
-   2. 按「關閉 PoC」→ 用聊天室右上角 `✕` 關閉聊天室 → 影片下方「聊天室」卡片的「開啟面板」右側出現「PoC 測試」→ 點擊後聊天室展開且測試面板出現。
-6. **付款視窗**：按「不裁切」→ `$` → 超級留言 → 走到「完成購買程序」視窗出現（**不要付款**）。面板「目前可見彈窗」應顯示「頁面：div#buyFlowDivId」（另可能有「頁面遮罩：div」）；關閉後消失。取消流程後按「恢復裁切」。
-7. **不遮擋（每輪固定檢查）**：開啟 PoC 前後，影片、標題、說明、留言區上**沒有任何** PoC 元素。
-8. 若有異常，停用 Holodex+ 後重測一次。
+   1. 聊天室**頂部列**的 `⋮` 左邊出現「PoC 測試」（不應再出現在「重點聊天室訊息 ▾」裡面）→ 點擊開啟 PoC。
+   2. 自動露出值應約 **109～114px**，置頂列與輸入列完整露出（狀態列顯示「露出 ＿＿px（自動）」）。
+   3. 若不對：按 **Alt+Shift+M** 切手動，用 **Alt+Shift+↑／↓** 調到剛好 → 記下數字。
+   4. 按 **Alt+Shift+D**（或面板的「複製診斷」）把結果貼回。
+3. **有投票卡的直播**（步驟編號沿用審查報告，沒有第 2 步）：投票卡是否完整露出、可以投票？按 **Alt+Shift+D** 貼回（用來取得投票卡的實際標籤）。
+   - 3a. 記錄聊天室頂部列目前顯示「重點聊天室訊息」還是「即時聊天室」（F-12 實作前的基準）。
+   - 3b. **VOD 重播頁**（有聊天重播的影片）：F12 → Console 左上角 frame 選單選聊天室的 iframe（名稱含 `live_chat_replay`）→ 執行**附錄 C** 的 chat frame 結構腳本並貼回。
+4. **開關位置**：頂部列是否出現「PoC 測試」（步驟 1 已確認）；按「關閉 PoC」→ 用 `✕` 關閉聊天室 → 影片下方卡片是否出現「PoC 測試」→ 點擊後是否展開聊天室並開啟 PoC。
+5. **劇院模式與窄版面**：按 `t` 切劇院模式，以及把視窗拉窄到右側欄移到影片下方：
+   - 頂部列按鈕是否顯示「PoC 暫停（聊天室摺疊）」、原生聊天室是否完全正常？
+   - 按 **Alt+Shift+D** 貼回；切回後 PoC 是否自動恢復？
+   - 註：實機筆記顯示單欄版面聊天室仍是全高（596px），預期**不會**暫停，而是正常裁切。
+6. **付款視窗**：按「不裁切」→ `$` → 超級留言 → 走到「完成購買程序」視窗出現（**不要付款**）。面板「目前可見彈窗」應顯示「頁面：div#buyFlowDivId」；關閉後消失。取消流程後按「恢復裁切」。**不附含付款資訊的截圖。**
+7. **不遮擋（每輪固定檢查）**：影片與頁面主體上沒有任何 PoC 元素。
+8. 有異常時停用 Holodex+ 重測一次。
 
 ### 補測回報格式
 ```
 Holodex+：啟用 / 停用
-步驟 1 一般直播：頂部列有「PoC 測試」是 / 否；露出剛好 是 / 否（多露／切到哪裡）；複製診斷：（貼上）
-步驟 2 投票卡：投票卡完整露出、可投票 是 / 否；複製診斷：（貼上）
-步驟 3 劇院模式：出現「PoC 暫停」是 / 否；原生聊天室完全正常 是 / 否；切回後自動恢復 是 / 否；Alt+Shift+D 診斷：（貼上）
-步驟 4 窄版面：出現「PoC 暫停」是 / 否；原生聊天室完全正常 是 / 否；拉回後自動恢復 是 / 否；Alt+Shift+D 診斷：（貼上）
-步驟 5 卡片出現「PoC 測試」是 / 否；點擊後聊天室展開且面板出現 是 / 否
+步驟 1 頂部列「PoC 測試」在 ⋮ 左邊 是 / 否；自動露出＿＿px（自動／自動・後備）；剛好 是 / 否；手動調整後＿＿px；Alt+Shift+D：（貼上）
+步驟 3 投票卡完整露出、可投票 是 / 否；Alt+Shift+D：（貼上）
+步驟 3a 頂部列顯示：重點聊天室訊息 / 即時聊天室
+步驟 3b VOD chat frame 結構：（貼上附錄 C 結果）
+步驟 4 卡片出現「PoC 測試」是 / 否；點擊後聊天室展開且 PoC 開啟 是 / 否
+步驟 5 劇院模式：出現「PoC 暫停」是 / 否；原生聊天室正常 是 / 否；切回後恢復 是 / 否；Alt+Shift+D：（貼上）
+步驟 5 窄版面：行為＿＿；Alt+Shift+D：（貼上）
 步驟 6 付款視窗時顯示：＿＿；關閉後消失 是 / 否
 步驟 7 影片與頁面主體上沒有 PoC 元素：是 / 否
-開關都找不到時：Console 中 [ytcas-poc] 開頭的訊息，以及附錄 B 的結構診斷結果
 （失敗時附截圖；截圖請避開付款資訊）
 ```
 
@@ -150,6 +168,47 @@ v23 補測時（付款視窗開啟中、top frame）診斷指令的完整輸出�
   const out = h ? [...h.querySelectorAll(':scope > *, :scope > * > *')].map((e) => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '')) : ['找不到 yt-live-chat-header-renderer'];
   copy(JSON.stringify(out));
   return out.join(' ');
+})();
+```
+
+## 附錄 C：chat frame 結構腳本（VOD 重播頁或 YouTube 改版時使用）
+F12 → Console 左上角 frame 選單選**聊天室的 iframe**（名稱含 `live_chat` 或 `live_chat_replay`）→ 貼上並按 Enter。
+- 只輸出標籤、id、屬性名（含少數屬性值，如 `author-type`）與尺寸，**不輸出任何訊息文字**。
+- 長度超過 24 字元的 id（YouTube 訊息 id）會以 `<訊息id>` 取代。
+- chat frame 內的 `copy()` 可能被覆蓋，所以結果會先印在 Console，再嘗試複製；複製失敗時請在 Console 輸出上按右鍵複製。
+```js
+(() => {
+  const tid = (e) => e.tagName.toLowerCase() + (e.id ? '#' + (e.id.length > 24 ? '<訊息id>' : e.id) : '');
+  const attrs = (e) => e ? [...e.attributes].filter((a) => !['style', 'class', 'id'].includes(a.name))
+    .map((a) => (['author-type', 'hidden', 'collapsed', 'aria-selected'].includes(a.name) && a.value ? a.name + '=' + a.value : a.name)) : null;
+  const rect = (e) => { const r = e.getBoundingClientRect(); return [r.top, r.height].map(Math.round).join('+'); };
+  const R = document.querySelector('yt-live-chat-renderer');
+  const kinds = {};
+  for (const t of ['yt-live-chat-text-message-renderer', 'yt-live-chat-paid-message-renderer', 'yt-live-chat-paid-sticker-renderer',
+    'yt-live-chat-membership-item-renderer', 'ytd-sponsorships-live-chat-gift-purchase-announcement-renderer',
+    'yt-live-chat-viewer-engagement-message-renderer', 'yt-live-chat-banner-renderer', 'yt-live-chat-banner-redirect-renderer',
+    'yt-live-chat-poll-renderer', 'yt-live-chat-ticker-renderer', 'yt-live-chat-header-renderer']) {
+    const e = document.querySelector(t);
+    kinds[t] = e ? { attrs: attrs(e), ids: [...e.querySelectorAll('[id]')].slice(0, 30).map(tid) } : null;
+  }
+  const items = document.querySelector('#item-list #items');
+  const unknown = items ? [...new Set([...items.children].map((c) => c.tagName.toLowerCase()))] : [];
+  const zone = ['yt-live-chat-banner-manager', '#panel-pages', '#input-panel', 'ytls-widget-overlay-manager']
+    .map((s) => { const e = document.querySelector(s); return s + ': ' + (e ? rect(e) : '無'); });
+  const overlay = document.querySelector('ytls-widget-overlay-manager');
+  const out = {
+    page: location.pathname, vh: innerHeight, rendererAttrs: attrs(R),
+    itemTags: unknown, zone,
+    overlayKids: overlay ? [...overlay.querySelectorAll('*')].filter((e) => e.getBoundingClientRect().height > 0).slice(0, 20).map((e) => tid(e) + '@' + rect(e)) : null,
+    inputPanel: !!document.querySelector('#input-panel'),
+    timestamp: (() => { const t = document.querySelector('#items #timestamp'); return t ? { textLength: t.textContent.trim().length, cssVisible: getComputedStyle(t).display !== 'none' } : null; })(),
+    viewMenu: [...document.querySelectorAll('#live-chat-view-selector-sub-menu tp-yt-paper-listbox#menu > a')].map((a) => 'a aria-selected=' + a.getAttribute('aria-selected')),
+    kinds,
+  };
+  const s = JSON.stringify(out, null, 1);
+  console.log(s);
+  try { copy(s); } catch (_) { /* copy 被覆蓋時略過 */ }
+  return '完成：結果已印在上方（可能也已複製到剪貼簿）';
 })();
 ```
 

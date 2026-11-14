@@ -32,7 +32,8 @@
   - `selectors.js` 依實機結構筆記更新（commit `3e55e36`）。
   - PoC 量測 v3（白名單）與合理性退回、頂部列按鈕位置修正（commit `fc5c17b`）。
   - PoC 控制列單列化與鍵盤調整快速鍵（commit `8c44fe9`）。
-  - 規格 v25、DOM 筆記與診斷檔、CLAUDE.md 規則（本段落所在的 commit）。
+  - 規格 v25、DOM 筆記與診斷檔、CLAUDE.md 規則（commit `4cf37c3`）。
+  - 補測步驟 v24.1、快速鍵清單、附錄 C chat frame 結構腳本、test-checklist（本段落所在的 commit）。
 
 ### 規格 v25（2026-11-15，依 `docs/review-2026-11-15.md`、`docs/youtube-dom-notes.md`）
 - 新增 `docs/youtube-dom-notes.md`（實機 DOM 結構筆記，`selectors.js` 與模擬頁的唯一依據）與 `docs/diag/`（原始診斷輸出）。
