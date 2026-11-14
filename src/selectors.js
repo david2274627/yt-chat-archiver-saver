@@ -62,6 +62,9 @@
       itemList: '#item-list',
       items: '#item-list #items',
       inputPanel: '#input-panel',
+      // F-10 底部互動區（SPEC 6.3 v24：置頂訊息列、投票／問答卡、輸入列…）。
+      // 待 PoC 底部互動區診斷結果填入實際標籤名稱，不得憑猜測新增。
+      bottomZone: [],
       messageInput: 'yt-live-chat-message-input-renderer',
 
       // 訊息元件
@@ -72,6 +75,7 @@
       giftAnnouncement: 'ytd-sponsorships-live-chat-gift-purchase-announcement-renderer',
       viewerEngagement: 'yt-live-chat-viewer-engagement-message-renderer',
       // 置頂 / 降落橫幅
+      // v24 待確認：新版面置頂訊息在輸入列正上方，來源不一定是 banner-manager（併入底部互動區診斷）
       bannerContainer: 'yt-live-chat-banner-manager',
       banner: 'yt-live-chat-banner-renderer',
       bannerRedirect: 'yt-live-chat-banner-redirect-renderer',

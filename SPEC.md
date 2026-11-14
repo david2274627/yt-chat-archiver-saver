@@ -23,7 +23,7 @@
 - **v21 調整**：viewer 可直接唯讀 IndexedDB（3.2）；frame 間 origin 檢查區分 youtube.com 與擴充功能 origin、補訊息 id 與直播 offset 規則（4.3）；圖片白名單加入 gstatic；匯出 HTML 圖片內嵌為 data URL，並新增對應 host_permissions（7）。
 - **v22 調整**：收起狀態 clip 改為從 `iframe#chatframe` 底邊往上露出 `inputHeight`（6.2、T1）；新增 top frame 付款視窗偵測（6.3）；新增 **F-11 v2.6.0 舊資料遷移與 JSON 匯入**，v3 資料庫改名 `ytcas-v3`（4.1、5.A）；`web_accessible_resources` 只開放 `src/viewer.html`（7）；T9 加入移除 PoC。
 - **v23 調整**：T1 通過，**F-10 定案方案 A**；面板改為插入 `ytd-live-chat-frame` 內、clip 改套在 `iframe#chatframe`（6.2、6.4，修正劇院模式錯位）；頁面層付款視窗開啟期間 clip 維持解除（6.2、6.4）；`inputHeight` 一律動態量測（6.3）；新增 10.1 原則 6「不遮擋影片與頁面主體」與第 7 節「版面侵入」；F-09 新增待決事項（預設開啟）；F-11 遷移資料時間碼為盡力而為。
-- **v24 調整**：F-09 依目前 YouTube 版面（聊天室右上角 `✕`、無「隱藏聊天室」列、影片下方「聊天室／開啟面板」卡片）改為**多重錨點**，並決定**預設開啟、不記住關閉狀態**（5.C、6.5）；新增 frame 訊息 `TOGGLE_PANEL`（4.3）；頁面層付款視窗選擇器定案為 `#buyFlowDivId`，移除萬用規則（6.3、6.4）；第 9 節加入 Holodex+ 相容性測試。v23 依據的審查內容有遺失，本版補回。
+- **v24 調整**：F-09 依目前 YouTube 版面（聊天室右上角 `✕`、無「隱藏聊天室」列、影片下方「聊天室／開啟面板」卡片）改為**多重錨點**，並決定**預設開啟、不記住關閉狀態**（5.C、6.5）；新增 frame 訊息 `TOGGLE_PANEL`（4.3）；頁面層付款視窗選擇器定案為 `#buyFlowDivId`，移除萬用規則（6.3、6.4）；第 9 節加入 Holodex+ 相容性測試。v23 依據的審查內容有遺失，本版補回。另依 v23 PoC 補測：`inputHeight` 改為 **`bottomZoneHeight`（底部互動區高度，含置頂列、投票卡）**（4.3、6.2、6.3）；6.2 新增「聊天室摺疊」狀態，劇院模式／窄版面監看要求（6.4）；F-07 與原生置頂列的關係、F-02 置頂來源待確認；6.5 AC 新增第 12、13 條；第 9 節新增置頂列／投票卡必測情境。
 
 ---
 
@@ -171,7 +171,7 @@ yt-chat-archiver-saver/
 
 | type | 方向 | payload |
 |---|---|---|
-| `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, inputHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗） |
+| `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, bottomZoneHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗；v24 起 `inputHeight` 改名 `bottomZoneHeight`，定義見 6.3） |
 | `TOGGLE_PANEL` | chat frame → top | `{}`（v24：使用者點了聊天室頂部列的 F-09 按鈕；top 端只接受 `event.source === iframe#chatframe.contentWindow` 且 origin 為 youtube.com） |
 | `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`） |
 | `SEEK_TO` | viewer iframe → top | `{ seconds }` |
@@ -192,6 +192,7 @@ yt-chat-archiver-saver/
 **F-02 完整富媒體歷史保存**（v2.6.0 已驗證可行，重寫照做）
 - 保存文字、官方 Emoji、會員貼圖（`src` + `alt`）、雙時間軸、頭像、頻道直連網址。
 - 被修剪前一定先完成擷取（擷取在 MutationObserver 回呼內同步完成，修剪只動已擷取節點：以 `data-ytcas-saved="1"` 標記）。
+- 置頂訊息擷取（v24）：新版面置頂訊息位於輸入列上方，DOM 來源不一定是 `yt-live-chat-banner-manager`；`selectors.js` 的 `chat.bannerContainer` **待確認**（併入底部互動區診斷），T3 實作前定案。
 - AC：同一訊息不重複寫入（以 `id` 去重）；匯出 JSON 與畫面數量一致。
 
 **F-03 全自動頻道名稱解析**（v2.6.0 已驗證可行，重寫照做）
@@ -227,6 +228,7 @@ yt-chat-archiver-saver/
 
 **F-07 懸浮主播置頂卡片**（v2.6.0 已驗證可行）
 - 置頂訊息去重後固定在搜尋列下方，不混入一般流；點擊展開/收合；顯示主播頭像。
+- **與原生置頂列的關係**（v24）：目前 YouTube 版面把置頂訊息放在**輸入列正上方**（屬於底部互動區，F-10 必須露出，見 6.3），而不是舊版的聊天室頂部橫幅。面板內仍顯示置頂卡片（訊息列表由套件接管），但**不得與原生那條列功能衝突**，例如點擊展開時不應互相遮蓋；D1 設計稿需考量這一點。
 
 **F-08 VOD 時間軸雙向同步**（v2.6.0 已驗證可行；預設開啟，無開關）
 - 依 `VOD_TIME` 對 `videoOffsetSec` 二分搜尋定位、平滑捲動、藍框高亮當前訊息。
@@ -281,7 +283,8 @@ yt-chat-archiver-saver/
 
 | 狀態 | 條件 | clip-path（套在 `iframe#chatframe`） |
 |---|---|---|
-| 收起（平常） | `hasInput && !popupOpen && !topPopupOpen` | `inset(calc(100% - ${inputHeight}px) 0 0 0)`；`inputHeight` 一律動態量測（6.3），**不得**使用常數 |
+| 收起（平常） | `hasInput && !popupOpen && !topPopupOpen && !collapsed` | `inset(calc(100% - ${bottomZoneHeight}px) 0 0 0)`；`bottomZoneHeight` 一律動態量測（6.3），**不得**使用常數；套用前 clamp 在 `[0, iframe 高度]` |
+| 聊天室摺疊（v24） | `collapsed`：`iframe#chatframe` 高度 < 閾值（PoC 暫定 200px，T6 依診斷定案，寫入 `constants.js`），或 `bottomZoneHeight` ≥ iframe 高度 | **移除 `clip-path`、隱藏優化面板**，完全不干擾原生聊天室；高度恢復後自動回到對應狀態。開關按鈕顯示暫停狀態 |
 | 彈窗展開 | `popupOpen`（chat frame 內） | `inset(${max(0, popupTop - 8)}px 0 0 0)`（只露出彈窗以下，彈窗自然向上長出覆蓋面板，不露出上方空白） |
 | top frame 付款視窗（v23 定案） | `topPopupOpen`（top frame 偵測到頁面層付款視窗，6.3） | 頁面層付款視窗本身不受 clip-path 影響。付款流程中 chat frame 內的 `yt-live-chat-message-buy-flow-renderer` 仍為開啟，clip 本已維持「解除」；**頁面層視窗開啟期間 clip 維持解除（沿用前一個彈窗狀態），chat frame 與頁面層兩邊都關閉後才回到「收起」**，避免流程中途閃回 |
 | 無輸入區 | `!hasInput`（VOD 重播、未登入、聊天室關閉、僅會員可留言而非會員…） | `inset(100% 0 0 0)`，面板佔滿全高 |
@@ -289,11 +292,16 @@ yt-chat-archiver-saver/
 
    - `clip-path` 裁掉的區域在 Chrome 的 hit-testing 中不接收滑鼠事件，點擊/滾輪會落到下層面板；這是本設計成立的關鍵，**第一個任務必須先做 PoC 驗證**（第 8 節 T1）。
    - 切換加 `transition: clip-path 120ms ease-out`（可在 `prefers-reduced-motion` 時關閉）。
-5. 優化面板底部需預留 `padding-bottom = inputHeight`，避免最後幾則訊息被原生輸入區蓋住；「↓ 恢復自動捲動」按鈕也要在此高度之上。
+5. 優化面板底部需預留 `padding-bottom = bottomZoneHeight`，避免最後幾則訊息被原生底部互動區蓋住；「↓ 恢復自動捲動」按鈕也要在此高度之上。
 
 ### 6.3 chat frame 端：輸入區與彈窗偵測
-- 用 `ResizeObserver` 量測 `#input-panel`（`yt-live-chat-message-input-renderer` 外層）實際高度 → `inputHeight`（多行輸入、回覆模式、會員限定提示時高度會變）。
-  - v23：`inputHeight` = `#input-panel` 的 `getBoundingClientRect().height`，**一律動態量測，不得使用常數**（T1 實測同一頻道出現 84px 與 58px 兩種高度）；`constants.js` 不得出現 84 之類的預設裁切值（PoC 除外）。量測不到時視同 `!hasInput`。
+- **底部互動區高度 `bottomZoneHeight`**（v24，取代 v23 的 `inputHeight`）：
+  - 目前 YouTube 版面在訊息列表與輸入列之間，還會出現**置頂訊息列**、**投票／問答卡**、（可能）會員里程碑橫幅等「底部錨定」元素。它們都屬於原生互動區，**都必須露出**，否則被裁掉後使用者看不到也點不到。
+  - 定義：`bottomZoneHeight` = iframe 底邊 − 所有**可見**底部錨定元素中**最高者的頂端**（即 `innerHeight − min(rect.top)`）。
+  - 實測依據（v23 PoC 補測，2026-11-14）：`#input-panel` 只有 56px，但上方另有置頂訊息列，合計約 114px 才剛好（前次 58px／84px 差異也來自此）；有投票卡時超過 240px。只量 `#input-panel` 不夠。
+  - 候選元素清單寫在 `selectors.js` 的 `chat.bottomZone`，**待 PoC 底部互動區診斷結果填入**（不得憑猜測寫選擇器）；PoC 期間以「iframe 底部 400px 內、排除 `#item-list` 與頂部列的可見元素」近似。
+  - 以 `ResizeObserver` 監看各候選元素與其父容器，另以 `MutationObserver` 監看候選元素的出現／消失。
+  - **一律動態量測，不得使用常數**；`constants.js` 不得出現 84 之類的預設裁切值（PoC 除外）。量測不到時視同 `!hasInput`。
 - 彈窗偵測（選擇器放 `selectors.js`，以 `MutationObserver` 監聽屬性/子樹 + 每 500ms 保底輪詢）：
   - 表符選單：`yt-emoji-picker-renderer`、`#emoji-picker-button` 展開後的 `tp-yt-iron-dropdown`
   - `$` 選單：`yt-live-chat-product-picker-renderer`
@@ -303,7 +311,7 @@ yt-chat-archiver-saver/
   - `popupTop` = 所有可見彈窗 `rect.top` 最小值。
 - **top frame 彈窗偵測**（v22）：部分 `$` 付款確認視窗開在整頁中央（top frame），不在 chat frame 內。top frame 偵測可見的頁面層付款視窗（選擇器放 `selectors.js` 的 `top.popups`），結果為 `topPopupOpen`，與 chat frame 回報的 `popupOpen` 一起參與 6.2 狀態表。v23：實測「完成購買程序」視窗**不在** `ytd-popup-container` 內。
   - **v24 定案**（使用者於付款視窗開啟中、top frame 執行診斷取得）：路徑 `body > div#buyFlowDivId > div#:0.contentEl > iframe#buyFlowDivIdIframe`，iframe 網域 `payments.youtube.com`（跨來源，**不讀取、不注入**），直接掛在 `body` 下，不在 `ytd-app`、也不在 `ytd-popup-container` 內。
-  - `top.popups` 為明確清單：`#buyFlowDivId`、`iframe#buyFlowDivIdIframe`；`ytd-popup-container` 內的 `tp-yt-paper-dialog`、`yt-dialog-view-model` 保留作其他對話框備援。**不得**使用 `#:0.contentEl`（動態 id），**不得**使用 `ytd-popup-container > *` 這類萬用規則。
+  - `top.popups` 為明確清單：`#buyFlowDivId`（主，`position:fixed` 對話框，實測 600×642）、`iframe#buyFlowDivIdIframe`；另有全頁遮罩 `body > .modal-dialog-bg`（`position:absolute`，輔助判斷）；`ytd-popup-container` 內的 `tp-yt-paper-dialog`、`yt-dialog-view-model` 保留作其他對話框備援。`b3-modal-dialog*` 等 class 只能作次要比對，不可單獨依賴。**不得**使用 `#:0.contentEl`（動態 id），**不得**使用 `ytd-popup-container > *` 這類萬用規則。v23 PoC 補測已能偵測到「頁面浮層：div#buyFlowDivId」。
   - 偵測以明確選擇器為主；`position: fixed` 大型浮層掃描只作輔助（`#buyFlowDivId` 不保證是 fixed）。
   - 可見判定同上（rect 寬高 > 0、非 `display:none`／`visibility:hidden`；關閉後元素可能仍留在 DOM）。
   - 監看：`MutationObserver` 監看 `body` 的 childList，以及 `#buyFlowDivId` 的 `style`／`class`／`hidden`／`aria-hidden`；另加 500ms 保底輪詢。
@@ -315,6 +323,10 @@ yt-chat-archiver-saver/
 - 只信任來自 `iframe#chatframe.contentWindow` 的訊息（比對 `event.source`）。
 - 收到狀態 → 更新 `iframe#chatframe` 的 CSS 變數 `--ytcas-clip`（v23：clip 套在 iframe 本身）；樣式寫在一個注入的 `<style id="ytcas-style">`，關閉面板時整個移除。
 - 面板錨定在 `ytd-live-chat-frame` 內部（6.2 第 3 點），劇院模式、全螢幕、視窗縮放時不需重算座標；`yt-navigate-finish` 時確認面板仍在、狀態重新同步。
+- **劇院模式與窄版面**（v24）：v23 PoC 補測顯示，劇院模式與窄版面下原生聊天室本身被 YouTube 縮成約 150px，面板只剩頂部列、原生訊息蓋住面板（`inset(calc(100% - 114px) …)` 在矮 iframe 上等同無效）。要求：
+  - 露出值 clamp 在 `[0, iframe 高度]`；符合 6.2「聊天室摺疊」條件時解除 clip、隱藏面板，不干擾原生聊天室。
+  - 以 `MutationObserver` 監看 `ytd-live-chat-frame` 的屬性（`collapsed`、`theater`、`class` 等）與子元素，以及 `ytd-watch-flexy` 的屬性與聊天室被搬到其他容器（如 `#panels-full-bleed-container`）；變化時重新計算面板高度、clip 與摺疊狀態。`ytd-watch-flexy` 的子樹只看 childList，不看子樹屬性（避免播放進度等頻繁變化）。
+  - 實際原因（父容器、屬性、高度）待 PoC 版面診斷結果確認後補入本節。
 - **頁面層付款視窗**（v24 定案）：「完成購買程序」視窗為 `body` 直接子元素 `div#buyFlowDivId`（內含跨來源 `iframe#buyFlowDivIdIframe`），選擇器與監看方式見 6.3。偵測結果以 `topPopupOpen` 參與 6.2 狀態表。
 
 ### 6.5 F-10 驗收條件
@@ -329,6 +341,8 @@ yt-chat-archiver-saver/
 9. F-01～F-09 全數回歸測試通過。
 10. （v24）在目前版面（聊天室右上角 `✕`、無「隱藏聊天室」列）與舊版面下，F-09 開關都看得到並可操作；聊天室關閉時從影片下方卡片開啟，會先展開聊天室再開啟優化面板。
 11. （v24）進入有聊天室的影片頁時優化面板預設開啟；在該頁關閉後，換頁或重新整理會再次預設開啟（不記住關閉狀態）；沒有聊天室的影片頁不出現任何套件元素。
+12. （v24）有置頂訊息列、有投票卡時，底部互動區完整露出（不切到置頂列、投票卡或輸入列，也不多露訊息列表）。
+13. （v24）劇院模式與窄版面下，面板可用或自動退讓（聊天室摺疊時解除 clip、隱藏面板），且原生聊天室不受影響。
 
 ### 6.6 備案：方案 B（僅在方案 A 的 T1 PoC 失敗時啟動）
 - 原生 chat frame 完全隱藏（仍保留在 DOM 以持續擷取）。
@@ -381,6 +395,7 @@ yt-chat-archiver-saver/
 - Chrome：最新穩定版；記錄版本號於測試清單。
 - 記憶體量測：Chrome 工作管理員（Shift+Esc）記錄 0 / 30 / 60 / 120 分鐘。
 - **相容性**（v24）：使用者裝有 Holodex+（Console 會出現 `[Holodex+] live chat overrides injected`，它也會修改直播聊天室）。回歸測試需在**有／無 Holodex+** 兩種情況下各測一次；實測遇到錯位或樣式異常時，先停用 Holodex+ 重測以排除干擾。
+- **必測情境**（v24）：有**置頂訊息列**的直播、有**投票卡**的直播（底部互動區高度會變）；劇院模式與窄版面。
 - **版面**（v24）：需同時測目前版面（聊天室右上角 `✕`、影片下方「聊天室／開啟面板」卡片）與舊版面（有「隱藏聊天室」列，若仍能遇到）。
 
 ---
@@ -442,7 +457,7 @@ yt-chat-archiver-saver/
 | **會員 / 里程碑** | 左側 `--ytcas-member` 色條 + 標籤 |
 | **降落高光**（F-05） | Raid 橫幅：整列 `--ytcas-raid-soft` 底 + `--ytcas-raid` 左邊框 + 「✨ 降落」標籤；認證實況主發言：名稱旁加 raid 色徽章 |
 | **VOD 當前訊息**（F-08） | `--ytcas-current-ring` 2px 內框，平滑移動 |
-| **「↓ 恢復自動捲動」** | 底部置中浮動膠囊按鈕，位於原生輸入區（`inputHeight`）之上 8px |
+| **「↓ 恢復自動捲動」** | 底部置中浮動膠囊按鈕，位於原生底部互動區（`bottomZoneHeight`）之上 8px |
 | **空狀態 / 載入中** | 尚無訊息、搜尋無結果、資料庫載入中，各有簡短文字與圖示 |
 | **後台檢視器** | 左側欄：場次清單（標題、頻道、日期、訊息數、直播/重播標籤、搜尋）；主區：同內嵌面板元件；頂部動作列：匯出 HTML、匯出 JSON、刪除（刪除需確認對話框） |
 | **popup**（寬 360px） | 目前分頁狀態（是否在擷取、本場訊息數）→「開啟檢視器」主按鈕 → 最近 5 個場次 |
