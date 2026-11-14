@@ -17,7 +17,12 @@
   - 規格 v23（commit `56cff01`）。
   - T1 實測結果與方案 A 定案記錄（commit `de3a999`）。
   - PoC 改為錨定聊天室內部、移除浮動控制盒、自動量測輸入區（commit `f1679d6`）。
-  - 本輪報告 `docs/reports/2026-11-14-t1-results.md`（本段落所在的 commit）。
+  - 本輪報告 `docs/reports/2026-11-14-t1-results.md`（commit `4c7ab8c`）。
+- v24：F-09 多重錨點與付款視窗定案（`docs/review-2026-11-14-2.md`）：
+  - 規格 v24（commit `f3e6399`）。
+  - PoC 開關改為多重錨點、找不到時警告、付款視窗選擇器（commit `d0ebc80`）。
+  - 影片下方「聊天室」卡片錨點選擇器（commit `5510fe8`）。
+  - 文件整理：補回遺失的審查內容、`.gitignore` 排除 `Claude outputs/`（本段落所在的 commit）。
 
 ### 規格 v24（2026-11-15，依 `docs/review-2026-11-14-2.md`）
 - **v23 依據的審查內容有遺失，本版補回**：repo 內的 `docs/review-2026-11-14.md` 是修訂前的舊版，缺少付款視窗診斷結果與 Holodex+ 說明。

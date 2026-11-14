@@ -4,6 +4,9 @@ node_modules/
 *.pem
 .DS_Store
 
+# Claude 桌面 App 傳送檔案時自動產生的副本（內容可能過時，一律以 docs/ 為準）
+Claude outputs/
+
 # 使用者的 IndexedDB 備份（私人聊天資料，禁止 commit）
 bak/
 *.indexeddb.leveldb/
