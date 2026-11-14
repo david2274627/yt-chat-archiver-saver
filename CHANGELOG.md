@@ -22,7 +22,11 @@
   - 規格 v24（commit `f3e6399`）。
   - PoC 開關改為多重錨點、找不到時警告、付款視窗選擇器（commit `d0ebc80`）。
   - 影片下方「聊天室」卡片錨點選擇器（commit `5510fe8`）。
-  - 文件整理：補回遺失的審查內容、`.gitignore` 排除 `Claude outputs/`（本段落所在的 commit）。
+  - 文件整理：補回遺失的審查內容、`.gitignore` 排除 `Claude outputs/`（commit `af938a7`）。
+- v24 補充：v23 PoC 補測結果（`docs/review-2026-11-14-3.md`）：
+  - PoC 底部互動區量測 v2、版面診斷、摺疊保護（commit `6c9714c`）。
+  - 規格 v24 補充：`bottomZoneHeight`、聊天室摺疊狀態、劇院模式監看（commit `dcc27fe`）。
+  - 文件：v23 補測結果、新補測步驟、付款視窗診斷 JSON（本段落所在的 commit）。
 
 ### 規格 v24（2026-11-15，依 `docs/review-2026-11-14-2.md`）
 - **v23 依據的審查內容有遺失，本版補回**：repo 內的 `docs/review-2026-11-14.md` 是修訂前的舊版，缺少付款視窗診斷結果與 Holodex+ 說明。
