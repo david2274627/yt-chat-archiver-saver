@@ -53,7 +53,17 @@
   - 規格 v29、備份位置改為 repo 外、還原步驟、測試頁攔截對外連線、本審查報告（commit `d1bd2bc`）。
   - 寫入壓力測試頁 `tools/tests/test-stress.html`：P95 14～48ms、10 萬則無錯誤、記憶體不增長（commit `c9f1d5b`）。
   - **T3** 擷取引擎 `src/capture.js`（解析、回溯擷取、數量觸發修剪、筆數批次、重試、暫停、刪除通知順序、置頂、降落）、`content.js` 三種環境（top frame `STREAM_INFO`、嵌入式 chat frame、彈出式聊天室）、F-19 `FETCH_STREAM_META` 與自動接手（展開聊天室）、`selectors.js` 擷取欄位、診斷輸出（只有筆數與屬性）；測試頁 `test-capture.html`（20 項）、`test-db.html` 追加 2 項（32 項）（commit `83ced1c`）。
-  - 本輪報告 `docs/reports/2026-11-15-t3-capture.md`（本段落所在的 commit；T3 ⏸ 等實機測試）。
+  - 本輪報告 `docs/reports/2026-11-15-t3-capture.md`（commit `4dd0c2c`；T3 ⏸ 等實機測試）。
+- v30／T3.1（`docs/review-2026-11-15-6.md` 第 3 節）：
+  - F-12 改為開始收錄時自動切換「即時聊天室」，診斷加入 `viewMode`／`f12`；規格 v30（commit `fc693b3`）。
+  - 彈出視窗關閉改以 `chrome.tabs.onRemoved` 偵測並觸發主分頁接手，`pagehide` 為輔助（commit `a24b275`）。
+  - HANDOFF 還原步驟補 `.indexeddb.blob` 與先後順序（commit `4f6f4ca`）。
+  - T3 報告追加「T3.1 追加」一節、站內換頁實測步驟（本段落所在的 commit）。
+
+### 規格 v30（2026-11-15，依 `docs/review-2026-11-15-6.md` 第 3 節）
+- F-12：執行時機由「開啟優化面板時」改為「**開始收錄時**」（嵌入式、彈出式、重播；暫停中不執行；同一頁一次），T3 擁有，T5 只做面板說明；診斷 `viewMode`／`f12`；AC 改為「開始收錄後 2 秒內」。
+- F-19：彈出視窗關閉以 `chrome.tabs.onRemoved` 為主（`popoutTabs` 存 `storage.session`），`pagehide` 為輔助（等 3 秒，重新整理不接手，同一 session 只通知一次）。
+- 審查端推定舊資料遺失原因：2026-11-13 第一版測試步驟曾寫「關掉或移除都可以」，若當時按了「移除」，Chrome 會連同 IndexedDB 一起刪除。
 
 ### 規格 v29（2026-11-15，依 `docs/review-2026-11-15-5.md` 第 3 節）
 - T2 實機確認：Service Worker 無錯誤；自動遷移回報**未偵測到舊資料庫**（`legacyCounts: null`）。調查結果：Chrome 裡本擴充功能的 IndexedDB 是 v3 第一次啟動時（2026-11-15 20:45:52）才建立的，舊資料只剩 `indexeddb_bak\bak_v1` 備份；HANDOFF 新增還原步驟。4.1 補充設計 9 點使用者與審查端同意。
