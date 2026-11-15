@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>寫入壓力測試</title>
+<style>
+  :root { --bg:#fff; --fg:#221d33; --ok:#0a7552; --ng:#c9362f; --mut:#766e8c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#15121d; --fg:#ece9f5; --ok:#5fd6a6; --ng:#ee6259; --mut:#948cae; } }
+  body { background:var(--bg); color:var(--fg); font:14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; margin:16px; }
+  .ok { color:var(--ok); } .ng { color:var(--ng); } .mut { color:var(--mut); }
+  table { border-collapse: collapse; } td, th { border: 1px solid var(--mut); padding: 2px 8px; text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>寫入壓力測試（SPEC 第 7 節「寫入效能」）</h1>
+<p class="mut">以 background 的 <code>SAVE_MESSAGES</code> 處理函式（含暫停判斷、合併、推播）測量每批耗時。資料為虛構內容，存在本頁 origin 的測試資料庫。網址參數：<code>?minutes=30&amp;rate=20&amp;total=100000</code>；<code>&amp;realtime=1</code> 改為依實際時間送出（預設加速）。</p>
+<p id="status">準備中…</p>
+<div id="out"></div>
+<script src="../../src/constants.js"></script>
+<script src="../../src/selectors.js"></script>
+<script src="../../src/db.js"></script>
+<script src="mock-chrome.js"></script>
+<script src="../../src/background.js"></script>
+<script src="test-stress.js"></script>
+</body>
+</html>
