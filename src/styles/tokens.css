@@ -1,5 +1,14 @@
-/* 設計 token（SPEC 10.3）。顏色值於 D2 依選定設計方向定稿。 */
+/*
+ * 設計 token（SPEC 10.3，D2 定稿：方向 B「柔和現代感」，規格 v27）
+ * - viewer、popup、匯出 HTML 共用；注入 YouTube 頁面的元素另用 inject.css（ytcas- 前綴）。
+ * - 實際主題由 src/theme.js 在 <html> 設定 data-theme="light|dark"（SPEC 10.2）。
+ *   未設定時為淺色。
+ * - 元件只能使用這些變數，不得寫死色碼（Super Chat 底色取自訊息資料本身，依規格例外）。
+ * - 對比度驗證結果見 docs/reports/2026-11-15-d2-tokens.md。
+ */
 :root {
+  color-scheme: light;
+
   /* 字體 */
   --ytcas-font: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
   --ytcas-font-mono: ui-monospace, "SF Mono", Consolas, monospace;
@@ -19,45 +28,95 @@
   --ytcas-space-5: 20px;
   --ytcas-space-6: 24px;
 
-  /* 圓角 */
-  --ytcas-radius-sm: 6px;
-  --ytcas-radius-md: 10px;
+  /* 圓角（方向 B：大圓角） */
+  --ytcas-radius-sm: 8px;
+  --ytcas-radius-md: 14px;
   --ytcas-radius-pill: 999px;
+
+  /* 元件尺寸（方向 B：留白較多） */
+  --ytcas-row-pad: 7px 12px;
+  --ytcas-avatar: 26px;
+  --ytcas-emoji: 20px;
+  --ytcas-emoji-member: 24px;
+  --ytcas-line: 1.45;
 
   /* 動態 */
   --ytcas-ease: cubic-bezier(.2, .8, .2, 1);
   --ytcas-dur: 160ms;
 
-  /* 顏色（D2 定稿） */
-  --ytcas-bg: ;
-  --ytcas-surface: ;
-  --ytcas-surface-2: ;
-  --ytcas-border: ;
-  --ytcas-overlay: ;
-  --ytcas-text: ;
-  --ytcas-text-2: ;
-  --ytcas-text-3: ;
-  --ytcas-accent: ;
-  --ytcas-accent-hover: ;
-  --ytcas-accent-soft: ;
-  --ytcas-focus-ring: ;
-  --ytcas-timecode: ;
-  --ytcas-current-ring: ;
-  --ytcas-highlight: ;
-  --ytcas-raid: ;
-  --ytcas-raid-soft: ;
-  --ytcas-member: ;
-  --ytcas-owner: ;
-  --ytcas-moderator: ;
-  --ytcas-danger: ;
-  --ytcas-shadow-1: ;
-  --ytcas-shadow-2: ;
+  /* ---------- 顏色：淺色 ---------- */
+  /* 表面 */
+  --ytcas-bg: #f3f0fa;
+  --ytcas-surface: #ffffff;
+  --ytcas-surface-2: #f1edf9;
+  --ytcas-border: #e1dbef;
+  --ytcas-overlay: rgba(34, 26, 60, .4);
+  /* 文字 */
+  --ytcas-text: #221d33;
+  --ytcas-text-2: #544c6a;
+  --ytcas-text-3: #766e8c;
+  /* 品牌與互動 */
+  --ytcas-accent: #6548e0;
+  --ytcas-accent-hover: #5539c9;
+  --ytcas-accent-soft: #ece6ff;
+  --ytcas-on-accent: #ffffff;
+  --ytcas-focus-ring: #6548e0;
+  /* 語意 */
+  --ytcas-timecode: #2563c9;
+  --ytcas-current-ring: #3b82f6;
+  --ytcas-highlight: #ffdf80;
+  --ytcas-raid: #b03f0d;
+  --ytcas-raid-soft: #ffeadd;
+  --ytcas-gift: #b02a6a;
+  --ytcas-gift-soft: #fde7f1;
+  --ytcas-member: #0b7f57;
+  --ytcas-owner: #966500;
+  --ytcas-moderator: #6548e0;
+  --ytcas-danger: #c9362f;
+  --ytcas-on-danger: #ffffff;
+  /* 陰影（方向 B：以柔和陰影取代邊框） */
+  --ytcas-shadow-1: 0 2px 8px rgba(70, 50, 140, .10);
+  --ytcas-shadow-2: 0 12px 32px rgba(70, 50, 140, .18);
 }
 
-[data-theme="dark"] {
-  /* 同名變數的深色值（D2 定稿） */
+/* ---------- 顏色：深色 ---------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --ytcas-bg: #15121d;
+  --ytcas-surface: #201c2c;
+  --ytcas-surface-2: #2b2640;
+  --ytcas-border: #3a3452;
+  --ytcas-overlay: rgba(0, 0, 0, .55);
+  --ytcas-text: #ece9f5;
+  --ytcas-text-2: #bab3d0;
+  --ytcas-text-3: #948cae;
+  --ytcas-accent: #a996ff;
+  --ytcas-accent-hover: #beafff;
+  --ytcas-accent-soft: #33295c;
+  --ytcas-on-accent: #170f33;
+  --ytcas-focus-ring: #beafff;
+  --ytcas-timecode: #8fb8ff;
+  --ytcas-current-ring: #6aa5ff;
+  --ytcas-highlight: #6e5300;
+  --ytcas-raid: #ffa468;
+  --ytcas-raid-soft: #3d2616;
+  --ytcas-gift: #ff8cc4;
+  --ytcas-gift-soft: #3d1a2d;
+  --ytcas-member: #5fd6a6;
+  --ytcas-owner: #f2c356;
+  --ytcas-moderator: #a996ff;
+  --ytcas-danger: #ee6259;
+  --ytcas-on-danger: #1f0a08;
+  --ytcas-shadow-1: 0 2px 8px rgba(0, 0, 0, .45);
+  --ytcas-shadow-2: 0 12px 32px rgba(0, 0, 0, .55);
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root { --ytcas-dur: 0ms; }
+  *, *::before, *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }

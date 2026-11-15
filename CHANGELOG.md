@@ -40,7 +40,8 @@
   - 規格 v26、DOM 筆記、補測原文、T1 定稿（commit `6162700`）。
 - D1 設計稿 `design/mockups.html`：方向 A「沉穩工具感」／方向 B「柔和現代感」× 淺色／深色（commit `3a6690b`）。**使用者 2026-11-15 選定方向 B**。
 - v27（`docs/review-2026-11-15-3.md`）：
-  - 規格 v27、附錄 D 訊息元件清單腳本、test-checklist（本段落所在的 commit）。
+  - 規格 v27、附錄 D 訊息元件清單腳本、test-checklist（commit `70ce55c`）。
+  - D2 `tokens.css` 定稿（方向 B 淺色／深色、`prefers-reduced-motion`）、`src/theme.js` 主題系統、`constants.js` 加入 `GIFT`／`THEME`、`tools/check-contrast.js`（48 組對比度全數通過）（本段落所在的 commit）。
 
 ### 規格 v27（2026-11-15，依 `docs/review-2026-11-15-3.md`）
 - **D1 選定方向 B「柔和現代感」**；10.9 填入已選定方向；10.3 圓角改為 8／14px，新增 `--ytcas-on-accent`、`--ytcas-on-danger`、`--ytcas-gift`、`--ytcas-gift-soft`。

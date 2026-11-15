@@ -95,6 +95,8 @@ yt-chat-archiver-saver/
 > 全新重寫，直接採用上述 `src/` 結構（`manifest.json` 放 repo 根目錄，路徑指向 `src/`）。另新增：
 > - `src/styles/tokens.css`：設計 token（CSS 變數，第 10 節），viewer、popup、匯出 HTML 共用。
 > - `src/styles/inject.css`：注入 YouTube 頁面的樣式，所有選擇器加 `ytcas-` 前綴。
+> - `src/theme.js`（v27）：主題系統共用模組（10.2）；viewer、popup 以 `<script src="theme.js" data-auto>` 放在 `<head>` 載入。
+> - `tools/check-contrast.js`（v27）：token 對比度檢查腳本，不打包進套件。
 > - `src/icons/`：套件圖示 16/32/48/128 px（自行繪製 SVG 轉 PNG，不得使用 YouTube 標誌）。
 > - `design/`：靜態設計稿 HTML（第 10.8 節），不打包進套件。
 

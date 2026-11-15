@@ -43,6 +43,7 @@
       TEXT: 'text',
       SUPERCHAT: 'superchat',
       SUPERSTICKER: 'supersticker',
+      GIFT: 'gift', // v27：YouTube 禮物（Jewels），F-13
       MEMBERSHIP: 'membership',
       MILESTONE: 'milestone',
       RAID: 'raid',
@@ -68,7 +69,12 @@
       VOD_TIME: 'VOD_TIME',
       SEEK_TO: 'SEEK_TO',
       TOGGLE_PANEL: 'TOGGLE_PANEL', // v24：chat frame 頂部列的 F-09 開關被點擊
+      THEME: 'THEME', // v27：top → 面板 iframe，{ theme: 'light'|'dark' }（YouTube 實際外觀，SPEC 10.2）
     }),
+
+    // v27 主題設定（chrome.storage.sync；邏輯在 src/theme.js）
+    THEME_MODE_KEY: 'themeMode',
+    THEME_MODES: Object.freeze(['auto', 'light', 'dark']),
 
     // F-05 機器人排除名單（比對不分大小寫，同時比對名稱與 @Handle）
     BOT_BLOCKLIST: Object.freeze([
