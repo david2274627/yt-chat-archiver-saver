@@ -59,7 +59,7 @@
   function bottomZone() {
     const root = document.querySelector(S.chat.renderer);
     const vh = window.innerHeight;
-    if (!root) { S.warnOnce('poc:chat.renderer', S.chat.renderer); return { list: [], wlTop: null, ovTop: null }; }
+    if (!root) { S.warnOnce('poc:chat.renderer', S.chat.renderer, 'info'); return { list: [], wlTop: null, ovTop: null }; }
     const list = [];
     const add = (el, r, use) => {
       if (list.length < ZONE_MAX) list.push({ el: tagId(el), top: Math.round(r.top), h: Math.round(r.height), parents: parentChain(el), use });
@@ -183,7 +183,7 @@
   function mountHeaderButton() {
     const header = document.querySelector(S.chat.header);
     if (!header) {
-      S.warnOnce('poc:chat.header', S.chat.header);
+      S.warnOnce('poc:chat.header', S.chat.header, 'info');
       reportAnchor({ header: false, how: 'no-header' });
       return;
     }
@@ -212,7 +212,7 @@
     }
     if (overflow) overflow.parentElement.insertBefore(btn, overflow);
     else {
-      S.warnOnce('poc:chat.headerOverflow', S.chat.headerOverflow);
+      S.warnOnce('poc:chat.headerOverflow', S.chat.headerOverflow, 'info');
       header.appendChild(btn);
     }
     reportAnchor({ header: true, how, kids, parent: tagId(btn.parentElement) });

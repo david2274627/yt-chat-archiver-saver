@@ -62,7 +62,7 @@
 
     if (env === 'popout') {
       if (isVideoId(urlVid)) engine.setInfo({ videoId: urlVid });
-      else { S.warnOnce('popout:videoId', location.pathname); engine.noVideoId(); }
+      else { S.warnOnce('popout:videoId', location.pathname, 'warn'); engine.noVideoId(); } // 彈出式聊天室卻沒有 v：無法收錄
     } else {
       // 嵌入式：網址通常只有 continuation，videoId 以 top frame 的 STREAM_INFO 為準（4.3 v29）
       let got = false;
@@ -83,7 +83,7 @@
         if (got) return;
         if (Date.now() - t0 > C.STREAM_INFO_MAX_WAIT_MS) {
           if (isVideoId(urlVid)) engine.setInfo({ videoId: urlVid });
-          else { S.warnOnce('chatframe:STREAM_INFO', '30 秒內沒有收到 top frame 的場次資訊'); engine.noVideoId(); }
+          else { S.warnOnce('chatframe:STREAM_INFO', '30 秒內沒有收到 top frame 的場次資訊，本聊天室不收錄', 'warn'); engine.noVideoId(); }
           return;
         }
         post(FM.STREAM_INFO_REQUEST);
@@ -219,7 +219,7 @@
       }
       if (!visible) {
         const t = S.findChatTeaser(document, C.OPEN_PANEL_LABELS);
-        if (!t || t.button.disabled) { S.warnOnce('handoff:teaser', '找不到可用的「開啟面板」，無法自動展開聊天室'); return; }
+        if (!t || t.button.disabled) { S.warnOnce('handoff:teaser', '找不到可用的「開啟面板」，無法自動展開聊天室', 'warn'); return; }
         console.info('[ytcas] 彈出視窗已關閉，自動展開聊天室恢復收錄');
         t.button.click();
         return;

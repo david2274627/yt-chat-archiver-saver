@@ -224,6 +224,7 @@
         observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0 },
       seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
+      createdAt: Date.now(),
       f12: null, viewMode: null, // F-12 結果：null（未執行）／running／switched／already／failed:<原因>
     };
 
@@ -507,7 +508,7 @@
           duration: st.info && typeof st.info.duration === 'number' ? st.info.duration : null, stream: streamMeta() });
       } catch (e) {
         if (e && e.disconnected) { disconnect(); return; }
-        console.warn('[ytcas] 無法開始收錄（background 無回應），5 秒後重試');
+        console.info('[ytcas] 無法開始收錄（background 無回應），5 秒後重試'); // 暫時性，會自動重試：info
         setTimeout(() => { if (seq === st.startSeq && st.mode === 'pending') beginCapture(); }, 5000);
         return;
       }
@@ -539,7 +540,8 @@
       const done = (r) => {
         st.f12 = r;
         st.viewMode = viewMode();
-        if (r.startsWith('failed')) S.warnOnce('F-12:' + r, '無法自動切換到「即時聊天室」');
+        // 聊天室已載入卻切不過去會影響存檔完整：warn；沒有選單（例如部分重播頁）屬可接受：info
+        if (r.startsWith('failed')) S.warnOnce('F-12:' + r, '無法自動切換到「即時聊天室」', r === 'failed:no-menu' ? 'info' : 'warn');
         if (opts.onF12) try { opts.onF12({ f12: r, viewMode: st.viewMode }); } catch (_) { /* ignore */ }
         // T3.3：切換後 YouTube 會重新渲染列表（可能整個換掉 #items）→ 稍後再回溯擷取一次
         if (r === 'switched') setTimeout(() => { if (st.mode === 'capturing') backfill('backfill'); }, 500);
@@ -613,7 +615,10 @@
       const ok = attach();
       if (ok && st.items !== prev && st.mode === 'capturing') backfill('backfill');
       else if (ok && st.mode === 'capturing') backfill('sweep');
-      if (!ok && st.mode !== 'stopped') S.warnOnce('chat.items', S.chat.items);
+      // 聊天室已渲染（有 renderer）且超過 10 秒仍找不到訊息列表才是問題：warn；載入中不輸出
+      if (!ok && st.mode !== 'stopped' && doc.querySelector(S.chat.renderer) && Date.now() - st.createdAt > 10000) {
+        S.warnOnce('chat.items', S.chat.items, 'warn');
+      }
       trim();
     }
 

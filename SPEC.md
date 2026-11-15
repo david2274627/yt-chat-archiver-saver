@@ -639,7 +639,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | 網頁可存取資源 | `web_accessible_resources` 只開放 `src/viewer.html`（PoC 期間另加 `src/poc/poc-panel.html`），並設 `use_dynamic_url: true`，降低網頁偵測擴充功能的可能；viewer 的 js/css 由擴充功能頁面自行載入，不需開放（v22） |
 | 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions：`https://www.youtube.com/*`，以及匯出內嵌圖片用的 `https://*.ggpht.com/*`、`https://*.ytimg.com/*`、`https://*.googleusercontent.com/*`、`https://fonts.gstatic.com/*`、`https://www.gstatic.com/*`（v21 經使用者同意）。（v28）F-17 自動備份需 `alarms`、`downloads`、`notifications`、`offscreen`（使用者 2026-11-15 要求此功能，視為同意；T7 加入 manifest，之前不加）。再新增權限需先徵得使用者同意 |
 | 打包範圍 | （v28）`tools/`、`design/`、`docs/` 不被 manifest 引用，不進正式版；T9 移除 `src/poc/` |
-| 相容 | YouTube 改版時只需修改 `selectors.js`；所有選擇器找不到時須 graceful degrade（console.warn 一次，不拋錯） |
+| 相容 | YouTube 改版時只需修改 `selectors.js`；所有選擇器找不到時須 graceful degrade（`warnOnce` 記一次，不拋錯）。（v31，`docs/review-2026-11-16.md`）**診斷輸出分級**：Chrome 會把 content script 的 `console.warn`／`console.error` 收進擴充功能「錯誤」頁，跨頁面累積、不會自動清除，因此 `console.warn` **只用於預期應該存在卻找不到、且會影響功能**的情況（該頁確定有聊天室，例如 `ytd-watch-flexy[live-chat-present-and-expanded]`、chat frame 已載入，但錨點或選擇器仍找不到）；沒有聊天室的頁面、可退回的情況、PoC 一般提示用 `console.info`；診斷細節與舊版相容錨點用 `console.debug`。`warnOnce(key, detail, level)` 的 `level` 預設 `info`。沒有聊天室的頁面不嘗試掛載錨點、不輸出任何東西 |
 
 ---
 

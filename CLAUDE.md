@@ -16,6 +16,7 @@
 - **依賴 YouTube DOM 的功能以 `docs/youtube-dom-notes.md` 為準**（實機確認的結構，標註日期與 Chrome 版本）。筆記沒有記錄的結構一律標「待實機確認」，不得憑猜測寫選擇器；模擬頁的 YouTube 內部結構也只能依筆記建構。
 - **禁止**改變 `iframe#chatframe` 高度，或對 `yt-live-chat-app` / `#contents` / `#chat-messages` 設 `height`、`display`（見 SPEC 6.1）。
 - 使用者文字禁止未跳脫寫入 `innerHTML`。
+- **診斷輸出分級**（SPEC 第 7 節「相容」）：content script 的 `console.warn`／`error` 會累積在擴充功能「錯誤」頁。`warn` 只用於「該頁確定有聊天室、預期應存在卻找不到且影響功能」；沒有聊天室、可退回、PoC 提示用 `info`；診斷細節與舊版相容用 `debug`。`S.warnOnce(key, detail, level)` 預設 `info`。
 
 ## 設計
 - 全新重寫，不沿用 v2.6.0 程式碼與樣式；UI 依 SPEC 第 10 節。

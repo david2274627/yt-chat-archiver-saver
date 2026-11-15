@@ -241,7 +241,18 @@
     state.metaMo.__target = meta;
   }
 
+  // 此頁是否有聊天室（展開中，或聊天室已關閉但影片下方有「聊天室」卡片）。T3.2：沒有聊天室的頁面不掛錨點、不輸出任何東西
+  function pageHasChat() {
+    return !!(els().iframe || document.querySelector(S.top.layout.chatPresent) || S.findChatTeaser(document, C.OPEN_PANEL_LABELS));
+  }
+
   function mountAnchors() {
+    if (!pageHasChat()) {
+      state.anchors.header = false; state.anchors.legacy = false; state.anchors.teaser = false;
+      document.getElementById(TEASER_BTN_ID)?.remove();
+      if (state.on) disable();
+      return;
+    }
     if (!els().iframe) {
       state.anchors.header = false; // 聊天室關閉時頂部列不存在
       if (state.on) disable();      // 聊天室被 ✕ 關閉：PoC 一併關閉並還原
@@ -253,16 +264,17 @@
     checkAnchors();
   }
 
-  // 寬限期後仍有錨點找不到 → 各自 warnOnce；全部找不到 → 額外警告一次（附已嘗試清單）
+  // 寬限期後仍有錨點找不到 → 各自記一次（info／舊版列 debug）；此頁有聊天室且全部找不到 → warn 一次（附已嘗試清單）
+  // T3.2：只在 pageHasChat() 時呼叫（mountAnchors 已先判斷）
   function checkAnchors() {
     if (Date.now() - state.pageStart < ANCHOR_GRACE_MS) return;
     const a = state.anchors;
-    if (!a.header) S.warnOnce('poc:anchor:header', '聊天室頂部列 ' + S.chat.header + '（chat frame 未回報）');
-    if (!a.legacy) S.warnOnce('poc:anchor:legacy', '舊版「隱藏聊天室」列 ' + S.top.showHideButton + '（目前版面沒有屬正常）');
-    if (!a.teaser) S.warnOnce('poc:anchor:teaser', '影片下方「聊天室」卡片 ' + S.top.chatTeaser.item);
+    if (!a.header) S.warnOnce('poc:anchor:header', '聊天室頂部列 ' + S.chat.header + '（chat frame 未回報；聊天室關閉時屬正常）', 'info');
+    if (!a.legacy) S.warnOnce('poc:anchor:legacy', '舊版「隱藏聊天室」列 ' + S.top.showHideButton + '（目前版面沒有屬正常）', 'debug');
+    if (!a.teaser) S.warnOnce('poc:anchor:teaser', '影片下方「聊天室」卡片 ' + S.top.chatTeaser.item, 'info');
     if (!a.header && !a.legacy && !a.teaser && !state.anchorWarned) {
       state.anchorWarned = true;
-      console.warn('[ytcas-poc] 找不到開關錨點', [
+      console.warn('[ytcas-poc] 此頁有聊天室，但找不到任何開關錨點', [
         'chat frame 頂部列：' + S.chat.header + ' / ' + S.chat.headerOverflow.join(', '),
         '影片下方卡片：' + S.top.chatTeaser.item,
         '舊版列：' + S.top.showHideButton,
@@ -726,7 +738,7 @@
   function enable() {
     const { frame, iframe } = els();
     if (!frame || !iframe) {
-      S.warnOnce('poc:liveChatFrame', '此頁沒有原生聊天室（請開直播頁並確認聊天室已展開）');
+      S.warnOnce('poc:liveChatFrame', '此頁沒有原生聊天室（請開直播頁並確認聊天室已展開）', 'info');
       return false;
     }
     ensureStyle();

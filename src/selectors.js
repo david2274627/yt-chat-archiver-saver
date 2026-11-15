@@ -26,6 +26,8 @@
         theater: 'ytd-watch-flexy[theater]',
         singleColumn: 'ytd-watch-flexy[is-single-column]',
         frameTheater: 'ytd-live-chat-frame[theater-watch-while]',
+        // 聊天室展開時 flexy 帶此屬性（筆記 1.1 確認）；用來判斷「此頁確定有聊天室」以決定警告等級
+        chatPresent: 'ytd-watch-flexy[live-chat-present-and-expanded]',
       },
 
       // F-09 錨點 3：影片下方「聊天室／開啟面板」卡片（筆記 1.3）。只用標籤名稱與 id 定位，
@@ -187,11 +189,17 @@
     'yt-live-chat-banner-redirect-renderer': 'raid',          // 待實機確認
   });
 
+  // 診斷輸出分級（SPEC 第 7 節「相容」v31；docs/review-2026-11-16.md）：
+  //   Chrome 會把 content script 的 console.warn／error 收進擴充功能「錯誤」頁，跨頁面累積、不會自動清除。
+  //   'warn'：該頁確定有聊天室（或 chat frame 已載入），預期應該存在的元素卻找不到、且會影響功能時才用。
+  //   'info'（預設）：沒有聊天室的頁面、可退回的情況、PoC 一般提示。'debug'：診斷細節、舊版相容錨點。
+  // 同一頁面內每個 key 只輸出一次。
   const warned = new Set();
-  S.warnOnce = function (key, detail) {
+  S.warnOnce = function (key, detail, level) {
     if (warned.has(key)) return;
     warned.add(key);
-    console.warn('[ytcas] 找不到 YouTube 元素：' + key, detail || '');
+    const lv = level === 'warn' || level === 'debug' ? level : 'info';
+    console[lv]('[ytcas] 找不到 YouTube 元素：' + key, detail || '');
   };
 
   // 找出影片下方輪播中「聊天室」那張卡片（同一輪播可能還有會員福利等其他卡片）。
