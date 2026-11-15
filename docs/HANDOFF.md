@@ -39,7 +39,7 @@ Claude Code 會自動讀取 `CLAUDE.md`。進入後貼上：
    2. 完全關閉 Chrome（確認工作列和系統匣都沒有 Chrome）。
    3. 把資料夾 `%LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\chrome-extension_<ID>_0.indexeddb.leveldb` 複製到安全位置；如果有同名的 `.indexeddb.blob` 資料夾，也一起複製。使用其他 Chrome 設定檔時，把 `Default` 換成該設定檔的資料夾名稱（例如 `Profile 1`）。
    4. **備份放在 repo 以外的位置**，例如 `E:\Tool\ChromeExtensions\indexeddb_bak\`（目前使用者的備份就在這裡：`bak_v1` 為 2026-11-13 含 v2.6.0 舊資料的完整備份，`bak_v2` 為 2026-11-15 v3 第一次啟動後）。不要放在 repo 內，以免 `git clean -fdx` 之類的指令刪除，也避免誤 commit（repo 的 `.gitignore` 仍保留 `bak/` 作為保險）。
-   5. **從備份還原**（例如舊資料不在 Chrome 裡、需要重新遷移時）：完全關閉 Chrome → 把目前的 `chrome-extension_<ID>_0.indexeddb.leveldb` 資料夾**改名保留**（不要刪除）→ 把備份的同名資料夾複製回原位置 → 開啟 Chrome。還原會讓該擴充功能的 IndexedDB 回到備份當時的狀態（備份之後 v3 收錄的資料不在其中），所以要在開始實際收錄前做。還原後在 Service Worker Console 執行 `YTCAS_BG.autoMigrateLegacy(true)` 重新遷移（T7 起改由後台「設定 → 進階」的按鈕執行）。
+   5. **從備份還原**（例如舊資料不在 Chrome 裡、需要重新遷移時）：完全關閉 Chrome → 把目前的 `chrome-extension_<ID>_0.indexeddb.leveldb` 資料夾**改名保留**（不要刪除）→ 把備份的同名資料夾**複製**（不是移動）回原位置 → 開啟 Chrome。若備份或目前位置還有同名的 `chrome-extension_<ID>_0.indexeddb.blob` 資料夾，以同樣方式處理（現有的改名保留、備份的複製回去；2026-11-15 檢查時 `bak_v1` 與 Chrome 目前位置都沒有 `.blob`）。還原會讓該擴充功能的 IndexedDB 回到備份當時的狀態：**還原之前收錄的資料會被換掉**（仍保存在改名後的資料夾中），所以一定要在開始實際收錄前做（T3 實測步驟 A 必須在 B 之前）。還原後在 Service Worker Console 執行 `YTCAS_BG.autoMigrateLegacy(true)` 重新遷移（T7 起改由後台「設定 → 進階」的按鈕執行）。
 1. Chrome 開啟 `chrome://extensions`，打開右上角「開發人員模式」。
 2. 已經有原本的擴充功能項目時：**直接在該項目按 🔄 重新載入**，不要移除，也不要重新載入未封裝項目。只有全新電腦、從未載入過時，才點「載入未封裝項目」選 repo 資料夾。
 3. 之後每次改完：在擴充功能卡片上按 🔄 重新載入，再**重新整理 YouTube 分頁**。
