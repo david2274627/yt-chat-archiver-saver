@@ -668,6 +668,33 @@
     e.stop();
   });
 
+  // ---------------------------------------------------------------- T3.5 F-2 直播結束
+  test('T3.5 F-2：收錄中收到含 endDate 的場次資訊 → 之後的訊息標 post，SAVE_MESSAGES 帶 endedAt', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    let t = NOW;
+    const e = engine({ send, now: () => t });
+    e.start();
+    const startDate = NOW - 3600e3;
+    e.setInfo({ videoId: 'testVidEND1', startDate, isLiveBroadcast: true });
+    await until(() => e.state().mode === 'capturing');
+    items.append(textMsg({ id: 'E1', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('E1'), 2000);
+    const endDate = NOW + 30000;
+    e.setInfo({ videoId: 'testVidEND1', startDate, endDate, isLiveBroadcast: true }); // top frame 每 30 秒重送
+    t = NOW + 60000; // 結束 30 秒後的訊息
+    items.append(textMsg({ id: 'E2', ts: '下午10:24' }));
+    await until(() => savedIds(send).includes('E2'), 2000);
+    const all = send.of(RT.SAVE_MESSAGES);
+    const m1 = all.flatMap((c) => c.msg.messages).find((m) => m.id === 'E1');
+    const last = all[all.length - 1].msg;
+    const m2 = last.messages.find((m) => m.id === 'E2');
+    eq([m1.phase, m2.phase], ['live', 'post']);
+    eq([last.stream.startedAt, last.stream.endedAt], [startDate, endDate]);
+    eq(e.state().stream.endedAt, endDate);
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];

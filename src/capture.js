@@ -636,7 +636,12 @@
         const changed = vid && vid !== st.videoId;
         st.info = Object.assign({}, st.info || {}, info);
         const times = deriveTimes(st.info);
+        const hadEnd = st.stream.endedAt != null;
         for (const k of Object.keys(times)) if (times[k] != null) st.stream[k] = times[k];
+        // T3.5 F-2：收錄中得知結束時間 → 之後的訊息標 post；送出時帶 endedAt，background 依 F-14 重算 phase
+        if (!changed && !hadEnd && st.stream.endedAt != null) {
+          console.info('[ytcas] 已得知直播結束時間，之後的訊息標為結束後（post）', { videoId: st.videoId });
+        }
         if (changed) {
           if (st.videoId) { flush(); endSession(); logStats(true); }
           st.videoId = vid;

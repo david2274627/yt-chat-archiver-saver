@@ -364,6 +364,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   1. **照常收錄**：只要 `live_chat` 聊天室 iframe 存在、分頁開著，就擷取與修剪，不論直播是否已開始或已結束。
   2. **`phase`**：`pre`（開播前）／`live`（直播中）／`post`（結束後）。`pre` 的 `videoOffsetSec` 存**負值**（距開播的秒數），開播時間未確定時先存 `null`，開播後回填；`post` 依開播時間照算（會超過 VOD 長度）。
   3. **判斷方式（待 T3 實機確認）**：開播時間來源 `meta[itemprop="startDate"]` 在待機室是「預定時間」還是不存在、開播後如何變化；結束訊號（頁面是否出現「直播已結束」、`isLiveBroadcast`／`endDate` meta、聊天室系統訊息等）。只記錄標籤與屬性，寫入 `docs/youtube-dom-notes.md`。判斷不確定時依 `timestampAbs` 與已知開播／結束時間推算，並允許事後修正（開播或結束時間確定後，由 bg 重算該場次的 `phase` 與 `pre` 的 offset）。
+  - （v33，`docs/review-2026-11-16.md` 追加三 F-2）**直播結束偵測**：頁面沒有重新整理時，`endDate` meta 不一定會出現。目前做法：top frame 每 30 秒重讀場次資訊並送 `STREAM_INFO`；`endDate` 出現時 chat frame 之後的訊息標 `post`，並在送出時帶 `endedAt`，background 依本節重算（結束時間取 meta 的值）。其他候選訊號只記屬性名稱作為診斷（`ytd-watch-flexy`、`yt-live-chat-renderer` 屬性變化，各頁最多 30 筆；結束提示若是新的訊息元件，以「未知訊息元件」記錄標籤）。**尚無實機確認的結束訊號**：取得結構前，沒有重新整理就結束的直播，結束後的訊息可能仍標 `live`，之後看重播或重新整理取得 `endDate` 時由 background 重算更正。
   4. **檢視器**：訊息清單以分隔線區隔「直播開始前（待機室）」「直播中」「直播結束後」；VOD 時間軸同步（F-08）只作用於 `live` 段，`pre`／`post` 不參與跟隨與跳轉，時間碼顯示為「開播前 12:34」「結束後 3:05」，不可點擊。
   5. **合併**：重播不會帶入 `pre`／`post` 訊息，這兩段只來自直播收錄，合併與去重規則不變。
 - AC：

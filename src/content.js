@@ -99,6 +99,26 @@
       });
     } catch (_) { /* ignore */ }
 
+    // T3.5（審查十追加三 F-2）直播結束偵測的候選訊號：yt-live-chat-renderer 屬性變化（診斷，只記屬性名稱，每頁最多 30 次）。
+    // 結束提示若以新的訊息元件出現，會以「未知訊息元件」記錄標籤（存為 system，保存 rawTag）。
+    let rLogs = 0;
+    const watchRenderer = () => {
+      const r = document.querySelector(S.chat.renderer);
+      if (!r) { setTimeout(watchRenderer, 2000); return; }
+      let prev = new Set(r.getAttributeNames());
+      new MutationObserver(() => {
+        const now = new Set(r.getAttributeNames());
+        const added = [...now].filter((a) => !prev.has(a));
+        const removed = [...prev].filter((a) => !now.has(a));
+        prev = now;
+        if ((added.length || removed.length) && rLogs < 30) {
+          rLogs++;
+          console.info('[ytcas] 聊天室屬性變化（診斷）', { added, removed, at: new Date().toISOString() });
+        }
+      }).observe(r, { attributes: true });
+    };
+    watchRenderer();
+
     // 離開頁面：送出剩餘訊息並結束 session（送不到時由 background 以最後寫入時間補 endedAt）
     window.addEventListener('pagehide', () => engine.stop());
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') engine.flush(); });
@@ -186,6 +206,44 @@
       bindVideo();
       setTimeout(sendInfo, 800); // microdata 隨導航更新的時機待實機確認；chat frame 也會主動要求
     });
+
+    // T3.5（審查十追加三 F-2）直播結束偵測：
+    //   可行動的訊號：每 30 秒重讀場次資訊並送給 chat frame；endDate meta 出現 → chat frame 之後的訊息標 post，
+    //   background 依 F-14 重算 phase。其他候選訊號（ytd-watch-flexy 屬性變化）尚未實機確認，只記屬性名稱供診斷。
+    let lastEnd = { videoId: null, endDate: null, isLive: null };
+    setInterval(() => {
+      const info = streamInfo();
+      if (!info) return;
+      if (info.videoId !== lastEnd.videoId) lastEnd = { videoId: info.videoId, endDate: info.endDate, isLive: info.isLiveBroadcast };
+      if (info.endDate != null && lastEnd.endDate == null) {
+        console.info('[ytcas] 偵測到直播結束（endDate meta 出現）', { videoId: info.videoId, endDate: new Date(info.endDate).toISOString() });
+      }
+      if (info.isLiveBroadcast !== lastEnd.isLive) console.info('[ytcas] isLiveBroadcast 變化（診斷）', { from: lastEnd.isLive, to: info.isLiveBroadcast });
+      lastEnd.endDate = info.endDate; lastEnd.isLive = info.isLiveBroadcast;
+      sendInfo();
+    }, 30000);
+    // ytd-watch-flexy 屬性變化（診斷，只記屬性名稱，每頁最多 30 次）：找出直播結束時是否有可用的屬性訊號
+    let flexyLogs = 0;
+    let flexyObs = null;
+    function watchFlexyAttrs() {
+      const fx = document.querySelector(T.watchFlexy);
+      if (!fx || (flexyObs && flexyObs.__t === fx)) return;
+      if (flexyObs) flexyObs.disconnect();
+      let prev = new Set(fx.getAttributeNames());
+      flexyObs = new MutationObserver(() => {
+        const now = new Set(fx.getAttributeNames());
+        const added = [...now].filter((a) => !prev.has(a));
+        const removed = [...prev].filter((a) => !now.has(a));
+        prev = now;
+        if ((added.length || removed.length) && flexyLogs < 30 && currentVideoId()) {
+          flexyLogs++;
+          console.info('[ytcas] ytd-watch-flexy 屬性變化（診斷）', { added, removed, at: new Date().toISOString() });
+        }
+      });
+      flexyObs.observe(fx, { attributes: true });
+      flexyObs.__t = fx;
+    }
+    setInterval(watchFlexyAttrs, 5000);
 
     // 聊天室 iframe 狀態（診斷）：彈出視窗開啟時主分頁的嵌入式聊天室是否仍存在（F-19 第 4 點，待實機確認）
     let lastFrameKey = '';
