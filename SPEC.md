@@ -96,6 +96,7 @@ yt-chat-archiver-saver/
 > - `src/styles/tokens.css`：設計 token（CSS 變數，第 10 節），viewer、popup、匯出 HTML 共用。
 > - `src/styles/inject.css`：注入 YouTube 頁面的樣式，所有選擇器加 `ytcas-` 前綴。
 > - `src/theme.js`（v27）：主題系統共用模組（10.2）；viewer、popup 以 `<script src="theme.js" data-auto>` 放在 `<head>` 載入。
+> - `src/styles/components.css`（v27）：元件樣式（10.4），viewer、popup 共用；`design/mockups.html` 直接載入本檔與 `tokens.css`、`theme.js`，設計稿即實作樣式。
 > - `tools/check-contrast.js`（v27）：token 對比度檢查腳本，不打包進套件。
 > - `src/icons/`：套件圖示 16/32/48/128 px（自行繪製 SVG 轉 PNG，不得使用 YouTube 標誌）。
 > - `design/`：靜態設計稿 HTML（第 10.8 節），不打包進套件。
@@ -310,7 +311,7 @@ yt-chat-archiver-saver/
 
 **F-05 快速分類膠囊列**（v2.6.0 已驗證可行）
 - （v27 改為 4 個）「全部訊息（N）」、「💰 SC／禮物」（Super Chat、超級貼圖、禮物 `gift`）、「👑 會員」（新會員、里程碑、贈送會員、收到會員）、「✨ 實況主降落」。
-- 340px 寬時仍為單列：空間不足時「全部」只顯示數字，各膠囊縮短間距；仍不足時膠囊列可水平捲動（不換行）。
+- 窄面板仍為單列（D2 定稿，以 container query 依工具區寬度判斷）：面板 ≤ 376px（含 340／360px）「全部」只顯示數字並縮短間距；≤ 316px（最窄 300px）再隱藏膠囊前的圖示；仍放不下時膠囊列可水平捲動（不換行）。
 - （v27）另有「隱藏已刪除訊息」切換（F-14），放在面板 ⋯ 選單與後台篩選區，不佔膠囊列。
 - 降落 = Raid 橫幅 + 帶 `verified` 徽章的其他實況主發言；**排除** `constants.js` 的 `BOT_BLOCKLIST`（至少 `Nightbot`、`StreamElements`、`Streamlabs`、`Moobot`、`Fossabot`，比對不分大小寫，同時比對名稱與 @Handle）以及本台 `owner`/`moderator`。
 
@@ -635,6 +636,7 @@ yt-chat-archiver-saver/
 - 頁面頂部提供切換「方向 A / B」「淺色 / 深色」的按鈕。
 - （v26）需反映實機版面：內嵌面板寬度以 **340／360／450px** 三種呈現；面板底部以灰色佔位畫出原生底部互動區的三種情況（只有輸入列 57px、置頂列＋輸入列 109px、投票卡 239px），確認可用空間與「↓ 恢復自動捲動」位置；面板頂部列含紅色「關閉優化面板」；F-07 面板內置頂卡片與原生置頂列並存時的呈現（預設收合為一行，避免重複感）；開關按鈕三種形態與**劇院模式退讓**狀態；訊息類型含 `author-type` 身分、會員加入、贈送／收到會員、系統訊息；VOD 模式（無底部互動區、當前訊息藍框）。
 - 使用假資料（虛構頻道名稱與頭像色塊），不使用真實使用者頭像。
+- （v27，D2）設計稿只保留方向 B，改為載入 `../src/styles/tokens.css`、`../src/styles/components.css`、`../src/theme.js`（仍不需網路，直接開啟即可）；頂部為正式的「自動／淺色／深色」分段按鈕，「自動」實際讀取系統設定並即時切換。
 
 ### 10.9 已選定方向
 - **方向 B「柔和現代感」**（使用者 2026-11-15 選定）：帶紫的柔和底色、大圓角（`--ytcas-radius-sm` 8px／`--ytcas-radius-md` 14px）、以柔和陰影取代邊框、彩度較高的紫色強調、膠囊為實心底、訊息列留白較多。

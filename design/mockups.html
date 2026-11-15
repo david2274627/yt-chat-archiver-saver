@@ -1,218 +1,57 @@
 <!doctype html>
-<html lang="zh-Hant" data-dir="a" data-theme="light">
+<html lang="zh-Hant" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YT 加強版聊天室 — D1 設計稿</title>
+<title>YT 加強版聊天室 — D2 設計稿（方向 B）</title>
 <!--
-  D1 設計稿（SPEC 第 10 節、v26）。靜態單一檔案、無外部相依，直接用 Chrome 開啟。
-  全部為虛構資料；不使用 YouTube 標誌。套件 UI 只出現在聊天室區域內、popup 與後台分頁（10.1 原則 6）。
-  顏色、字級、間距、圓角一律走 --ytcas-* token；元件內沒有寫死色碼（Super Chat 底色來自訊息資料本身，依規格例外）。
+  D2 設計稿（SPEC 第 10 節、規格 v27）。直接用 Chrome 開啟（雙擊或拖進 Chrome），無網路相依。
+  - 直接載入套件的 ../src/styles/tokens.css、../src/styles/components.css 與 ../src/theme.js，
+    所以設計稿看到的就是實作會用的 token 與元件樣式（D2 完成條件「設計稿與 token 一致」）。
+  - 本頁只定義「設計稿頁面本身」與「YouTube 原生區域示意」的樣式。
+  - 全部為虛構資料；不使用 YouTube 標誌。套件 UI 只出現在聊天室區域內、popup 與後台分頁（10.1 原則 6）。
 -->
+<link rel="stylesheet" href="../src/styles/tokens.css">
+<link rel="stylesheet" href="../src/styles/components.css">
+<script src="../src/theme.js"></script>
 <style>
-/* ============ Token：方向 A「沉穩工具感」 ============ */
-:root, [data-dir="a"] {
-  --ytcas-font: "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
-  --ytcas-font-mono: ui-monospace,"SF Mono",Consolas,monospace;
-  --ytcas-fs-xs:11px; --ytcas-fs-sm:12px; --ytcas-fs-md:13px; --ytcas-fs-lg:15px; --ytcas-fs-xl:18px;
-  --ytcas-space-1:4px; --ytcas-space-2:8px; --ytcas-space-3:12px; --ytcas-space-4:16px; --ytcas-space-5:20px; --ytcas-space-6:24px;
-  --ytcas-radius-sm:4px; --ytcas-radius-md:6px; --ytcas-radius-pill:999px;
-  --ytcas-ease:cubic-bezier(.2,.8,.2,1); --ytcas-dur:160ms;
-  --ytcas-row-pad:5px 10px; --ytcas-avatar:24px; --ytcas-card-border:1px;
-}
-[data-dir="a"][data-theme="light"] {
-  --ytcas-bg:#f5f6f8; --ytcas-surface:#ffffff; --ytcas-surface-2:#eef0f3; --ytcas-border:#d8dce3; --ytcas-overlay:rgba(16,20,28,.45);
-  --ytcas-text:#1a1d23; --ytcas-text-2:#4a525e; --ytcas-text-3:#6f7783;
-  --ytcas-accent:#2f5fd0; --ytcas-accent-hover:#264fb0; --ytcas-accent-soft:#e4ebfb; --ytcas-focus-ring:#2f5fd0; --ytcas-on-accent:#ffffff;
-  --ytcas-timecode:#1d5cbd; --ytcas-current-ring:#2f7df0; --ytcas-highlight:#ffe27a;
-  --ytcas-raid:#a8500a; --ytcas-raid-soft:#fdf0db;
-  --ytcas-member:#1c7f46; --ytcas-owner:#9a6a00; --ytcas-moderator:#2f5fd0;
-  --ytcas-danger:#c5352b; --ytcas-on-danger:#ffffff;
-  --ytcas-shadow-1:0 1px 2px rgba(16,20,28,.08); --ytcas-shadow-2:0 6px 20px rgba(16,20,28,.14);
-  --ytcas-native:#e3e6eb; --ytcas-native-line:#c3c8d0;
-}
-[data-dir="a"][data-theme="dark"] {
-  --ytcas-bg:#121418; --ytcas-surface:#1b1e24; --ytcas-surface-2:#262a32; --ytcas-border:#353a45; --ytcas-overlay:rgba(0,0,0,.55);
-  --ytcas-text:#e8eaee; --ytcas-text-2:#b3b9c4; --ytcas-text-3:#8a919d;
-  --ytcas-accent:#7da2ff; --ytcas-accent-hover:#98b5ff; --ytcas-accent-soft:#243150; --ytcas-focus-ring:#98b5ff; --ytcas-on-accent:#0f1422;
-  --ytcas-timecode:#8ab4ff; --ytcas-current-ring:#5b9bff; --ytcas-highlight:#6b5200;
-  --ytcas-raid:#f0a94b; --ytcas-raid-soft:#3a2b12;
-  --ytcas-member:#5fd08a; --ytcas-owner:#f0c04a; --ytcas-moderator:#8ab4ff;
-  --ytcas-danger:#e25449; --ytcas-on-danger:#1a0b09;
-  --ytcas-shadow-1:0 1px 2px rgba(0,0,0,.4); --ytcas-shadow-2:0 8px 24px rgba(0,0,0,.5);
-  --ytcas-native:#2a2e36; --ytcas-native-line:#434956;
-}
-/* ============ Token：方向 B「柔和現代感」 ============ */
-[data-dir="b"] {
-  --ytcas-radius-sm:8px; --ytcas-radius-md:14px;
-  --ytcas-row-pad:7px 12px; --ytcas-avatar:26px; --ytcas-card-border:0px;
-}
-[data-dir="b"][data-theme="light"] {
-  --ytcas-bg:#f3f0fa; --ytcas-surface:#ffffff; --ytcas-surface-2:#f1edf9; --ytcas-border:#e1dbef; --ytcas-overlay:rgba(34,26,60,.4);
-  --ytcas-text:#221d33; --ytcas-text-2:#544c6a; --ytcas-text-3:#7a7290;
-  --ytcas-accent:#6548e0; --ytcas-accent-hover:#5539c9; --ytcas-accent-soft:#ece6ff; --ytcas-focus-ring:#6548e0; --ytcas-on-accent:#ffffff;
-  --ytcas-timecode:#2a6bd6; --ytcas-current-ring:#3b82f6; --ytcas-highlight:#ffdf80;
-  --ytcas-raid:#b8420e; --ytcas-raid-soft:#ffeadd;
-  --ytcas-member:#0c8a5e; --ytcas-owner:#a87200; --ytcas-moderator:#6548e0;
-  --ytcas-danger:#d2413a; --ytcas-on-danger:#ffffff;
-  --ytcas-shadow-1:0 2px 8px rgba(70,50,140,.10); --ytcas-shadow-2:0 12px 32px rgba(70,50,140,.18);
-  --ytcas-native:#e6e1f1; --ytcas-native-line:#c9c1dc;
-}
-[data-dir="b"][data-theme="dark"] {
-  --ytcas-bg:#15121d; --ytcas-surface:#201c2c; --ytcas-surface-2:#2b2640; --ytcas-border:#3a3452; --ytcas-overlay:rgba(0,0,0,.55);
-  --ytcas-text:#ece9f5; --ytcas-text-2:#bab3d0; --ytcas-text-3:#9189ab;
-  --ytcas-accent:#a996ff; --ytcas-accent-hover:#beafff; --ytcas-accent-soft:#33295c; --ytcas-focus-ring:#beafff; --ytcas-on-accent:#170f33;
-  --ytcas-timecode:#8fb8ff; --ytcas-current-ring:#6aa5ff; --ytcas-highlight:#6e5300;
-  --ytcas-raid:#ffa468; --ytcas-raid-soft:#3d2616;
-  --ytcas-member:#5fd6a6; --ytcas-owner:#f2c356; --ytcas-moderator:#a996ff;
-  --ytcas-danger:#ee6259; --ytcas-on-danger:#1f0a08;
-  --ytcas-shadow-1:0 2px 8px rgba(0,0,0,.45); --ytcas-shadow-2:0 12px 32px rgba(0,0,0,.55);
-  --ytcas-native:#2c2740; --ytcas-native-line:#4a4266;
-}
+/* 設計稿專用：YouTube 原生區域示意色（不屬於套件 token） */
+:root { --doc-native: #e6e1f1; --doc-native-line: #c9c1dc; }
+:root[data-theme="dark"] { --doc-native: #2c2740; --doc-native-line: #4a4266; }
 
-/* ============ 設計稿頁面本身 ============ */
-* { box-sizing: border-box; }
 html { background: var(--ytcas-bg); }
-body { margin: 0; color: var(--ytcas-text); font: var(--ytcas-fs-md)/1.45 var(--ytcas-font); }
-button { font: inherit; color: inherit; }
-:focus-visible { outline: 2px solid var(--ytcas-focus-ring); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-.doc-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: var(--ytcas-space-3); align-items: center;
-  padding: var(--ytcas-space-3) var(--ytcas-space-5); background: var(--ytcas-surface); border-bottom: 1px solid var(--ytcas-border); }
+.doc-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: var(--ytcas-space-2) var(--ytcas-space-4); align-items: center;
+  padding: var(--ytcas-space-3) var(--ytcas-space-5); background: var(--ytcas-surface); box-shadow: var(--ytcas-shadow-1); }
 .doc-bar h1 { font-size: var(--ytcas-fs-lg); margin: 0 auto 0 0; }
-.seg { display: inline-flex; border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-pill); overflow: hidden; }
-.seg button { border: 0; background: transparent; padding: 6px 14px; cursor: pointer; color: var(--ytcas-text-2); }
-.seg button[aria-pressed="true"] { background: var(--ytcas-accent); color: var(--ytcas-on-accent); font-weight: 700; }
+.doc-bar .status { font-size: var(--ytcas-fs-sm); color: var(--ytcas-text-2); }
 main { max-width: 1280px; margin: 0 auto; padding: var(--ytcas-space-5); }
 section { margin-bottom: 40px; }
 section > h2 { font-size: var(--ytcas-fs-xl); margin: 0 0 var(--ytcas-space-1); }
-section > p.note { margin: 0 0 var(--ytcas-space-4); color: var(--ytcas-text-2); max-width: 76ch; }
+p.note { margin: 0 0 var(--ytcas-space-4); color: var(--ytcas-text-2); max-width: 80ch; }
 .row { display: flex; flex-wrap: wrap; gap: var(--ytcas-space-6); align-items: flex-start; }
 figure { margin: 0; }
 figcaption { margin-top: var(--ytcas-space-2); color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); max-width: 450px; }
-.dir-note { padding: var(--ytcas-space-3) var(--ytcas-space-4); background: var(--ytcas-surface); border: 1px solid var(--ytcas-border);
-  border-radius: var(--ytcas-radius-md); max-width: 76ch; }
-[data-dir="a"] .only-b, [data-dir="b"] .only-a { display: none; }
+.intro { padding: var(--ytcas-space-3) var(--ytcas-space-4); background: var(--ytcas-surface); border-radius: var(--ytcas-radius-md); box-shadow: var(--ytcas-shadow-1); max-width: 80ch; }
+.intro ol { margin: 6px 0 0; padding-left: 1.4em; }
 
-/* ============ 原生 YouTube 區域的示意（灰色佔位，非套件 UI） ============ */
-.native { background: var(--ytcas-native); color: var(--ytcas-text-2); border: 1px dashed var(--ytcas-native-line);
+/* YouTube 原生畫面示意（灰色虛線，非套件 UI） */
+.native { background: var(--doc-native); color: var(--ytcas-text-2); border: 1px dashed var(--doc-native-line);
   display: flex; align-items: center; justify-content: center; text-align: center; font-size: var(--ytcas-fs-xs); }
 .native-zone { flex: none; display: flex; flex-direction: column; }
 .native-zone .native + .native { border-top: 0; }
 .native-video { aspect-ratio: 16/9; border-radius: var(--ytcas-radius-md); font-size: var(--ytcas-fs-sm); }
 .native-hdr { height: 48px; display: flex; align-items: center; gap: var(--ytcas-space-2); padding: 0 var(--ytcas-space-3);
-  background: var(--ytcas-native); border: 1px dashed var(--ytcas-native-line); color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
+  background: var(--doc-native); border: 1px dashed var(--doc-native-line); color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
 .native-hdr .grow { flex: 1; }
 .native-ico { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; color: var(--ytcas-text-2); }
-
-/* ============ 內嵌面板 ============ */
-.panel { height: 594px; display: flex; flex-direction: column; background: var(--ytcas-surface); color: var(--ytcas-text);
-  border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md); overflow: hidden; box-shadow: var(--ytcas-shadow-1); }
-.p-top { flex: none; display: flex; align-items: center; gap: var(--ytcas-space-2); padding: 6px var(--ytcas-space-2) 6px var(--ytcas-space-3);
-  border-bottom: 1px solid var(--ytcas-border); }
-.p-top .mark { width: 18px; height: 18px; border-radius: 5px; background: var(--ytcas-accent); flex: none; position: relative; }
-.p-top .mark::after { content: ""; position: absolute; left: 4px; bottom: -3px; border: 4px solid transparent; border-top-color: var(--ytcas-accent); border-left-color: var(--ytcas-accent); }
-.p-top .ttl { font-weight: 700; white-space: nowrap; }
-.p-top .meta { flex: 1; min-width: 0; color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ytcas-danger); margin-right: 4px; }
-.btn { border: 1px solid var(--ytcas-border); background: var(--ytcas-surface); border-radius: var(--ytcas-radius-pill); padding: 5px 12px;
-  cursor: pointer; white-space: nowrap; transition: background var(--ytcas-dur) var(--ytcas-ease); }
-.btn:hover { background: var(--ytcas-surface-2); }
-.btn.primary { background: var(--ytcas-accent); border-color: var(--ytcas-accent); color: var(--ytcas-on-accent); font-weight: 700; }
-.btn.primary:hover { background: var(--ytcas-accent-hover); }
-.btn.danger { background: var(--ytcas-danger); border-color: var(--ytcas-danger); color: var(--ytcas-on-danger); font-weight: 700; font-size: var(--ytcas-fs-sm); padding: 4px 10px; }
-.btn.ghost-danger { color: var(--ytcas-danger); }
-.btn.quiet[disabled] { background: transparent; color: var(--ytcas-text-3); border-style: dashed; cursor: not-allowed; }
-.btn.icon { width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; }
-.btn.icon[disabled] { color: var(--ytcas-text-3); border-style: dashed; background: transparent; cursor: not-allowed; }
-.glyph { width: 16px; height: 16px; display: block; }
-
-.p-tools { flex: none; padding: var(--ytcas-space-2) var(--ytcas-space-2) 6px; display: grid; gap: 6px; border-bottom: 1px solid var(--ytcas-border); }
-.pills { display: flex; gap: 6px; overflow: hidden; }
-.pill { border: 1px solid var(--ytcas-border); background: transparent; color: var(--ytcas-text-2); border-radius: var(--ytcas-radius-pill);
-  padding: 3px 10px; font-size: var(--ytcas-fs-sm); cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pill[aria-selected="true"] { background: var(--ytcas-accent-soft); border-color: transparent; color: var(--ytcas-accent); font-weight: 700; }
-[data-dir="b"] .pill { border-color: transparent; background: var(--ytcas-surface-2); }
-.search { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.panel.narrow .search { grid-template-columns: 1fr; }
-.field { display: flex; align-items: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; background: var(--ytcas-surface-2);
-  border: 1px solid transparent; border-radius: var(--ytcas-radius-sm); color: var(--ytcas-text-3); font-size: var(--ytcas-fs-sm); }
-.field span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.field.has { border-color: var(--ytcas-accent); color: var(--ytcas-text); background: var(--ytcas-surface); }
-.chip { display: inline-flex; gap: 4px; align-items: center; background: var(--ytcas-accent-soft); color: var(--ytcas-accent); border-radius: var(--ytcas-radius-pill); padding: 0 6px; font-weight: 700; }
-
-.pin { flex: none; margin: 6px var(--ytcas-space-2) 0; padding: 5px 8px; display: flex; gap: 6px; align-items: flex-start; cursor: pointer;
-  background: var(--ytcas-surface); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-sm); box-shadow: var(--ytcas-shadow-1); font-size: var(--ytcas-fs-sm); }
-.pin .tag { flex: none; color: var(--ytcas-owner); font-weight: 700; }
-.pin .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ytcas-text-2); }
-.pin.open .txt { white-space: normal; color: var(--ytcas-text); }
-.pin .hint { flex: none; color: var(--ytcas-text-3); }
-
-.list { flex: 1; min-height: 0; overflow: hidden; position: relative; padding: 4px 0; }
-.msg { display: flex; gap: 8px; padding: var(--ytcas-row-pad); align-items: flex-start; border-radius: 0; }
-.msg:hover { background: var(--ytcas-surface-2); }
-.av { flex: none; width: var(--ytcas-avatar); height: var(--ytcas-avatar); border-radius: 50%; display: grid; place-items: center;
-  font-size: var(--ytcas-fs-xs); font-weight: 700; color: var(--ytcas-on-accent); background: var(--ytcas-text-3); }
-.body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.tc { font: var(--ytcas-fs-xs)/1 var(--ytcas-font-mono); color: var(--ytcas-timecode); background: none; border: 0; padding: 0; margin-right: 6px; cursor: pointer; font-variant-numeric: tabular-nums; }
-.tc:hover { text-decoration: underline; }
-.nm { font-weight: 700; margin-right: 4px; cursor: pointer; }
-.hd { color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); margin-right: 6px; }
-.bdg { display: inline-block; font-size: 10px; line-height: 16px; padding: 0 5px; border-radius: var(--ytcas-radius-pill); margin-right: 6px; font-weight: 700; vertical-align: 1px; border: 1px solid currentColor; }
-.bdg.owner { color: var(--ytcas-owner); } .bdg.mod { color: var(--ytcas-moderator); } .bdg.member { color: var(--ytcas-member); } .bdg.raid { color: var(--ytcas-raid); }
-.nm.owner { color: var(--ytcas-owner); } .nm.mod { color: var(--ytcas-moderator); } .nm.member { color: var(--ytcas-member); }
-.emo { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 5px; background: var(--ytcas-surface-2); font-size: 13px; vertical-align: -4px; margin: 0 1px; }
-mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; padding: 0 1px; }
-.msg.current { box-shadow: inset 0 0 0 2px var(--ytcas-current-ring); border-radius: var(--ytcas-radius-sm); background: var(--ytcas-accent-soft); }
-.msg.raid { background: var(--ytcas-raid-soft); box-shadow: inset 3px 0 0 var(--ytcas-raid); }
-.msg.member-ev { box-shadow: inset 3px 0 0 var(--ytcas-member); }
-.msg.sys { color: var(--ytcas-text-3); font-size: var(--ytcas-fs-sm); }
-.msg.sys .av { background: transparent; border: 1px dashed var(--ytcas-border); color: var(--ytcas-text-3); }
-.sub { color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
-.card { margin: 4px 10px; border-radius: var(--ytcas-radius-md); overflow: hidden; border: var(--ytcas-card-border) solid var(--ytcas-border); box-shadow: var(--ytcas-shadow-1); }
-.card .hd-row { display: flex; gap: 8px; align-items: center; padding: 6px 10px; }
-.card .hd-row .amt { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
-.card .tx { padding: 6px 10px; }
-.card .stk { width: 72px; height: 72px; margin: 6px 10px 8px; border-radius: 12px; display: grid; place-items: center; font-size: 40px; background: var(--ytcas-surface-2); }
-.card .av { background: var(--ytcas-overlay); }
-.resume { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: var(--ytcas-accent); color: var(--ytcas-on-accent);
-  border: 0; border-radius: var(--ytcas-radius-pill); padding: 5px 14px; font-weight: 700; font-size: var(--ytcas-fs-sm); box-shadow: var(--ytcas-shadow-2); cursor: pointer; white-space: nowrap; }
-.empty { display: grid; place-items: center; gap: 6px; padding: var(--ytcas-space-6); color: var(--ytcas-text-3); text-align: center; }
-.empty .ico { width: 40px; height: 40px; border-radius: 50%; background: var(--ytcas-surface-2); display: grid; place-items: center; font-size: 18px; }
-
-/* ============ 後台檢視器、popup ============ */
-.viewer { width: 100%; max-width: 1040px; height: 560px; display: grid; grid-template-columns: 280px 1fr; background: var(--ytcas-surface);
-  border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md); overflow: hidden; box-shadow: var(--ytcas-shadow-1); }
-.side { border-right: 1px solid var(--ytcas-border); background: var(--ytcas-bg); display: flex; flex-direction: column; min-height: 0; }
-.side .field { margin: var(--ytcas-space-3); background: var(--ytcas-surface); border-color: var(--ytcas-border); }
-.sess { padding: 8px var(--ytcas-space-3); border-top: 1px solid var(--ytcas-border); cursor: pointer; }
-.sess[aria-current="true"] { background: var(--ytcas-accent-soft); box-shadow: inset 3px 0 0 var(--ytcas-accent); }
-.sess .t { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sess .m { color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); display: flex; gap: 6px; font-variant-numeric: tabular-nums; }
-.tagx { font-size: 10px; padding: 0 5px; border-radius: var(--ytcas-radius-pill); border: 1px solid currentColor; }
-.tagx.live { color: var(--ytcas-danger); } .tagx.vod { color: var(--ytcas-text-3); }
-.vmain { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.actions { display: flex; flex-wrap: wrap; gap: var(--ytcas-space-2); align-items: center; padding: var(--ytcas-space-2) var(--ytcas-space-3); border-bottom: 1px solid var(--ytcas-border); }
-.actions .ttl { font-weight: 700; margin-right: auto; }
-.popup { width: 360px; background: var(--ytcas-surface); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md); box-shadow: var(--ytcas-shadow-2); overflow: hidden; }
-.popup .sec { padding: var(--ytcas-space-3) var(--ytcas-space-4); border-bottom: 1px solid var(--ytcas-border); }
-.popup .big { font-size: var(--ytcas-fs-xl); font-weight: 700; font-variant-numeric: tabular-nums; }
-.popup .btn.primary { width: 100%; padding: 9px; border-radius: var(--ytcas-radius-sm); }
-.kv { display: flex; justify-content: space-between; align-items: center; gap: var(--ytcas-space-2); padding: 4px 0; }
-.switch { width: 34px; height: 20px; border-radius: 999px; background: var(--ytcas-accent); position: relative; flex: none; }
-.switch::after { content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ytcas-on-accent); }
-.dialog { width: 320px; padding: var(--ytcas-space-4); background: var(--ytcas-surface); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md); box-shadow: var(--ytcas-shadow-2); }
-.dialog .acts { display: flex; justify-content: flex-end; gap: var(--ytcas-space-2); margin-top: var(--ytcas-space-4); }
-
-/* ============ 開關按鈕情境 ============ */
 .ctx { width: 100%; max-width: 760px; display: grid; grid-template-columns: 1fr 340px; gap: var(--ytcas-space-4); padding: var(--ytcas-space-4);
-  background: var(--ytcas-surface); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md); }
+  background: var(--ytcas-surface); border-radius: var(--ytcas-radius-md); box-shadow: var(--ytcas-shadow-1); }
 .teaser { display: flex; align-items: center; gap: var(--ytcas-space-2); padding: var(--ytcas-space-2) var(--ytcas-space-3); margin-top: var(--ytcas-space-3);
-  background: var(--ytcas-native); border: 1px dashed var(--ytcas-native-line); border-radius: var(--ytcas-radius-md); color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
+  background: var(--doc-native); border: 1px dashed var(--doc-native-line); border-radius: var(--ytcas-radius-md); color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
 .teaser .grow { flex: 1; }
-.native-btn { border: 1px dashed var(--ytcas-native-line); background: transparent; color: var(--ytcas-text-3); border-radius: var(--ytcas-radius-pill); padding: 5px 12px; }
+.native-btn { border: 1px dashed var(--doc-native-line); background: transparent; color: var(--ytcas-text-3); border-radius: var(--ytcas-radius-pill); padding: 5px 12px; }
 .tip { font-size: var(--ytcas-fs-xs); color: var(--ytcas-text-2); background: var(--ytcas-surface-2); border-radius: var(--ytcas-radius-sm); padding: 2px 8px; white-space: nowrap; }
-.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--ytcas-space-2); }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--ytcas-space-2); }
 .sw { display: flex; gap: 8px; align-items: center; font: var(--ytcas-fs-xs)/1.3 var(--ytcas-font-mono); color: var(--ytcas-text-2); }
 .sw i { width: 28px; height: 28px; border-radius: var(--ytcas-radius-sm); border: 1px solid var(--ytcas-border); flex: none; }
 /* 設計稿頁面在窄視窗下改為單欄（面板本身維持實機寬度） */
@@ -227,61 +66,68 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
 </head>
 <body>
 <div class="doc-bar">
-  <h1>YT 加強版聊天室 — D1 設計稿（規格 v26）</h1>
-  <div class="seg" role="group" aria-label="視覺方向">
-    <button type="button" data-set="dir" data-v="a">方向 A　沉穩工具感</button>
-    <button type="button" data-set="dir" data-v="b">方向 B　柔和現代感</button>
-  </div>
-  <div class="seg" role="group" aria-label="主題">
-    <button type="button" data-set="theme" data-v="light">淺色</button>
-    <button type="button" data-set="theme" data-v="dark">深色</button>
-  </div>
+  <h1>YT 加強版聊天室 — D2 設計稿（方向 B・規格 v27）</h1>
+  <span class="status" id="theme-status" aria-live="polite"></span>
+  <div class="seg" role="group" aria-label="主題" data-seg></div>
 </div>
 <main>
   <section>
-    <div class="dir-note only-a"><b>方向 A「沉穩工具感」</b>：中性灰階、細邊框、小圓角（4／6px）、訊息列較密（一屏約多 2～3 則）。強調色是沉穩的藍，身分與類型靠文字色與細框徽章區分，卡片有 1px 邊框。適合長時間閱讀、想看到最多訊息的人。</div>
-    <div class="dir-note only-b"><b>方向 B「柔和現代感」</b>：帶一點紫的柔和底色、大圓角（8／14px）、柔和陰影取代邊框、訊息列留白較多。強調色是彩度較高的紫，膠囊為實心底。視覺較輕鬆，單屏訊息數略少。</div>
-    <p class="note" style="margin-top:12px">灰色虛線區塊代表 <b>YouTube 原生畫面</b>（不是套件畫的）。套件 UI 只在聊天室區域內、popup 與後台分頁，影片上不放任何元素。所有名稱與訊息皆為虛構。</p>
+    <div class="intro">
+      <b>方向 B「柔和現代感」定稿。</b>上方的「自動／淺色／深色」就是正式的主題設定按鈕（後台與 popup 也是同一組，下方第 6、7 節）。
+      <ol>
+        <li><b>驗證「自動」</b>：選「自動」後，到 Windows「設定 → 個人化 → 色彩 → 選擇您的模式」切換淺色／深色，這一頁會<b>當場</b>跟著換色，不用重新整理。</li>
+        <li>選「淺色」或「深色」時固定該配色，不受系統影響。三組按鈕任按一組，其他兩組會同步（實作中透過 <code>chrome.storage.sync</code> 同步到所有開啟中的介面）。</li>
+        <li>實際的內嵌面板在「自動」時跟隨 <b>YouTube 的外觀</b>（YouTube 外觀設為「使用裝置主題」時即等於系統）；設計稿沒有 YouTube，所以這裡以系統設定示意。</li>
+      </ol>
+      <p class="note" style="margin:8px 0 0">灰色虛線區塊代表 <b>YouTube 原生畫面</b>（不是套件畫的）。所有名稱與訊息皆為虛構。</p>
+    </div>
   </section>
 
   <section>
     <h2>1　內嵌面板 — 直播中（三種寬度 × 三種底部互動區）</h2>
-    <p class="note">面板高度以實機的 594px 呈現。底部灰色區是 YouTube 原生的互動區，套件會完整露出它：只有輸入列（57px）、置頂列＋輸入列（109px）、投票卡＋輸入列（239px）。「↓ 恢復自動捲動」固定在這塊區域上方 8px。</p>
+    <p class="note">面板高度以實機的 594px 呈現。膠囊列改為 4 個：全部、💰 SC／禮物、👑 會員、✨ 降落。<b>340px 寬時「全部」只顯示數字</b>，4 個膠囊仍排成一列（面板寬度改變時自動切換，不靠固定斷點）。</p>
     <div class="row" id="live-panels"></div>
   </section>
 
   <section>
     <h2>2　內嵌面板 — VOD 重播與其他狀態</h2>
-    <p class="note">重播沒有底部互動區，面板佔滿全高；目前播放位置的訊息有藍框。右側是置頂卡片展開、搜尋中、空狀態。</p>
+    <p class="note">重播沒有底部互動區，面板佔滿全高；目前播放位置的訊息有藍框。另有 ⋯ 選單（切換主題、隱藏已刪除訊息）、置頂卡片展開＋搜尋中、空狀態。</p>
     <div class="row" id="vod-panels"></div>
   </section>
 
   <section>
-    <h2>3　訊息類型</h2>
-    <p class="note">一般、主播／管理員／會員（依 <code>author-type</code>）、Super Chat（底色取自訊息本身的等級色）、超級貼圖、會員加入與里程碑、贈送／收到會員、實況主降落、系統訊息。</p>
+    <h2>3　待機室與直播結束後的聊天</h2>
+    <p class="note">直播開始前的待機室、直播結束後仍開放的聊天，都不會出現在 YouTube 的重播裡，套件會照常保存。訊息清單以分隔線區隔三段；開播前／結束後的時間碼是灰色純文字（「開播前 12:34」「結束後 3:05」），不能點擊跳轉，VOD 跟隨播放也會略過這兩段。</p>
+    <div class="row" id="phase-panels"></div>
+  </section>
+
+  <section>
+    <h2>4　訊息類型</h2>
+    <p class="note">新增<b>禮物</b>（觀眾以 Jewels 送出的禮物，與「贈送會員」是不同功能）：用淡粉底＋左側色條，與 Super Chat 的等級色實心卡區分，歸在「💰 SC／禮物」膠囊。新增<b>已刪除訊息</b>：保留原內容、淡色加刪除線，並標「已刪除」。</p>
     <div class="row" id="types"></div>
   </section>
 
   <section>
-    <h2>4　開關按鈕的三種位置，與劇院模式退讓</h2>
+    <h2>5　開關按鈕的三種位置，與劇院模式退讓</h2>
     <p class="note">按鈕只放在聊天室區域或影片下方的原生卡片旁，不浮在影片上。劇院模式下 YouTube 把聊天室壓成 402×152 的小框，套件不顯示面板，但仍持續存檔；按鈕改為低調的停用樣式，不用紅色。</p>
     <div class="row" id="switches"></div>
   </section>
 
   <section>
-    <h2>5　後台檢視器</h2>
-    <p class="note">左側場次清單，主區沿用同一套訊息元件；頂部動作列有匯入 JSON、匯出 HTML、匯出 JSON、刪除（刪除需二次確認）。</p>
+    <h2>6　後台檢視器</h2>
+    <p class="note">場次清單新增<b>收錄次數</b>（「直播收錄 2 次・重播 1 次」）與<b>覆蓋範圍條</b>：整條代表「開播前 → 直播 → 結束後」，有顏色的是實際收錄到的時段，空白是沒開分頁的空檔。同一場重複進入只會補進缺的訊息，不會另存一份；要從頭重錄時用「清空此場次後重新收錄」。左下角是主題設定。</p>
     <div class="row" id="viewer"></div>
   </section>
 
   <section>
-    <h2>6　popup（寬 360px）</h2>
+    <h2>7　popup（寬 360px）</h2>
+    <p class="note">底部新增主題設定，與後台、上方按鈕是同一個設定。</p>
     <div class="row" id="popup"></div>
   </section>
 
   <section>
-    <h2>7　目前方向的色彩 token</h2>
-    <p class="note">切換上方的方向與主題，這裡會跟著變。元件只使用這些變數。</p>
+    <h2>8　色彩 token（方向 B）</h2>
+    <p class="note">切換主題時這裡會跟著變，數值直接讀自 <code>src/styles/tokens.css</code>。對比度全數符合 WCAG AA（本文 ≥ 4.5、次要 ≥ 3），驗證表見本輪報告。</p>
     <div class="swatches" id="swatches"></div>
   </section>
 </main>
@@ -291,23 +137,38 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
   'use strict';
   const $ = (s, r = document) => r.querySelector(s);
   const h = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
-
-  // ---------- 方向／主題切換 ----------
   const root = document.documentElement;
-  const load = (k, d) => { try { return localStorage.getItem('ytcas-d1-' + k) || d; } catch (_) { return d; } };
-  const save = (k, v) => { try { localStorage.setItem('ytcas-d1-' + k, v); } catch (_) { /* 無法儲存時略過 */ } };
-  const apply = (k, v) => {
-    root.dataset[k] = v;
-    document.querySelectorAll(`[data-set="${k}"]`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+  const NAMES = { auto: '自動', light: '淺色', dark: '深色' };
+
+  // ---------- 主題：使用套件的 src/theme.js（設計稿沒有 chrome.storage，改記在 localStorage） ----------
+  const theme = YTCAS_THEME.create({ source: 'system', onChange: () => sync() });
+  const mql = matchMedia('(prefers-color-scheme: dark)');
+  try { const m = localStorage.getItem('ytcas-d2-themeMode'); if (m) theme.setMode(m); } catch (_) { /* 無法讀取時維持自動 */ }
+  const segHtml = (label) => `<div class="seg" role="group" aria-label="${label}">${YTCAS_THEME.MODES.map((m) => `<button type="button" data-theme-set="${m}">${NAMES[m]}</button>`).join('')}</div>`;
+  $('[data-seg]').outerHTML = segHtml('主題');
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-theme-set]');
+    if (!b) return;
+    theme.setMode(b.dataset.themeSet);
+    try { localStorage.setItem('ytcas-d2-themeMode', theme.mode); } catch (_) { /* 無法儲存時略過 */ }
+  });
+  mql.addEventListener('change', () => sync());
+  function sync() {
+    document.querySelectorAll('[data-theme-set]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.themeSet === theme.mode)));
+    const st = $('#theme-status');
+    if (st) {
+      const sys = mql.matches ? '深色' : '淺色';
+      st.textContent = theme.mode === 'auto' ? `自動：系統目前為${sys} → 套用${NAMES[theme.theme]}` : `手動：固定${NAMES[theme.mode]}（系統目前為${sys}）`;
+    }
     renderSwatches();
-  };
-  document.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click', () => { apply(b.dataset.set, b.dataset.v); save(b.dataset.set, b.dataset.v); }));
+  }
 
   // ---------- 圖示（自繪，非 YouTube 圖示） ----------
   const G = {
     panel: '<svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M4 14l2.5-2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4.5 6h7M4.5 8.5h4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
     search: '<svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.2 10.2L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
     user: '<svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.5" r="2.7" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2.8 13.5c.8-2.6 2.8-3.7 5.2-3.7s4.4 1.1 5.2 3.7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+    more: '<svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>',
   };
 
   // ---------- 虛構資料 ----------
@@ -319,46 +180,53 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
     b: { n: 'Nightowl', hd: '@nightowl_k', c: '#6a5acd' },
     c: { n: '柚子茶', hd: '@yuzu_cha', c: '#d08a1e' },
     d: { n: '山嵐', hd: '@yamaarashi', c: '#3b8ea5' },
+    e: { n: '路過的貓', hd: '@passing_cat', c: '#8a6d5a' },
     raid: { n: '藍鯨工作室', hd: '@bluewhale_studio', c: '#1f6fb2', role: 'raid' },
   };
   const E = (g) => `<span class="emo" title="表符">${g}</span>`;
   const ROLE = { owner: '主播', mod: '管理員', member: '會員', raid: '✨ 降落' };
 
+  const tcBtn = (time) => (/^(開播前|結束後)/.test(time)
+    ? `<span class="tc static">${time}</span>`
+    : `<button type="button" class="tc" aria-label="跳轉至 ${time}">${time}</button>`);
   function head(p, time) {
     const cls = p.role && p.role !== 'raid' ? ' ' + p.role : '';
-    return `<button type="button" class="tc" aria-label="跳轉至 ${time}">${time}</button><span class="nm${cls}">${p.n}</span><span class="hd">${p.hd}</span>${p.role ? `<span class="bdg ${p.role}">${ROLE[p.role]}</span>` : ''}`;
+    return `${tcBtn(time)}<span class="nm${cls}">${p.n}</span><span class="hd">${p.hd}</span>${p.role ? `<span class="bdg ${p.role}">${ROLE[p.role]}</span>` : ''}`;
   }
   const av = (p) => `<span class="av" style="background:${p.c}">${p.n[0]}</span>`;
-  const text = (p, time, body, extra = '') => `<div class="msg${extra}">${av(p)}<div class="body">${head(p, time)}${body}</div></div>`;
+  const text = (p, time, body, extra = '') => `<div class="msg${extra}">${av(p)}<div class="body">${head(p, time)}<span class="content">${body}</span></div></div>`;
+  const deleted = (p, time, body) => `<div class="msg deleted">${av(p)}<div class="body">${head(p, time)}<span class="bdg del">已刪除</span><span class="content">${body}</span></div></div>`;
   const sc = (p, time, amt, bg, fg, body) => `<div class="card" style="background:${bg};color:${fg}"><div class="hd-row">${av(p)}<b>${p.n}</b><span class="amt">${amt}</span></div>${body ? `<div class="tx" style="background:${fg === '#fff' ? 'rgba(0,0,0,.16)' : 'rgba(255,255,255,.35)'}">${body}</div>` : ''}</div>`;
   const sticker = (p, amt, bg, fg, g) => `<div class="card" style="background:${bg};color:${fg}"><div class="hd-row">${av(p)}<b>${p.n}</b><span class="amt">${amt}</span></div><div class="stk">${g}</div></div>`;
-  const memberEv = (p, time, title, sub, body = '') => `<div class="msg member-ev">${av(p)}<div class="body"><button type="button" class="tc" aria-label="跳轉至 ${time}">${time}</button><span class="nm member">${p.n}</span><span class="bdg member">${title}</span><div class="sub">${sub}</div>${body}</div></div>`;
-  const raid = (p, time) => `<div class="msg raid">${av(p)}<div class="body"><button type="button" class="tc" aria-label="跳轉至 ${time}">${time}</button><span class="bdg raid">✨ 降落</span><span class="nm">${p.n}</span><span class="hd">${p.hd}</span><div class="sub">帶著 312 位觀眾來訪</div></div></div>`;
+  const gift = (p, time, name, g, count, jewels) => `<div class="giftcard"><span class="gimg" aria-hidden="true">${g}</span><div class="ginfo">${tcBtn(time)}<span class="nm">${p.n}</span><span class="bdg gift">🎁 禮物</span><div class="sub">送出 <span class="gname">${name}</span>${count > 1 ? ` ×${count}` : ''}</div></div>${jewels ? `<span class="jw">${jewels} Jewels</span>` : ''}</div>`;
+  const memberEv = (p, time, title, sub, body = '') => `<div class="msg member-ev">${av(p)}<div class="body">${tcBtn(time)}<span class="nm member">${p.n}</span><span class="bdg member">${title}</span><div class="sub">${sub}</div>${body}</div></div>`;
+  const raid = (p, time) => `<div class="msg raid">${av(p)}<div class="body">${tcBtn(time)}<span class="bdg raid">✨ 降落</span><span class="nm">${p.n}</span><span class="hd">${p.hd}</span><div class="sub">帶著 312 位觀眾來訪</div></div></div>`;
   const sys = (t) => `<div class="msg sys"><span class="av">i</span><div class="body">${t}</div></div>`;
+  const phase = (t) => `<div class="phase" role="separator"><span>${t}</span></div>`;
 
   const LIVE = [
     text(P.a, '21:04:12', `晚安～今天也準時報到 ${E('🍵')}`),
     text(P.host, '21:04:30', '大家晚安，今天泡的是凍頂烏龍'),
     text(P.b, '21:04:41', `聲音很清楚 ${E('👍')}${E('👍')}`),
-    text(P.mod, '21:05:02', '提醒：聊天室請勿劇透今晚的電影'),
     sc(P.c, '21:05:20', 'NT$150', '#1e88e5', '#fff', '辛苦了！這週的茶葉介紹超實用'),
     text(P.mem, '21:05:33', `會員表符來一個 ${E('🫖')}`),
+    gift(P.e, '21:05:48', '櫻花雨', '🌸', 3, 150),
     raid(P.raid, '21:06:01'),
-    text(P.d, '21:06:15', '第一次來，請問固定幾點開台？'),
+    deleted(P.d, '21:06:09', '（被管理員刪除的訊息，套件仍保留原內容）'),
     memberEv(P.d, '21:06:40', '新會員', '歡迎加入「茶友」'),
     text(P.raid, '21:06:52', '剛下播帶大家過來，打擾了～'),
     text(P.a, '21:07:05', '歡迎藍鯨的朋友們'),
     text(P.b, '21:07:18', `這首 BGM 是哪一首？${E('🎵')}`),
     text(P.host, '21:07:40', '歌單放在資訊欄囉'),
-    text(P.c, '21:07:55', '收到，謝謝'),
   ].join('');
 
   const tools = (o = {}) => `
     <div class="p-tools">
       <div class="pills" role="tablist" aria-label="訊息分類">
-        <button type="button" class="pill" role="tab" aria-selected="${!o.tab}">全部 1,284</button>
-        <button type="button" class="pill" role="tab" aria-selected="${o.tab === 'sc'}">💰 Super Chat 17</button>
-        <button type="button" class="pill" role="tab" aria-selected="false">✨ 降落 3</button>
+        <button type="button" class="pill" role="tab" aria-label="全部訊息 1,284" aria-selected="${!o.tab}"><span class="lbl-all">全部 </span>1,284</button>
+        <button type="button" class="pill" role="tab" aria-selected="${o.tab === 'sc'}"><span class="pi">💰 </span>SC／禮物 21</button>
+        <button type="button" class="pill" role="tab" aria-selected="${o.tab === 'mem'}"><span class="pi">👑 </span>會員 9</button>
+        <button type="button" class="pill" role="tab" aria-selected="false"><span class="pi">✨ </span>降落 3</button>
       </div>
       <div class="search">
         <div class="field${o.user ? ' has' : ''}">${G.user}${o.user ? `<span class="chip">${o.user} ×</span>` : '<span>過濾使用者 (頻道名稱 / @代碼)...</span>'}</div>
@@ -366,24 +234,26 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
       </div>
     </div>`;
   const pin = (open) => `<div class="pin${open ? ' open' : ''}" role="button" tabindex="0" aria-expanded="${!!open}">${av(P.host)}<span class="tag">置頂</span><span class="txt">今晚 22:00 抽三位茶友送茶包，規則請看資訊欄；聊天室請互相尊重，勿洗版、勿劇透。</span><span class="hint">${open ? '收合 ▲' : '▼'}</span></div>`;
-  const top = (meta) => `<div class="p-top"><span class="mark" aria-hidden="true"></span><span class="ttl">聊天紀錄</span><span class="meta">${meta}</span><button type="button" class="btn danger">關閉優化面板</button></div>`;
+  const top = (meta, close = true) => `<div class="p-top"><span class="mark" aria-hidden="true"></span><span class="ttl">聊天紀錄</span><span class="meta">${meta}</span><button type="button" class="btn icon sm" aria-label="更多選項" title="更多選項">${G.more}</button>${close ? '<button type="button" class="btn danger">關閉優化面板</button>' : ''}</div>`;
   const zone = (parts) => `<div class="native-zone">${parts.map(([px, label]) => `<div class="native" style="height:${px}px">${label}</div>`).join('')}</div>`;
+  const menu = () => `<div class="menu" role="menu"><button type="button" role="menuitem" data-cycle>切換主題<span class="val" data-mode-label></span></button><button type="button" role="menuitem">隱藏已刪除訊息<span class="chk">✓</span></button><hr><button type="button" role="menuitem">在後台開啟此場次<span class="val">↗</span></button></div>`;
 
-  function panel({ w, meta, zoneParts, list, resume, opts, pinOpen, pinned = true }) {
-    return `<div class="panel${w < 350 ? ' narrow' : ''}" style="width:${w}px">${top(meta)}${tools(opts)}${pinned ? pin(pinOpen) : ''}
-      <div class="list">${list}${resume ? '<button type="button" class="resume">↓ 恢復自動捲動</button>' : ''}</div>${zoneParts ? zone(zoneParts) : ''}</div>`;
+  function panel({ w, meta, zoneParts, list, resume, opts, pinOpen, pinned = true, withMenu, auto }) {
+    return `<div class="panel" style="width:${w}px${auto ? ';height:auto' : ''}">${top(meta)}${withMenu ? menu() : ''}${tools(opts)}${pinned ? pin(pinOpen) : ''}
+      <div class="list"${auto ? ' style="overflow:visible"' : ''}>${list}${resume ? '<button type="button" class="resume">↓ 恢復自動捲動</button>' : ''}</div>${zoneParts ? zone(zoneParts) : ''}</div>`;
   }
   const fig = (html, cap) => h(`<figure>${html}<figcaption>${cap}</figcaption></figure>`);
 
   // ---------- 1 直播 ----------
-  const live = $('#live-panels');
-  live.append(
+  $('#live-panels').append(
     fig(panel({ w: 340, meta: '<span class="live-dot"></span>直播中 · 1,284 則', list: LIVE, zoneParts: [[57, 'YouTube 原生輸入列（57px）']] }),
-      '<b>340px</b>（雙欄版面右欄）＋只有輸入列。寬度不足時兩個搜尋框改為上下排列。沒有原生置頂列時，面板自己的置頂卡片是唯一的置頂顯示。'),
+      '<b>340px</b>（雙欄版面右欄）＋只有輸入列。膠囊列「全部」只顯示數字，4 個仍排成一列；兩個搜尋框改為上下排列。'),
     fig(panel({ w: 360, meta: '<span class="live-dot"></span>直播中 · 1,284 則', list: LIVE, resume: true, zoneParts: [[52, 'YouTube 原生置頂列（52px）'], [57, 'YouTube 原生輸入列（57px）']] }),
-      '<b>360px</b>（寬視窗右欄）＋置頂列與輸入列（109px）。面板的置頂卡片預設<b>收合成一行</b>，和下方原生置頂列不會顯得重複；使用者往上捲時出現「↓ 恢復自動捲動」。'),
+      '<b>360px</b>（寬視窗右欄）＋置頂列與輸入列（109px）。面板的置頂卡片預設收合成一行；往上捲時出現「↓ 恢復自動捲動」。'),
     fig(panel({ w: 450, meta: '<span class="live-dot"></span>直播中 · 1,284 則', list: LIVE, zoneParts: [[182, 'YouTube 原生投票卡（182px）'], [57, 'YouTube 原生輸入列（57px）']] }),
-      '<b>450px</b>（單欄版面，聊天室在影片下方）＋投票卡與輸入列（239px）。訊息區變矮，但投票卡完整露出、可以投票。'),
+      '<b>450px</b>（單欄版面）＋投票卡與輸入列（239px）。膠囊列完整顯示文字。'),
+    fig(panel({ w: 300, meta: '<span class="live-dot"></span>直播中', list: LIVE, zoneParts: [[57, 'YouTube 原生輸入列（57px）']] }),
+      '<b>300px</b>（規格最窄寬度，10.5）：膠囊再省略前方圖示，仍排成一列。'),
   );
 
   // ---------- 2 VOD 與其他狀態 ----------
@@ -401,7 +271,6 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
     text(P.c, '1:03:40', '+1 想聽大吉嶺'),
     text(P.host, '1:03:52', '好，下週安排'),
     text(P.d, '1:04:03', '期待'),
-    text(P.a, '1:04:10', '已開啟小鈴鐺'),
   ].join('');
   const KW = [
     text(P.a, '21:04:12', `晚安～今天也準時報到 ${E('🍵')}`),
@@ -411,14 +280,37 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
   ].join('');
   $('#vod-panels').append(
     fig(panel({ w: 360, meta: '重播 · 4,902 則 · 跟隨播放中', list: VOD, pinned: false }),
-      '<b>VOD 重播</b>：沒有底部互動區，面板全高。藍框是目前播放位置的訊息，會平滑移動；點藍色時間碼可跳轉影片。'),
+      '<b>VOD 重播</b>：沒有底部互動區，面板全高。藍框是目前播放位置的訊息；點藍色時間碼可跳轉影片。'),
+    fig(panel({ w: 360, meta: '重播 · 4,902 則', list: VOD, pinned: false, withMenu: true }),
+      '<b>⋯ 選單</b>（只在面板內）：「切換主題」依序 自動 → 淺色 → 深色（可以直接點點看）、「隱藏已刪除訊息」。面板本身不放完整設定。'),
     fig(panel({ w: 360, meta: '<span class="live-dot"></span>直播中 · 1,284 則', list: KW, pinOpen: true, opts: { user: '小麥', kw: '烏龍' }, zoneParts: [[57, 'YouTube 原生輸入列（57px）']] }),
       '<b>置頂卡片展開</b>＋<b>搜尋中</b>：使用者過濾以 chip 顯示（點 × 移除），關鍵字以底色標示。'),
     fig(`<div class="panel" style="width:340px">${top('<span class="live-dot"></span>直播中 · 0 則')}${tools()}<div class="list"><div class="empty"><span class="ico">💬</span><b>還沒有訊息</b><span>有人留言後會顯示在這裡</span></div><div class="empty"><span class="ico">🔍</span><b>找不到符合的訊息</b><span>試試其他關鍵字，或清除篩選</span></div><div class="empty"><span class="ico">⏳</span><b>正在載入聊天紀錄…</b></div></div>${zone([[57, 'YouTube 原生輸入列（57px）']])}</div>`,
-      '<b>空狀態</b>三種（實際一次只出現一種）：尚無訊息、搜尋無結果、載入中。'),
+      '<b>空狀態</b>三種（實際一次只出現一種）。'),
   );
 
-  // ---------- 3 訊息類型 ----------
+  // ---------- 3 待機室與結束後 ----------
+  const PHASE = [
+    phase('直播開始前（待機室）'),
+    text(P.a, '開播前 12:34', '佔位置～今天好早到'),
+    text(P.c, '開播前 8:02', `待機室的 BGM 好好聽 ${E('🎵')}`),
+    text(P.mod, '開播前 1:10', '大家好，再一分鐘開始'),
+    phase('直播中'),
+    text(P.host, '0:00:12', '大家晚安！今天來聊秋季新茶'),
+    text(P.b, '0:00:20', '晚安～'),
+    text(P.a, '0:00:31', '準時報到', ' current'),
+    sys('…（中間略）…'),
+    text(P.host, '2:03:48', '今天就到這裡，謝謝大家'),
+    phase('直播結束後'),
+    text(P.d, '結束後 0:42', '辛苦了，晚安'),
+    text(P.mem, '結束後 3:05', `下週見 ${E('👋')}`),
+  ].join('');
+  $('#phase-panels').append(
+    fig(panel({ w: 360, meta: '重播 · 3,977 則 · 跟隨播放中', list: PHASE, pinned: false, auto: true }),
+      '在重播時查看：開播前與結束後的訊息完整保留，但不參與跟隨與跳轉（藍框只會落在「直播中」段）。後台場次清單的覆蓋範圍也包含這兩段。'),
+  );
+
+  // ---------- 4 訊息類型 ----------
   const col = (title, html) => h(`<figure><div class="panel" style="width:360px;height:auto"><div class="p-top"><span class="ttl">${title}</span></div><div class="list" style="overflow:visible">${html}</div></div></figure>`);
   $('#types').append(
     col('一般與身分', [
@@ -428,76 +320,99 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
       text(P.mem, '21:05:33', `會員的訊息與會員表符 ${E('🫖')}`),
       text(P.raid, '21:06:52', '其他實況主（認證頻道）的發言'),
       raid(P.raid, '21:06:01'),
-      sys('聊天室已開啟慢速模式（系統訊息）'),
-      sys('未知類型的訊息會以系統訊息保存，不會丟失'),
     ].join('')),
-    col('Super Chat 與超級貼圖', [
+    col('💰 SC／禮物', [
       sc(P.c, '21:05:20', 'NT$75', '#00bfa5', '#000', '小額支持'),
       sc(P.b, '21:08:11', 'NT$150', '#1e88e5', '#fff', '這週的茶葉介紹超實用'),
       sc(P.a, '21:10:45', 'NT$750', '#ffca28', '#000', '生日快樂！祝頻道越來越好'),
       sc(P.d, '21:15:02', 'NT$3,000', '#d81b60', '#fff', '感謝一直以來的陪伴'),
       sticker(P.mem, 'NT$150', '#1e88e5', '#fff', '🍡'),
+      gift(P.e, '21:05:48', '櫻花雨', '🌸', 3, 150),
+      gift(P.b, '21:16:20', '熱茶一杯', '🍵', 1, 0),
     ].join('')),
-    col('會員相關', [
+    col('👑 會員', [
       memberEv(P.d, '21:06:40', '新會員', '歡迎加入「茶友」'),
       memberEv(P.mem, '21:09:12', '會員里程碑', '已加入 14 個月', `<div>一年多了，謝謝主播 ${E('🫖')}</div>`),
       memberEv(P.c, '21:11:30', '贈送會員', '送出 5 份「茶友」會員資格'),
       memberEv(P.a, '21:11:33', '收到會員', '收到 柚子茶 贈送的會員資格'),
     ].join('')),
+    col('已刪除與系統', [
+      deleted(P.d, '21:06:09', '被管理員刪除的訊息：保留原內容、淡色加刪除線'),
+      deleted(P.b, '21:13:40', `含表符的已刪除訊息 ${E('😅')}`),
+      sys('聊天室已開啟慢速模式（系統訊息）'),
+      sys('未知類型的訊息會以系統訊息保存，不會丟失（之後可重新分類）'),
+    ].join('')),
   );
 
-  // ---------- 4 開關按鈕與劇院模式 ----------
+  // ---------- 5 開關按鈕與劇院模式 ----------
   const hdr = (btn) => `<div class="native-hdr"><span>重點聊天室訊息 ▾</span><span class="grow"></span>${btn}<span class="native-ico" title="YouTube 原生選單">⋮</span><span class="native-ico" title="YouTube 原生關閉">✕</span></div>`;
   const chatBody = (hgt) => `<div class="native" style="height:${hgt}px;border-top:0">YouTube 原生聊天室</div>`;
   $('#switches').append(
     fig(`<div class="ctx"><div><div class="native native-video">影片（套件不放任何元素）</div></div><div>${hdr(`<button type="button" class="btn icon" aria-label="開啟優化面板" title="開啟優化面板">${G.panel}</button><span class="tip">開啟優化面板</span>`)}${chatBody(150)}</div></div>`,
-      '<b>位置 1：聊天室頂部列</b>，⋮ 的左邊。小型圖示按鈕，滑鼠移上去顯示提示文字「開啟優化面板」。聊天室展開、面板關閉時使用。'),
+      '<b>位置 1：聊天室頂部列</b>，⋮ 的左邊。小型圖示按鈕，滑鼠移上去顯示提示文字「開啟優化面板」。'),
     fig(`<div class="ctx"><div><div class="native native-video">影片（套件不放任何元素）</div><div class="teaser"><span>💬 聊天室　加入對話…</span><span class="grow"></span><span class="native-btn">開啟面板</span><button type="button" class="btn primary">開啟優化面板</button></div></div><div><div class="native" style="height:198px">聊天室已關閉</div></div></div>`,
-      '<b>位置 2：影片下方「聊天室」卡片</b>，原生「開啟面板」的右邊，同高並排。聊天室被 ✕ 關閉後由這裡開啟；點擊會先展開聊天室再開啟面板。'),
+      '<b>位置 2：影片下方「聊天室」卡片</b>，原生「開啟面板」的右邊。點擊會先展開聊天室再開啟面板。'),
     fig(`<div class="ctx" style="grid-template-columns:1fr"><div style="max-width:360px">${top('<span class="live-dot"></span>直播中 · 1,284 則')}</div></div>`,
-      '<b>位置 3：面板自己的頂部列</b>，紅色「關閉優化面板」。面板開啟時原生頂部列被面板蓋住，所以關閉鈕必須在面板內。'),
+      '<b>位置 3：面板自己的頂部列</b>，紅色「關閉優化面板」；旁邊是 ⋯ 選單。'),
     fig(`<div class="ctx"><div><div class="native native-video">影片（劇院模式，套件不放任何元素）</div><div class="teaser"><span>💬 聊天室　加入對話…</span><span class="grow"></span><span class="native-btn">開啟面板</span><button type="button" class="btn quiet" disabled>優化面板（劇院模式不可用）</button></div></div><div style="align-self:end">${hdr(`<button type="button" class="btn icon" disabled aria-label="劇院模式下無法使用優化面板" title="劇院模式下無法使用優化面板">${G.panel}</button><span class="tip">劇院模式下無法使用優化面板</span>`)}${chatBody(104)}</div></div>`,
-      '<b>劇院模式退讓</b>：YouTube 把聊天室壓成 402×152 的小框（這裡依比例示意），連原生輸入列都被擠出畫面。套件不顯示面板、不動原生聊天室，<b>仍持續存檔</b>。兩顆按鈕都是低調的停用樣式（虛線、淡色），不用紅色。切回一般版面後自動恢復。'),
+      '<b>劇院模式退讓</b>：套件不顯示面板、不動原生聊天室，<b>仍持續存檔</b>。兩顆按鈕都是低調的停用樣式（虛線、淡色），不用紅色。'),
   );
 
-  // ---------- 5 後台檢視器 ----------
-  const sess = (t, ch, d, n, live, cur) => `<div class="sess" ${cur ? 'aria-current="true"' : ''}><div class="t">${t}</div><div class="m"><span>${ch}</span><span>${d}</span><span>${n} 則</span><span class="tagx ${live ? 'live' : 'vod'}">${live ? '直播' : '重播'}</span></div></div>`;
+  // ---------- 6 後台檢視器 ----------
+  // 覆蓋範圍：0～100% 代表 開播前 → 直播 → 結束後；segs = [類別, 起%, 寬%]
+  const cov = (segs) => `<div class="cov" role="img" aria-label="收錄覆蓋範圍">${segs.map(([k, l, w]) => `<i class="c-${k}" style="left:${l}%;width:${w}%"></i>`).join('')}</div>`;
+  const sess = (t, ch, d, n, live, cap, segs, cur) => `<div class="sess" ${cur ? 'aria-current="true"' : ''}><div class="t">${t}</div><div class="m"><span>${ch}</span><span>${d}</span><span>${n} 則</span><span class="tagx ${live ? 'live' : 'vod'}">${live ? '直播' : '重播'}</span></div><div class="cap">${cap}</div>${cov(segs)}</div>`;
+  const legend = `<div class="cov-legend"><span><b style="background:var(--ytcas-text-3)"></b>開播前／結束後</span><span><b style="background:var(--ytcas-accent)"></b>直播中收錄</span><span><b style="background:var(--ytcas-timecode)"></b>重播補收</span><span>空白＝沒開分頁</span></div>`;
   $('#viewer').append(
     fig(`<div class="viewer"><div class="side"><div class="field">${G.search}<span>搜尋場次...</span></div>
-      ${sess('【茶館夜談】凍頂烏龍怎麼泡才好喝', '星野茶館', '11/14', '1,284', true, true)}
-      ${sess('紅茶入門：從大吉嶺開始', '星野茶館', '11/07', '4,902', false)}
-      ${sess('深夜讀書會 #32', '藍鯨工作室', '11/05', '12,037', false)}
-      ${sess('週末閒聊＋觀眾點歌', '藍鯨工作室', '11/01', '8,410', false)}
-      ${sess('新手村：器具開箱', '星野茶館', '10/24', '2,655', false)}</div>
-      <div class="vmain"><div class="actions"><span class="ttl">【茶館夜談】凍頂烏龍怎麼泡才好喝</span><button type="button" class="btn">匯入 JSON</button><button type="button" class="btn">匯出 HTML</button><button type="button" class="btn">匯出 JSON</button><button type="button" class="btn ghost-danger">刪除</button></div>
+      <div class="sess-list">
+      ${sess('【茶館夜談】凍頂烏龍怎麼泡才好喝', '星野茶館', '11/14', '1,284', true, '直播收錄 2 次', [['edge', 0, 6], ['live', 6, 30], ['live', 48, 30]], true)}
+      ${sess('紅茶入門：從大吉嶺開始', '星野茶館', '11/07', '4,902', false, '直播收錄 1 次・重播 1 次', [['edge', 2, 6], ['live', 8, 40], ['replay', 48, 44], ['edge', 92, 5]])}
+      ${sess('深夜讀書會 #32', '藍鯨工作室', '11/05', '12,037', false, '重播 1 次', [['replay', 8, 84]])}
+      ${sess('週末閒聊＋觀眾點歌', '藍鯨工作室', '11/01', '8,410', false, '直播收錄 3 次・重播 2 次', [['edge', 0, 8], ['live', 8, 84], ['edge', 92, 8]])}
+      </div>
+      <div class="settings"><span class="lbl">主題</span>${segHtml('主題')}</div></div>
+      <div class="vmain"><div class="actions"><span class="ttl">【茶館夜談】凍頂烏龍怎麼泡才好喝</span><button type="button" class="btn">匯入 JSON</button><button type="button" class="btn">匯出 HTML</button><button type="button" class="btn">匯出 JSON</button><button type="button" class="btn">清空後重新收錄</button><button type="button" class="btn ghost-danger">刪除</button></div>
+      <div style="padding:6px 12px;border-bottom:1px solid var(--ytcas-border)">${legend}</div>
       ${tools()}${pin(false)}<div class="list">${LIVE}</div></div></div>`,
-      '寬度 ≥ 1024px 為雙欄（側欄 280px）；較窄時側欄收成抽屜。後台另有「系統／淺色／深色」主題切換。'),
+      '第一個場次中間有一段空白：那段時間沒開著分頁，所以沒有收錄。重複進入同一場只會補進缺的訊息，場次清單始終只有一筆。'),
+    fig(`<div class="dialog" role="alertdialog" aria-label="清空此場次後重新收錄"><b>清空此場次，重新收錄？</b><p class="sub" style="margin:8px 0 0">「【茶館夜談】凍頂烏龍怎麼泡才好喝」已保存的 1,284 則訊息與收錄紀錄會被刪除，之後開著這場直播或重播時從頭收錄。<b>開播前與結束後的訊息無法從重播找回。</b></p><label class="confirm"><input type="checkbox"> 我了解已刪除的訊息無法復原</label><div class="acts"><button type="button" class="btn">取消</button><button type="button" class="btn danger">清空並重新收錄</button></div></div>`,
+      '「清空此場次後重新收錄」的二次確認：需勾選後才能按（只出現在後台分頁內）。'),
     fig(`<div class="dialog" role="alertdialog" aria-label="刪除場次"><b>刪除這個場次？</b><p class="sub" style="margin:8px 0 0">「紅茶入門：從大吉嶺開始」的 4,902 則訊息會從這台電腦永久刪除，無法復原。</p><div class="acts"><button type="button" class="btn">取消</button><button type="button" class="btn danger">刪除</button></div></div>`,
-      '刪除確認對話框（只出現在後台分頁內）。'),
+      '刪除確認對話框。'),
   );
 
-  // ---------- 6 popup ----------
+  // ---------- 7 popup ----------
   const recent = (t, m) => `<div class="kv"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span><span class="sub" style="flex:none">${m}</span></div>`;
+  const popTheme = `<div class="sec" style="border-bottom:0"><div class="kv"><span>主題</span>${segHtml('主題')}</div></div>`;
   $('#popup').append(
     fig(`<div class="popup"><div class="sec"><div class="sub"><span class="live-dot"></span>正在保存這個分頁的聊天室</div><div class="big">1,284 則</div><div class="sub">【茶館夜談】凍頂烏龍怎麼泡才好喝</div></div>
       <div class="sec"><button type="button" class="btn primary">開啟檢視器</button><div class="kv" style="margin-top:8px"><span>在這個頁面顯示優化面板</span><span class="switch" role="switch" aria-checked="true" aria-label="顯示優化面板"></span></div><div class="kv"><span>鍵盤快速鍵</span><span class="switch" role="switch" aria-checked="true" aria-label="鍵盤快速鍵"></span></div></div>
-      <div class="sec" style="border-bottom:0"><b>最近的場次</b>${recent('紅茶入門：從大吉嶺開始', '11/07 · 4,902')}${recent('深夜讀書會 #32', '11/05 · 12,037')}${recent('週末閒聊＋觀眾點歌', '11/01 · 8,410')}${recent('新手村：器具開箱', '10/24 · 2,655')}${recent('秋季新茶試飲', '10/17 · 3,120')}</div></div>`,
-      '在直播頁開啟時。這裡也是面板開關的備援位置（頂部列與卡片都找不到時）。'),
-    fig(`<div class="popup"><div class="sec"><div class="sub">這個分頁沒有聊天室</div><div class="big">—</div></div><div class="sec" style="border-bottom:0"><button type="button" class="btn primary">開啟檢視器</button></div></div>`,
+      <div class="sec"><b>最近的場次</b>${recent('紅茶入門：從大吉嶺開始', '11/07 · 4,902')}${recent('深夜讀書會 #32', '11/05 · 12,037')}${recent('週末閒聊＋觀眾點歌', '11/01 · 8,410')}${recent('新手村：器具開箱', '10/24 · 2,655')}${recent('秋季新茶試飲', '10/17 · 3,120')}</div>${popTheme}</div>`,
+      '在直播頁開啟時。底部是主題設定。'),
+    fig(`<div class="popup"><div class="sec"><div class="sub">這個分頁沒有聊天室</div><div class="big">—</div></div><div class="sec"><button type="button" class="btn primary">開啟檢視器</button></div>${popTheme}</div>`,
       '不在有聊天室的影片頁時。'),
   );
 
-  // ---------- 7 token 色票 ----------
-  const TOKENS = ['bg', 'surface', 'surface-2', 'border', 'text', 'text-2', 'text-3', 'accent', 'accent-hover', 'accent-soft', 'timecode', 'current-ring', 'highlight', 'raid', 'raid-soft', 'member', 'owner', 'moderator', 'danger'];
+  // ⋯ 選單的「切換主題」
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-cycle]')) return;
+    theme.cycle();
+    try { localStorage.setItem('ytcas-d2-themeMode', theme.mode); } catch (_) { /* 略過 */ }
+  });
+  const syncMenu = () => document.querySelectorAll('[data-mode-label]').forEach((s) => { s.textContent = '目前：' + NAMES[theme.mode]; });
+
+  // ---------- 8 token 色票 ----------
+  const TOKENS = ['bg', 'surface', 'surface-2', 'border', 'text', 'text-2', 'text-3', 'accent', 'accent-hover', 'accent-soft', 'on-accent', 'timecode', 'current-ring', 'highlight', 'raid', 'raid-soft', 'gift', 'gift-soft', 'member', 'owner', 'moderator', 'danger'];
   function renderSwatches() {
+    syncMenu();
     const box = $('#swatches');
     if (!box) return;
     const cs = getComputedStyle(root);
     box.replaceChildren(...TOKENS.map((t) => h(`<div class="sw"><i style="background:var(--ytcas-${t})"></i><span>--ytcas-${t}<br>${cs.getPropertyValue('--ytcas-' + t).trim()}</span></div>`)));
   }
 
-  apply('dir', load('dir', 'a'));
-  apply('theme', load('theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  sync();
 })();
 </script>
 </body>

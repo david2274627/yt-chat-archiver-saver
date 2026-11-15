@@ -1,0 +1,185 @@
+/*
+ * 元件樣式（SPEC 10.4，D2 定稿：方向 B「柔和現代感」，規格 v27）
+ * - viewer（內嵌／後台）、popup 共用；design/mockups.html 直接載入本檔，確保設計稿與實作一致。
+ * - 只能使用 tokens.css 的變數；Super Chat 底色由訊息資料以 inline style 提供（規格例外）。
+ */
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--ytcas-bg); color: var(--ytcas-text); font: var(--ytcas-fs-md)/var(--ytcas-line) var(--ytcas-font); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ytcas-focus-ring); outline-offset: 2px; }
+.glyph { width: 16px; height: 16px; display: block; }
+
+/* ---------- 按鈕 ---------- */
+.btn { border: 1px solid var(--ytcas-border); background: var(--ytcas-surface); border-radius: var(--ytcas-radius-pill); padding: 5px 12px;
+  cursor: pointer; white-space: nowrap; transition: background var(--ytcas-dur) var(--ytcas-ease); }
+.btn:hover { background: var(--ytcas-surface-2); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--ytcas-accent); border-color: var(--ytcas-accent); color: var(--ytcas-on-accent); font-weight: 700; }
+.btn.primary:hover { background: var(--ytcas-accent-hover); }
+.btn.danger { background: var(--ytcas-danger); border-color: var(--ytcas-danger); color: var(--ytcas-on-danger); font-weight: 700; font-size: var(--ytcas-fs-sm); padding: 4px 10px; }
+.btn.ghost-danger { color: var(--ytcas-danger); }
+.btn.quiet[disabled] { background: transparent; color: var(--ytcas-text-3); border-style: dashed; cursor: not-allowed; }
+.btn.icon { width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center; border-radius: 50%; }
+.btn.icon.sm { width: 26px; height: 26px; border-color: transparent; background: transparent; }
+.btn.icon.sm:hover { background: var(--ytcas-surface-2); }
+.btn.icon[disabled] { color: var(--ytcas-text-3); border-style: dashed; background: transparent; cursor: not-allowed; }
+
+/* ---------- 分段按鈕（主題設定：自動／淺色／深色） ---------- */
+.seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--ytcas-surface-2); border-radius: var(--ytcas-radius-pill); }
+.seg button { border: 0; background: transparent; padding: 4px 12px; border-radius: var(--ytcas-radius-pill); cursor: pointer; color: var(--ytcas-text-2); white-space: nowrap; }
+.seg button:hover { color: var(--ytcas-text); }
+.seg button[aria-pressed="true"] { background: var(--ytcas-surface); color: var(--ytcas-accent); font-weight: 700; box-shadow: var(--ytcas-shadow-1); }
+
+/* ---------- 內嵌面板 ---------- */
+.panel { height: 594px; display: flex; flex-direction: column; position: relative; background: var(--ytcas-surface); color: var(--ytcas-text);
+  border-radius: var(--ytcas-radius-md); overflow: hidden; box-shadow: var(--ytcas-shadow-1); }
+.p-top { flex: none; display: flex; align-items: center; gap: var(--ytcas-space-1); padding: 6px var(--ytcas-space-2) 6px var(--ytcas-space-3);
+  border-bottom: 1px solid var(--ytcas-border); }
+.p-top .mark { width: 18px; height: 18px; border-radius: 6px; background: var(--ytcas-accent); flex: none; position: relative; margin-right: 4px; }
+.p-top .mark::after { content: ""; position: absolute; left: 4px; bottom: -3px; border: 4px solid transparent; border-top-color: var(--ytcas-accent); border-left-color: var(--ytcas-accent); }
+.p-top .ttl { font-weight: 700; white-space: nowrap; }
+.p-top .meta { flex: 1; min-width: 0; color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ytcas-danger); margin-right: 4px; }
+
+/* ⋯ 選單（只出現在面板內，10.1 原則 6） */
+.menu { position: absolute; z-index: 2; right: 8px; top: 40px; min-width: 210px; padding: 4px; background: var(--ytcas-surface);
+  border-radius: var(--ytcas-radius-sm); box-shadow: var(--ytcas-shadow-2); }
+.menu button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border: 0; background: transparent;
+  border-radius: 6px; cursor: pointer; text-align: left; }
+.menu button:hover { background: var(--ytcas-surface-2); }
+.menu .val { color: var(--ytcas-text-3); font-size: var(--ytcas-fs-sm); }
+.menu .chk { color: var(--ytcas-accent); font-weight: 700; }
+.menu hr { border: 0; border-top: 1px solid var(--ytcas-border); margin: 4px 6px; }
+
+/* 頂部工具區：膠囊列 → 雙搜尋列 */
+.p-tools { flex: none; padding: var(--ytcas-space-2) var(--ytcas-space-2) 6px; display: grid; gap: 6px; border-bottom: 1px solid var(--ytcas-border);
+  container-type: inline-size; }
+.pills { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.pills::-webkit-scrollbar { display: none; }
+.pill { flex: none; border: 0; background: var(--ytcas-surface-2); color: var(--ytcas-text-2); border-radius: var(--ytcas-radius-pill);
+  padding: 3px 10px; font-size: var(--ytcas-fs-sm); cursor: pointer; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pill:hover { color: var(--ytcas-text); }
+.pill[aria-selected="true"] { background: var(--ytcas-accent-soft); color: var(--ytcas-accent); font-weight: 700; }
+/* 4 個膠囊在窄面板仍單列（SPEC F-05）。條件以工具區內容寬度判斷（面板寬 − 16px）：
+   - ≤ 360px（面板 ≤ 376px，含 340／360px）：「全部」只顯示數字、縮短內距與間距
+   - ≤ 300px（面板 ≤ 316px，最窄 300px）：再隱藏膠囊前的圖示
+   - 仍放不下時（字型差異）膠囊列可水平捲動，不換行 */
+@container (max-width: 360px) {
+  .pills { gap: 4px; }
+  .pill { padding: 3px 8px; }
+  .pill .lbl-all { display: none; }
+}
+@container (max-width: 300px) { .pill .pi { display: none; } }
+.search { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+@container (max-width: 340px) { .search { grid-template-columns: 1fr; } }
+.field { display: flex; align-items: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; background: var(--ytcas-surface-2);
+  border: 1px solid transparent; border-radius: var(--ytcas-radius-sm); color: var(--ytcas-text-3); font-size: var(--ytcas-fs-sm); }
+.field span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.field.has { border-color: var(--ytcas-accent); color: var(--ytcas-text); background: var(--ytcas-surface); }
+.chip { display: inline-flex; gap: 4px; align-items: center; background: var(--ytcas-accent-soft); color: var(--ytcas-accent); border-radius: var(--ytcas-radius-pill); padding: 0 6px; font-weight: 700; }
+
+/* 置頂卡片（F-07） */
+.pin { flex: none; margin: 6px var(--ytcas-space-2) 0; padding: 5px 8px; display: flex; gap: 6px; align-items: flex-start; cursor: pointer;
+  background: var(--ytcas-surface); border-radius: var(--ytcas-radius-sm); box-shadow: var(--ytcas-shadow-1); font-size: var(--ytcas-fs-sm); }
+.pin .tag { flex: none; color: var(--ytcas-owner); font-weight: 700; }
+.pin .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ytcas-text-2); }
+.pin.open .txt { white-space: normal; color: var(--ytcas-text); }
+.pin .hint { flex: none; color: var(--ytcas-text-3); }
+
+/* ---------- 訊息列 ---------- */
+.list { flex: 1; min-height: 0; overflow: hidden; position: relative; padding: 4px 0; }
+.msg { display: flex; gap: 8px; padding: var(--ytcas-row-pad); align-items: flex-start; }
+.msg:hover { background: var(--ytcas-surface-2); }
+.av { flex: none; width: var(--ytcas-avatar); height: var(--ytcas-avatar); border-radius: 50%; display: grid; place-items: center;
+  font-size: var(--ytcas-fs-xs); font-weight: 700; color: var(--ytcas-on-accent); background: var(--ytcas-text-3); }
+.body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tc { font: var(--ytcas-fs-xs)/1 var(--ytcas-font-mono); color: var(--ytcas-timecode); background: none; border: 0; padding: 0; margin-right: 6px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.tc:hover { text-decoration: underline; }
+/* pre／post 段的時間碼：純文字、不可點擊（F-14） */
+.tc.static { color: var(--ytcas-text-3); cursor: default; font-family: var(--ytcas-font); }
+.tc.static:hover { text-decoration: none; }
+.nm { font-weight: 700; margin-right: 4px; cursor: pointer; }
+.hd { color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); margin-right: 6px; }
+.bdg { display: inline-block; font-size: 10px; line-height: 16px; padding: 0 6px; border-radius: var(--ytcas-radius-pill); margin-right: 6px; font-weight: 700; vertical-align: 1px; background: var(--ytcas-surface-2); }
+.bdg.owner { color: var(--ytcas-owner); } .bdg.mod { color: var(--ytcas-moderator); } .bdg.member { color: var(--ytcas-member); }
+.bdg.raid { color: var(--ytcas-raid); background: var(--ytcas-raid-soft); } .bdg.gift { color: var(--ytcas-gift); background: var(--ytcas-gift-soft); }
+.bdg.del { color: var(--ytcas-text-3); background: transparent; border: 1px solid var(--ytcas-border); }
+.nm.owner { color: var(--ytcas-owner); } .nm.mod { color: var(--ytcas-moderator); } .nm.member { color: var(--ytcas-member); }
+.emo { display: inline-grid; place-items: center; width: var(--ytcas-emoji); height: var(--ytcas-emoji); border-radius: 5px; background: var(--ytcas-surface-2); font-size: 13px; vertical-align: -4px; margin: 0 1px; }
+mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; padding: 0 1px; }
+.msg.current { box-shadow: inset 0 0 0 2px var(--ytcas-current-ring); border-radius: var(--ytcas-radius-sm); background: var(--ytcas-accent-soft); }
+.msg.raid { background: var(--ytcas-raid-soft); box-shadow: inset 3px 0 0 var(--ytcas-raid); }
+.msg.member-ev { box-shadow: inset 3px 0 0 var(--ytcas-member); }
+.msg.sys { color: var(--ytcas-text-3); font-size: var(--ytcas-fs-sm); }
+.msg.sys .av { background: transparent; border: 1px dashed var(--ytcas-border); color: var(--ytcas-text-3); }
+/* 已刪除訊息（F-14）：保留原內容，降低對比並加刪除線 */
+.msg.deleted .content { color: var(--ytcas-text-3); text-decoration: line-through; }
+.msg.deleted .av { opacity: .55; }
+.sub { color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
+
+/* Super Chat／超級貼圖卡：底色來自訊息資料 */
+.card { margin: 4px 10px; border-radius: var(--ytcas-radius-md); overflow: hidden; box-shadow: var(--ytcas-shadow-1); }
+.card .hd-row { display: flex; gap: 8px; align-items: center; padding: 6px 10px; }
+.card .hd-row .amt { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card .tx { padding: 6px 10px; }
+.card .stk { width: 72px; height: 72px; margin: 6px 10px 8px; border-radius: 12px; display: grid; place-items: center; font-size: 40px; background: var(--ytcas-surface-2); }
+.card .av { background: var(--ytcas-overlay); }
+
+/* 禮物卡（F-13）：淡底＋左側色條，與 SC 的等級色實心卡區分 */
+.giftcard { margin: 4px 10px; display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--ytcas-radius-md);
+  background: var(--ytcas-gift-soft); box-shadow: inset 3px 0 0 var(--ytcas-gift); }
+.giftcard .gimg { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 26px; background: var(--ytcas-surface); }
+.giftcard .ginfo { flex: 1; min-width: 0; }
+.giftcard .gname { color: var(--ytcas-gift); font-weight: 700; }
+.giftcard .jw { flex: none; color: var(--ytcas-gift); font-size: var(--ytcas-fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* 時段分隔線（F-14）：直播開始前（待機室）／直播中／直播結束後 */
+.phase { display: flex; align-items: center; gap: 8px; margin: 8px 12px; color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); font-weight: 700; }
+.phase::before, .phase::after { content: ""; flex: 1; border-top: 1px solid var(--ytcas-border); }
+.phase span { padding: 1px 8px; border-radius: var(--ytcas-radius-pill); background: var(--ytcas-surface-2); white-space: nowrap; }
+
+.resume { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: var(--ytcas-accent); color: var(--ytcas-on-accent);
+  border: 0; border-radius: var(--ytcas-radius-pill); padding: 5px 14px; font-weight: 700; font-size: var(--ytcas-fs-sm); box-shadow: var(--ytcas-shadow-2); cursor: pointer; white-space: nowrap; }
+.empty { display: grid; place-items: center; gap: 6px; padding: var(--ytcas-space-6); color: var(--ytcas-text-3); text-align: center; }
+.empty .ico { width: 40px; height: 40px; border-radius: 50%; background: var(--ytcas-surface-2); display: grid; place-items: center; font-size: 18px; }
+
+/* ---------- 後台檢視器 ---------- */
+.viewer { width: 100%; max-width: 1040px; height: 600px; display: grid; grid-template-columns: 280px 1fr; background: var(--ytcas-surface);
+  border-radius: var(--ytcas-radius-md); overflow: hidden; box-shadow: var(--ytcas-shadow-1); }
+.side { border-right: 1px solid var(--ytcas-border); background: var(--ytcas-bg); display: flex; flex-direction: column; min-height: 0; }
+.side .field { margin: var(--ytcas-space-3); background: var(--ytcas-surface); }
+.side .sess-list { flex: 1; min-height: 0; overflow: hidden; }
+.sess { padding: 8px var(--ytcas-space-3); border-top: 1px solid var(--ytcas-border); cursor: pointer; }
+.sess[aria-current="true"] { background: var(--ytcas-accent-soft); box-shadow: inset 3px 0 0 var(--ytcas-accent); }
+.sess .t { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sess .m { color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); display: flex; flex-wrap: wrap; gap: 0 6px; font-variant-numeric: tabular-nums; }
+.sess .cap { color: var(--ytcas-text-2); font-size: var(--ytcas-fs-xs); margin-top: 2px; }
+.tagx { font-size: 10px; padding: 0 6px; border-radius: var(--ytcas-radius-pill); background: var(--ytcas-surface-2); }
+.tagx.live { color: var(--ytcas-danger); } .tagx.vod { color: var(--ytcas-text-2); }
+/* 覆蓋範圍條（F-14）：整條代表 開播前 → 直播 → 結束後；有色段為實際收錄的時段，空白為沒開分頁的空檔 */
+.cov { position: relative; height: 6px; margin-top: 5px; border-radius: var(--ytcas-radius-pill); background: var(--ytcas-surface-2); overflow: hidden; }
+.cov i { position: absolute; top: 0; bottom: 0; }
+.cov .c-live { background: var(--ytcas-accent); }
+.cov .c-replay { background: var(--ytcas-timecode); }
+.cov .c-edge { background: var(--ytcas-text-3); }
+.cov-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: var(--ytcas-fs-xs); color: var(--ytcas-text-2); }
+.cov-legend b { display: inline-block; width: 10px; height: 6px; border-radius: 3px; margin-right: 4px; vertical-align: 1px; }
+.side .settings { border-top: 1px solid var(--ytcas-border); padding: var(--ytcas-space-3); display: grid; gap: 6px; }
+.side .settings .lbl { font-size: var(--ytcas-fs-xs); color: var(--ytcas-text-2); font-weight: 700; }
+.vmain { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: var(--ytcas-space-2); align-items: center; padding: var(--ytcas-space-2) var(--ytcas-space-3); border-bottom: 1px solid var(--ytcas-border); }
+.actions .ttl { font-weight: 700; margin-right: auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- popup（寬 360px） ---------- */
+.popup { width: 360px; background: var(--ytcas-surface); border-radius: var(--ytcas-radius-md); box-shadow: var(--ytcas-shadow-2); overflow: hidden; }
+.popup .sec { padding: var(--ytcas-space-3) var(--ytcas-space-4); border-bottom: 1px solid var(--ytcas-border); }
+.popup .big { font-size: var(--ytcas-fs-xl); font-weight: 700; font-variant-numeric: tabular-nums; }
+.popup .btn.primary { width: 100%; padding: 9px; border-radius: var(--ytcas-radius-sm); }
+.kv { display: flex; justify-content: space-between; align-items: center; gap: var(--ytcas-space-2); padding: 4px 0; }
+.switch { width: 34px; height: 20px; border-radius: 999px; background: var(--ytcas-accent); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--ytcas-on-accent); }
+
+/* ---------- 對話框（只出現在後台分頁內） ---------- */
+.dialog { width: 340px; padding: var(--ytcas-space-4); background: var(--ytcas-surface); border-radius: var(--ytcas-radius-md); box-shadow: var(--ytcas-shadow-2); }
+.dialog .acts { display: flex; justify-content: flex-end; gap: var(--ytcas-space-2); margin-top: var(--ytcas-space-4); }
+.dialog .confirm { display: flex; gap: 6px; align-items: center; margin-top: var(--ytcas-space-3); font-size: var(--ytcas-fs-sm); color: var(--ytcas-text-2); }

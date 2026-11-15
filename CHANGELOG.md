@@ -41,7 +41,8 @@
 - D1 設計稿 `design/mockups.html`：方向 A「沉穩工具感」／方向 B「柔和現代感」× 淺色／深色（commit `3a6690b`）。**使用者 2026-11-15 選定方向 B**。
 - v27（`docs/review-2026-11-15-3.md`）：
   - 規格 v27、附錄 D 訊息元件清單腳本、test-checklist（commit `70ce55c`）。
-  - D2 `tokens.css` 定稿（方向 B 淺色／深色、`prefers-reduced-motion`）、`src/theme.js` 主題系統、`constants.js` 加入 `GIFT`／`THEME`、`tools/check-contrast.js`（48 組對比度全數通過）（本段落所在的 commit）。
+  - D2 `tokens.css` 定稿（方向 B 淺色／深色、`prefers-reduced-motion`）、`src/theme.js` 主題系統、`constants.js` 加入 `GIFT`／`THEME`、`tools/check-contrast.js`（48 組對比度全數通過）（commit `be1161f`）。
+  - D2 設計稿更新：只保留方向 B，載入套件的 `tokens.css`／`components.css`／`theme.js`；正式「自動／淺色／深色」按鈕（自動即時跟隨系統）；禮物、「👑 會員」膠囊（300～450px 單列）、已刪除訊息、待機室／結束後分隔線、⋯ 選單、場次收錄次數與覆蓋範圍、清空重錄確認、後台與 popup 主題設定；新增 `src/styles/components.css`；對比度檢查增加徽章組合為 58 組，淺色 `owner`／`member` 加深以通過（本段落所在的 commit；⏸ 等待使用者視覺確認）。
 
 ### 規格 v27（2026-11-15，依 `docs/review-2026-11-15-3.md`）
 - **D1 選定方向 B「柔和現代感」**；10.9 填入已選定方向；10.3 圓角改為 8／14px，新增 `--ytcas-on-accent`、`--ytcas-on-danger`、`--ytcas-gift`、`--ytcas-gift-soft`。
