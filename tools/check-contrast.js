@@ -27,7 +27,7 @@ const PAIRS = [
   ['gift', 'gift-soft', 4.5, '禮物標籤'], ['text', 'gift-soft', 4.5, '禮物卡本文'],
   ['text', 'highlight', 4.5, '搜尋 mark'], ['text-3', 'bg', 3, '提示文字（頁面底）'],
   ['owner', 'surface-2', 4.5, '主播徽章'], ['moderator', 'surface-2', 4.5, '管理員徽章'], ['member', 'surface-2', 4.5, '會員徽章'],
-  ['accent', 'surface-2', 4.5, '分段按鈕外的強調文字（輸入框底）'], ['text-3', 'raid-soft', 3, '降落列提示文字'],
+  ['accent', 'surface-2', 4.5, '強調色文字（輸入框底）'], ['text-3', 'raid-soft', 3, '降落列提示文字'],
   ['current-ring', 'surface', 3, 'VOD 當前藍框（非文字）'], ['focus-ring', 'surface', 3, 'focus 外框（非文字）'],
 ];
 let fail = 0;
