@@ -1,0 +1,601 @@
+Holodex+：停用
+步驟 1 頂部列「PoC 測試」在 ⋮ 左邊 是；自動露出 109px（自動）；剛好 是 ；手動調整後＿＿px；Alt+Shift+D：（貼上）
+步驟 3 投票卡完整露出、可投票  否；Alt+Shift+D：（貼上）
+
+{
+ "poc": "v24.1",
+ "chrome": "157.0.0.0",
+ "time": "2026-11-15T02:39:35.526Z",
+ "layout": {
+  "frameParent": "div#chat-container < div#secondary-inner",
+  "frameAttrs": [
+   "id=chat",
+   "class=style-scope ytd-watch-flexy ytcas-poc-fr",
+   "modern-buttons",
+   "rounded-container",
+   "round-background"
+  ],
+  "flexyAttrs": [
+   "class=style-scope ytd-page-manager watch-root-",
+   "reduced-top-margin",
+   "view-transition-enabled",
+   "respect-aspect-ratio",
+   "is-four-three-to-sixteen-nine-video_",
+   "default-layout",
+   "rounded-player",
+   "hidden-action-button-target-ids=[]",
+   "is-two-columns_",
+   "default-two-column-layout",
+   "role=main",
+   "should-stamp-chat",
+   "cinematic-light-theme",
+   "should-collapse-donation-shelf",
+   "live-chat-present-and-expanded",
+   "panel-expanded",
+   "watch-metadata-refresh",
+   "has-metadata",
+   "flexy-small-window_"
+  ],
+  "frameRect": "893,68,339,596",
+  "iframeRect": "894,69,337,594",
+  "panelRect": "894,69,337,594",
+  "iframeH": 594,
+  "reveal": 57,
+  "clip": "inset(calc(100% - 57px) 0px 0px)",
+  "collapsed": false,
+  "noClip": false
+ },
+ "mode": "auto",
+ "manualPx": 84,
+ "auto": {
+  "px": 57,
+  "src": "v3",
+  "suspect": ""
+ },
+ "measure": {
+  "found": true,
+  "height": 56,
+  "fromBottom": 56,
+  "rows": [
+   "yt-live-chat-message-input-renderer#live-chat-message-input:56",
+   "div#container:36"
+  ],
+  "vh": 594,
+  "zoneFromBottom": 57,
+  "zone": [
+   {
+    "el": "tp-yt-iron-pages#panel-pages",
+    "top": 537,
+    "h": 57,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages",
+    "use": "計入：白名單 #panel-pages"
+   },
+   {
+    "el": "div#input-panel",
+    "top": 538,
+    "h": 56,
+    "parents": "tp-yt-iron-pages#panel-pages < div#contents < div#chat-messages",
+    "use": "計入：白名單 #input-panel"
+   },
+   {
+    "el": "ytls-widget-overlay-manager",
+    "top": 49,
+    "h": 488,
+    "parents": "div#chat < div#contents < div#chat-messages",
+    "use": "排除：覆蓋層容器本身"
+   },
+   {
+    "el": "div#item-list",
+    "top": 49,
+    "h": 488,
+    "parents": "div#chat < div#contents < div#chat-messages",
+    "use": "排除：#item-list"
+   },
+   {
+    "el": "div#action-panel",
+    "top": 355,
+    "h": 182,
+    "parents": "div#chat < div#contents < div#chat-messages",
+    "use": "未列入"
+   }
+  ],
+  "algo": "v3"
+ },
+ "anchors": {
+  "header": true,
+  "headerHow": "插在 yt-live-chat-button#live-chat-header-context-menu 前（yt-live-chat-header-renderer #live-chat-header-context-menu）",
+  "headerKids": [
+   "div#primary-content",
+   "span#title",
+   "span#view-selector",
+   "div#action-buttons",
+   "div#viewer-leaderboard-entry-point",
+   "ytvl-live-viewer-leaderboard-chat-entry-point-view-model",
+   "yt-live-chat-button#live-chat-header-context-menu",
+   "yt-button-renderer",
+   "div#close-button",
+   "yt-button-renderer"
+  ],
+  "legacy": false,
+  "teaser": true,
+  "teaserHow": "文字比對",
+  "headerParent": "yt-live-chat-header-renderer"
+ },
+ "popupNow": "—",
+ "popupLast": "—"
+}
+
+步驟 3a 頂部列顯示：重點聊天室訊息 
+
+
+步驟 3b VOD chat frame 結構：（貼上附錄 C 結果）
+
+{
+ "page": "/live_chat_replay",
+ "vh": 594,
+ "rendererAttrs": [
+  "hide-timestamps",
+  "has-ticker",
+  "enable-banner-update"
+ ],
+ "itemTags": [
+  "yt-live-chat-text-message-renderer",
+  "ytd-sponsorships-live-chat-gift-redemption-announcement-renderer",
+  "yt-live-chat-membership-item-renderer",
+  "yt-live-chat-placeholder-item-renderer"
+ ],
+ "zone": [
+  "yt-live-chat-banner-manager: 593+0",
+  "#panel-pages: 593+1",
+  "#input-panel: 594+0",
+  "ytls-widget-overlay-manager: 89+504"
+ ],
+ "overlayKids": [],
+ "inputPanel": true,
+ "timestamp": {
+  "textLength": 4,
+  "cssVisible": false
+ },
+ "viewMenu": [
+  "a aria-selected=true",
+  "a aria-selected=false"
+ ],
+ "kinds": {
+  "yt-live-chat-text-message-renderer": {
+   "attrs": [
+    "modern",
+    "enable-improved-visibility-style",
+    "enable-banner-update",
+    "whole-message-clickable",
+    "author-type=member"
+   ],
+   "ids": [
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "div#content",
+    "span#timestamp",
+    "span#prepend-chat-badges",
+    "span#author-name",
+    "span#chip-badges",
+    "span#chat-badges",
+    "div#image",
+    "div#before-content-buttons",
+    "span#message-container",
+    "span#<訊息id>",
+    "span#message",
+    "img#emoji-237",
+    "span#hover-message",
+    "span#deleted-state",
+    "a#show-original",
+    "div#menu",
+    "yt-icon-button#menu-button",
+    "button#button",
+    "yt-interaction#interaction",
+    "div#<訊息id>",
+    "div#inline-action-buttons"
+   ]
+  },
+  "yt-live-chat-paid-message-renderer": null,
+  "yt-live-chat-paid-sticker-renderer": null,
+  "yt-live-chat-membership-item-renderer": {
+   "attrs": [
+    "modern",
+    "whole-message-clickable",
+    "has-primary-header-text"
+   ],
+   "ids": [
+    "div#card",
+    "div#header",
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "div#header-content",
+    "div#<訊息id>",
+    "div#<訊息id>",
+    "span#prepend-chat-badges",
+    "span#author-name",
+    "span#chip-badges",
+    "span#chat-badges",
+    "div#image",
+    "div#header-primary-text",
+    "div#header-subtext",
+    "div#timestamp",
+    "div#menu",
+    "yt-icon-button#menu-button",
+    "button#button",
+    "yt-interaction#interaction",
+    "div#content",
+    "div#message",
+    "img#emoji-254",
+    "div#input-container",
+    "yt-formatted-string#deleted-state",
+    "div#footer-button",
+    "div#<訊息id>",
+    "div#inline-action-buttons"
+   ]
+  },
+  "ytd-sponsorships-live-chat-gift-purchase-announcement-renderer": null,
+  "yt-live-chat-viewer-engagement-message-renderer": null,
+  "yt-live-chat-banner-renderer": null,
+  "yt-live-chat-banner-redirect-renderer": null,
+  "yt-live-chat-poll-renderer": null,
+  "yt-live-chat-ticker-renderer": {
+   "attrs": [],
+   "ids": [
+    "div#container",
+    "span#ticker-bar",
+    "div#goal-ticker",
+    "div#fanzone-ticker",
+    "div#ticker-items",
+    "yt-live-chat-ticker-sponsor-item-renderer#<訊息id>",
+    "div#container",
+    "div#content",
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "span#text",
+    "yt-live-chat-ticker-sponsor-item-renderer#<訊息id>",
+    "div#container",
+    "div#content",
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "span#text",
+    "yt-live-chat-ticker-sponsor-item-renderer#<訊息id>",
+    "div#container",
+    "div#content",
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "span#text",
+    "yt-live-chat-ticker-sponsor-item-renderer#<訊息id>",
+    "div#container",
+    "div#content",
+    "yt-img-shadow#author-photo",
+    "img#img",
+    "span#text",
+    "yt-live-chat-ticker-sponsor-item-renderer#<訊息id>"
+   ]
+  },
+  "yt-live-chat-header-renderer": {
+   "attrs": [
+    "role",
+    "prevent-chat-header-overflow"
+   ],
+   "ids": [
+    "div#primary-content",
+    "span#title",
+    "span#view-selector",
+    "yt-sort-filter-sub-menu-renderer#<訊息id>",
+    "div#tooltip",
+    "tp-yt-paper-menu-button#menu-button",
+    "div#trigger",
+    "tp-yt-paper-button#label",
+    "div#label-text",
+    "yt-icon#label-icon",
+    "tp-yt-iron-dropdown#dropdown",
+    "div#contentWrapper",
+    "tp-yt-paper-listbox#menu",
+    "div#item-with-badge",
+    "div#subtitle",
+    "div#item-with-badge",
+    "div#subtitle",
+    "dom-repeat#repeat",
+    "div#notification",
+    "div#action-buttons",
+    "div#<訊息id>",
+    "button#ytcas-poc-header-btn",
+    "yt-live-chat-button#<訊息id>",
+    "div#close-button"
+   ]
+  }
+ }
+}
+'完成：結果已印在上方（可能也已複製到剪貼簿）'
+
+步驟 4 卡片出現「PoC 測試」是 ；點擊後聊天室展開且 PoC 開啟 是 
+步驟 5 劇院模式：出現「PoC 暫停」是 ；原生聊天室正常 是；切回後恢復 否；Alt+Shift+D：（貼上）
+
+{
+ "poc": "v24.1",
+ "chrome": "157.0.0.0",
+ "time": "2026-11-15T02:46:25.835Z",
+ "layout": {
+  "frameParent": "div#chat-container < div#columns",
+  "frameAttrs": [
+   "id=chat",
+   "class=style-scope ytd-watch-flexy ytcas-poc-fr",
+   "modern-buttons",
+   "rounded-container",
+   "round-background",
+   "theater-watch-while"
+  ],
+  "flexyAttrs": [
+   "class=style-scope ytd-page-manager watch-root-",
+   "reduced-top-margin",
+   "view-transition-enabled",
+   "respect-aspect-ratio",
+   "is-four-three-to-sixteen-nine-video_",
+   "hidden-action-button-target-ids=[]",
+   "role=main",
+   "response-has-comments",
+   "should-stamp-chat",
+   "cinematic-light-theme",
+   "should-collapse-donation-shelf",
+   "live-chat-present-and-expanded",
+   "panel-expanded",
+   "watch-metadata-refresh",
+   "has-metadata",
+   "theater",
+   "squeezeback",
+   "full-bleed-player",
+   "flexy-large-window_",
+   "is-single-column",
+   "fixed-panels",
+   "watch-while-panels-active"
+  ],
+  "frameRect": "562,561,402,152",
+  "iframeRect": "563,562,400,150",
+  "panelRect": "0,0,0,0",
+  "iframeH": 150,
+  "reveal": -61,
+  "clip": "none",
+  "collapsed": true,
+  "noClip": false
+ },
+ "mode": "auto",
+ "manualPx": 84,
+ "auto": {
+  "px": -61,
+  "src": "v3",
+  "suspect": ""
+ },
+ "measure": {
+  "found": true,
+  "height": 56,
+  "fromBottom": -114,
+  "rows": [
+   "yt-live-chat-message-input-renderer#live-chat-message-input:56",
+   "div#container:36"
+  ],
+  "vh": 150,
+  "zoneFromBottom": -61,
+  "zone": [
+   {
+    "el": "yt-live-chat-banner-manager#live-chat-banner",
+    "top": 211,
+    "h": 52,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages",
+    "use": "計入：白名單 yt-live-chat-banner-manager"
+   },
+   {
+    "el": "tp-yt-iron-pages#panel-pages",
+    "top": 263,
+    "h": 57,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages",
+    "use": "計入：白名單 #panel-pages"
+   },
+   {
+    "el": "div#input-panel",
+    "top": 264,
+    "h": 56,
+    "parents": "tp-yt-iron-pages#panel-pages < div#contents < div#chat-messages",
+    "use": "計入：白名單 #input-panel"
+   },
+   {
+    "el": "ytls-widget-overlay-manager",
+    "top": 49,
+    "h": 162,
+    "parents": "div#chat < div#contents < div#chat-messages",
+    "use": "排除：覆蓋層容器本身"
+   },
+   {
+    "el": "yt-live-chat-header-renderer",
+    "top": 0,
+    "h": 48,
+    "parents": "div#chat-messages < tp-yt-iron-pages#content-pages < yt-live-chat-renderer",
+    "use": "排除：yt-live-chat-header-renderer"
+   },
+   {
+    "el": "div#separator",
+    "top": 48,
+    "h": 1,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages",
+    "use": "未列入"
+   },
+   {
+    "el": "div#item-list",
+    "top": 49,
+    "h": 162,
+    "parents": "div#chat < div#contents < div#chat-messages",
+    "use": "排除：#item-list"
+   }
+  ],
+  "algo": "v3"
+ },
+ "anchors": {
+  "header": true,
+  "headerHow": "插在 yt-live-chat-button#live-chat-header-context-menu 前（yt-live-chat-header-renderer #live-chat-header-context-menu）",
+  "headerKids": [
+   "div#primary-content",
+   "span#title",
+   "span#view-selector",
+   "div#action-buttons",
+   "div#viewer-leaderboard-entry-point",
+   "ytvl-live-viewer-leaderboard-chat-entry-point-view-model",
+   "yt-live-chat-button#live-chat-header-context-menu",
+   "yt-button-renderer",
+   "div#close-button",
+   "yt-button-renderer"
+  ],
+  "legacy": false,
+  "teaser": true,
+  "teaserHow": "文字比對",
+  "headerParent": "yt-live-chat-header-renderer"
+ },
+ "popupNow": "—",
+ "popupLast": "—"
+}
+
+步驟 5 窄版面：行為＿＿；Alt+Shift+D：（貼上）
+
+{
+ "poc": "v24.1",
+ "chrome": "157.0.0.0",
+ "time": "2026-11-15T02:51:46.202Z",
+ "layout": {
+  "frameParent": "div#chat-container < div#columns",
+  "frameAttrs": [
+   "id=chat",
+   "class=style-scope ytd-watch-flexy ytcas-poc-fr",
+   "modern-buttons",
+   "rounded-container",
+   "round-background",
+   "theater-watch-while"
+  ],
+  "flexyAttrs": [
+   "class=style-scope ytd-page-manager watch-root-",
+   "reduced-top-margin",
+   "view-transition-enabled",
+   "respect-aspect-ratio",
+   "is-four-three-to-sixteen-nine-video_",
+   "hidden-action-button-target-ids=[]",
+   "role=main",
+   "response-has-comments",
+   "should-stamp-chat",
+   "cinematic-light-theme",
+   "should-collapse-donation-shelf",
+   "watch-metadata-refresh",
+   "has-metadata",
+   "theater",
+   "full-bleed-player",
+   "live-chat-present-and-expanded",
+   "panel-expanded",
+   "squeezeback",
+   "is-single-column",
+   "fixed-panels",
+   "watch-while-panels-active"
+  ],
+  "frameRect": "2,556,402,152",
+  "iframeRect": "3,557,400,150",
+  "panelRect": "0,0,0,0",
+  "iframeH": 150,
+  "reveal": -61,
+  "clip": "none",
+  "collapsed": true,
+  "noClip": false
+ },
+ "mode": "auto",
+ "manualPx": 84,
+ "auto": {
+  "px": -61,
+  "src": "v3",
+  "suspect": ""
+ },
+ "measure": {
+  "found": true,
+  "height": 56,
+  "fromBottom": -114,
+  "rows": [
+   "yt-live-chat-message-input-renderer#live-chat-message-input:56",
+   "div#container:36"
+  ],
+  "vh": 150,
+  "zoneFromBottom": -61,
+  "zone": [
+   {
+    "el": "yt-live-chat-banner-manager#live-chat-banner",
+    "top": 211,
+    "h": 52,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages",
+    "use": "計入：白名單 yt-live-chat-banner-manager"
+   },
+   {
+    "el": "tp-yt-iron-pages#panel-pages",
+    "top": 263,
+    "h": 57,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages",
+    "use": "計入：白名單 #panel-pages"
+   },
+   {
+    "el": "div#input-panel",
+    "top": 264,
+    "h": 56,
+    "parents": "tp-yt-iron-pages#panel-pages < div#contents < div#chat-messages",
+    "use": "計入：白名單 #input-panel"
+   },
+   {
+    "el": "ytls-widget-overlay-manager",
+    "top": 49,
+    "h": 162,
+    "parents": "div#chat < div#contents < div#chat-messages",
+    "use": "排除：覆蓋層容器本身"
+   },
+   {
+    "el": "yt-live-chat-header-renderer",
+    "top": 0,
+    "h": 48,
+    "parents": "div#chat-messages < tp-yt-iron-pages#content-pages < yt-live-chat-renderer",
+    "use": "排除：yt-live-chat-header-renderer"
+   },
+   {
+    "el": "div#separator",
+    "top": 48,
+    "h": 1,
+    "parents": "div#contents < div#chat-messages < tp-yt-iron-pages#content-pages",
+    "use": "未列入"
+   },
+   {
+    "el": "div#item-list",
+    "top": 49,
+    "h": 162,
+    "parents": "div#chat < div#contents < div#chat-messages",
+    "use": "排除：#item-list"
+   }
+  ],
+  "algo": "v3"
+ },
+ "anchors": {
+  "header": true,
+  "headerHow": "插在 yt-live-chat-button#live-chat-header-context-menu 前（yt-live-chat-header-renderer #live-chat-header-context-menu）",
+  "headerKids": [
+   "div#primary-content",
+   "span#title",
+   "span#view-selector",
+   "div#action-buttons",
+   "div#viewer-leaderboard-entry-point",
+   "ytvl-live-viewer-leaderboard-chat-entry-point-view-model",
+   "yt-live-chat-button#live-chat-header-context-menu",
+   "yt-button-renderer",
+   "div#close-button",
+   "yt-button-renderer"
+  ],
+  "legacy": false,
+  "teaser": true,
+  "teaserHow": "文字比對",
+  "headerParent": "yt-live-chat-header-renderer"
+ },
+ "popupNow": "—",
+ "popupLast": "—"
+}
+
+
+步驟 6 付款視窗時顯示：div#buyFlowDivId；關閉後消失 是 
+步驟 7 影片與頁面主體上沒有 PoC 元素：是
+（失敗時附截圖；截圖請避開付款資訊）

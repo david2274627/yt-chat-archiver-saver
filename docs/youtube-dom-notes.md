@@ -12,9 +12,13 @@
 ### 1.1 聊天室框的位置會隨版面移動（2026-11-15）
 | 版面 | `ytd-watch-flexy` 關鍵屬性 | `ytd-live-chat-frame` 父鏈 | 框尺寸 |
 |---|---|---|---|
-| 雙欄（預設） | `default-layout`, `is-two-columns_`, `flexy-small-window_` | `div#chat-container < div#secondary-inner` | 339×596 |
-| 單欄（視窗窄） | `is-single-column`, `full-bleed-player` | `div#chat-container < div#below < div#primary-inner < div#primary < div#columns` | 427×596（全高，在影片下方） |
-| 劇院模式 | `theater`, `squeezeback`, `full-bleed-player`, `fixed-panels`, `watch-while-panels-active`, `flexy-large-window_` | `div#chat-container < div#columns` | **402×152**（被壓矮） |
+| 雙欄（預設） | `default-layout`, `is-two-columns_`, `flexy-small-window_` | `div#chat-container < div#secondary-inner` | 339×596；寬視窗右欄 362×596 |
+| 單欄（視窗窄，非劇院） | `is-single-column`, `full-bleed-player` | `div#chat-container < div#below < div#primary-inner < div#primary < div#columns` | 427×596～453×596（全高，在影片下方）；PoC 正常運作（2026-11-15 14:4x） |
+| 劇院模式 | `theater`, `squeezeback`, `full-bleed-player`, `fixed-panels`, `watch-while-panels-active`, `flexy-large-window_`；可同時帶 `is-single-column` 或 `is-two-columns_` | `div#chat-container < div#columns` | **402×152**（被壓矮）。**1250px 與 2560px 寬視窗皆同，與視窗大小無關**；最大化時位於影片下方右側 |
+
+- **劇院模式小框內的排版**（2026-11-15）：iframe 高 150，但聊天室內容仍以約 320px 排版（置頂列 top 211、輸入列 top 263、有投票卡時 `#action-panel` top 81），輸入列在可視範圍外 → YouTube 自己就把輸入列擠出畫面，套件一律退讓。
+- **iframe 搬移會重新載入**：版面切換時 `ytd-live-chat-frame` 被搬到其他父容器，`iframe#chatframe` 重新載入，chat frame 的 content script 重跑。
+- 劇院模式切回雙欄後 PoC 是否自動恢復：v24.1 第一次補測未恢復、第二次（14:38）有恢復，判定為偶發，原因未定；v24.2 起以重新初始化流程與看門狗保底。
 
 - 聊天室框本身屬性：`id=chat`, `modern-buttons`, `rounded-container`, `round-background`；劇院模式另加 **`theater-watch-while`**。
 - 共通存在：`#panels-full-bleed-container`、`ytd-popup-container`、`video.html5-main-video`、`meta[name="title"]`、`ytd-watch-metadata ytd-channel-name a`。
@@ -60,11 +64,14 @@ yt-live-chat-renderer
       ├ div#chat
       │  ├ div#item-list > yt-live-chat-item-list-renderer#live-chat-item-list-panel
       │  │   > div#contents > div#item-scroller > div#item-offset > div#items   ← 訊息節點在此
-      │  └ ytls-widget-overlay-manager            （**YouTube 原生**透明覆蓋層，top 49／高 436；子元素為 3 個高 0 的 div；投票卡推測掛在此。2026-11-15 停用 Holodex+ 後仍存在）
+      │  ├ ytls-widget-overlay-manager            （**YouTube 原生**透明覆蓋層，top 49／高 436；子元素為 3 個高 0 的 div。2026-11-15 停用 Holodex+ 後仍存在。投票卡**不在**這裡）
+      │  └ div#action-panel                       （**投票卡**，2026-11-15 補測確認：`#chat` 的直接子元素，top 355／高 182，緊貼輸入區上方；沒有投票時不可見。內部是否為 action-panel-renderer／poll-renderer 待確認）
       ├ yt-live-chat-banner-manager#live-chat-banner   （**置頂列，在輸入列上方**，top 485／高 52）
       └ tp-yt-iron-pages#panel-pages > div#input-panel  （輸入區，top 537／高 57）
 ```
-- iframe 高 594 時：底部互動區 = 594 − 485 = **109px**（含邊距約 114px）。
+- iframe 高 594 時：底部互動區 = 594 − 485 = **109px**（含邊距約 114px）。PoC v24.1 自動量測實機得到 109px，剛好（2026-11-15）。
+- 無置頂列、有投票卡時：594 − 355 = **239px**；只有輸入列時 57px（`#panel-pages` top 537）。
+- `div#separator`（top 48／高 1）位於頂部列下方，不屬於底部互動區。
 
 ### 2.2 頂部列 `yt-live-chat-header-renderer`
 - 屬性：`role=heading`, `prevent-chat-header-overflow`
@@ -94,7 +101,8 @@ yt-live-chat-renderer
 - `yt-live-chat-viewer-engagement-message-renderer`（確認）：`#card`, `yt-icon#icon`, `#message-container > yt-formatted-string#message`, `#action-button`
 - `yt-live-chat-banner-renderer`（置頂，確認）：屬性含 `collapsed`；`#banner-container > #header（yt-live-chat-banner-header-renderer，#menu > yt-button-renderer#menu-button）+ #contents（yt-live-chat-text-message-renderer#<訊息id>，結構同一般訊息）`、`#indeterminate-bar`
 - `yt-live-chat-ticker-renderer`：`#container > #ticker-bar, #goal-ticker, #fanzone-ticker, #ticker-items, #left/right-arrow-container`
-- **待確認（當時未出現）**：`yt-live-chat-paid-message-renderer`（SC 文字版）、`yt-live-chat-membership-item-renderer`、`ytd-sponsorships-live-chat-gift-purchase-announcement-renderer`、`ytd-sponsorships-live-chat-header-renderer`、`yt-live-chat-banner-redirect-renderer`（降落）、`yt-live-chat-poll-renderer`、`yt-live-chat-action-panel-renderer`、里程碑。
+- 重播頁另確認：`yt-live-chat-membership-item-renderer`、`ytd-sponsorships-live-chat-gift-redemption-announcement-renderer`、`yt-live-chat-placeholder-item-renderer`、`yt-live-chat-ticker-sponsor-item-renderer`（見第 3 節）。
+- **待確認（尚未出現）**：`yt-live-chat-paid-message-renderer`（SC 文字版）、`ytd-sponsorships-live-chat-gift-purchase-announcement-renderer`、`ytd-sponsorships-live-chat-header-renderer`、`yt-live-chat-banner-redirect-renderer`（降落）、`yt-live-chat-poll-renderer`、`yt-live-chat-action-panel-renderer`、里程碑。
 
 ### 2.5 輸入區 `#input-panel`（2026-11-15）
 ```
@@ -129,7 +137,19 @@ yt-live-chat-renderer
 ---
 
 ## 3. chat frame（`live_chat_replay`，VOD 重播）
-- **尚未診斷**。待確認：`#timestamp` 是否顯示、`#input-panel` 是否存在、頂部列與置頂列結構。
+2026-11-15，Chrome 157，以 `docs/poc-clip-path.md` 附錄 C 腳本取得（原始輸出見 `docs/diag/retest-v24.1-2026-11-15.txt`）。
+
+- `yt-live-chat-renderer` 屬性：`hide-timestamps`, `has-ticker`, `enable-banner-update`（**沒有** `has-input-action-panel`）。
+- `#input-panel` 存在但**高度 0**；`yt-live-chat-banner-manager` 高度 0；`#panel-pages` 高 1px → 底部互動區約 0，面板佔滿全高。`ytls-widget-overlay-manager` top 89／高 504（跑馬燈顯示中，所以 top 較直播大），沒有可見子元素。
+- `span#timestamp` **有值**（長度 4，如 `1:23`，CSS 隱藏）→ 重播可直接由 `#timestamp` 得到 `videoOffsetSec`。
+- 頂部列同直播，也有「重點／全部」切換選單（2 個 `a`，第 1 個 `aria-selected=true`）→ F-12 同樣適用。
+- 當時 `#items` 下出現的元件：
+  - `yt-live-chat-text-message-renderer`（結構同直播；`author-type=member` 確認）
+  - `yt-live-chat-membership-item-renderer`：屬性 `modern`, `whole-message-clickable`, `has-primary-header-text`；`#card > #header（yt-img-shadow#author-photo > img#img；#header-content：#author-name（含 #chip-badges）、#chat-badges、#header-primary-text、#header-subtext、div#timestamp；#menu）+ #content > #message（可含 img#emoji-N）`、`#footer-button`
+  - `ytd-sponsorships-live-chat-gift-redemption-announcement-renderer`（收到贈送會員；內部結構未展開）
+  - `yt-live-chat-placeholder-item-renderer`（佔位元素，擷取時略過）
+- 跑馬燈：`yt-live-chat-ticker-renderer > #container > #ticker-items > yt-live-chat-ticker-sponsor-item-renderer#<id>（#container > #content > yt-img-shadow#author-photo > img#img, span#text）`
+- 仍未出現：SC 文字版、超級貼圖（重播）、gift-purchase、降落、里程碑、置頂（重播）。
 
 ---
 

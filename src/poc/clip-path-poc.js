@@ -503,7 +503,7 @@
 
   function diagnostics() {
     return {
-      poc: 'v24.1', chrome: chromeVer, time: new Date().toISOString(),
+      poc: 'v24.2', chrome: chromeVer, time: new Date().toISOString(),
       layout: layoutInfo(),
       mode: state.auto ? 'auto' : 'manual',
       manualPx: state.manualPx,

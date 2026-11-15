@@ -33,7 +33,23 @@
   - PoC 量測 v3（白名單）與合理性退回、頂部列按鈕位置修正（commit `fc5c17b`）。
   - PoC 控制列單列化與鍵盤調整快速鍵（commit `8c44fe9`）。
   - 規格 v25、DOM 筆記與診斷檔、CLAUDE.md 規則（commit `4cf37c3`）。
-  - 補測步驟 v24.1、快速鍵清單、附錄 C chat frame 結構腳本、test-checklist（本段落所在的 commit）。
+  - 補測步驟 v24.1、快速鍵清單、附錄 C chat frame 結構腳本、test-checklist（commit `6bd6b3b`）。
+  - 本輪報告 `docs/reports/2026-11-15-v25-measure-fix.md`（commit `162bfc6`）。
+- **T1 通過（2026-11-15）**，v26（`docs/review-2026-11-15-2.md`）：
+  - PoC v24.2：投票卡 `#action-panel` 入白名單、搬移後重新初始化與看門狗（commit `c2d9ca5`）。
+  - 規格 v26、DOM 筆記、補測原文、T1 定稿（本段落所在的 commit）。
+
+### 規格 v26（2026-11-15，依 `docs/review-2026-11-15-2.md`）
+- **T1 通過並關閉**（v24.1 PoC 實機補測）；`docs/poc-clip-path.md` 新增「T1 定稿」。
+- 6.3：投票卡 `#chat > #action-panel` 入底部互動區白名單（實機露出 239px）；合理性檢查改為 60% 規則只套用非白名單來源、量測過期判定。
+- 6.2：聊天室摺疊／退讓條件補充（劇院模式一律退讓、面板剩餘 < 80px）；面板最小高度規則（80～160px 時仍完整露出原生互動區）。
+- 6.4：劇院模式聊天室固定 402×152（與視窗大小無關）；iframe 搬移會重新載入 → 重新初始化流程與每秒看門狗。
+- 6.5 AC 14：劇院模式退讓期間仍持續存檔與修剪。
+- 10.4：退讓狀態的按鈕樣式（低調停用，不用紅色）；10.8：D1 需反映實機版面（340／360／450px、三種底部互動區、劇院模式退讓）。
+- F-02：重播以 `#timestamp` 取得 `videoOffsetSec`；略過 `placeholder-item`；會員訊息欄位對應；收到贈送會員歸入 `membership`。
+- F-12：VOD 重播同樣適用。
+- 1.3：劇院模式的替代檢視方式列為 3.0.0 之後待議。
+- `docs/youtube-dom-notes.md`：投票卡位置、劇院模式小框排版、三種版面尺寸、VOD 重播結構與新確認的訊息元件；`docs/diag/` 加入補測原文。
 
 ### 規格 v25（2026-11-15，依 `docs/review-2026-11-15.md`、`docs/youtube-dom-notes.md`）
 - 新增 `docs/youtube-dom-notes.md`（實機 DOM 結構筆記，`selectors.js` 與模擬頁的唯一依據）與 `docs/diag/`（原始診斷輸出）。

@@ -109,7 +109,10 @@
       paidSticker: 'yt-live-chat-paid-sticker-renderer',      // 確認
       viewerEngagement: 'yt-live-chat-viewer-engagement-message-renderer', // 確認
       paidMessage: 'yt-live-chat-paid-message-renderer',      // 待實機確認
-      membershipItem: 'yt-live-chat-membership-item-renderer', // 待實機確認
+      membershipItem: 'yt-live-chat-membership-item-renderer', // 確認（2026-11-15 重播；筆記 3）
+      giftRedemption: 'ytd-sponsorships-live-chat-gift-redemption-announcement-renderer', // 確認存在（收到贈送會員）；內部結構待實機確認
+      placeholderItem: 'yt-live-chat-placeholder-item-renderer', // 確認：佔位元素，擷取時略過
+      tickerSponsorItem: 'yt-live-chat-ticker-sponsor-item-renderer', // 確認：跑馬燈內的會員項目，不擷取
       giftAnnouncement: 'ytd-sponsorships-live-chat-gift-purchase-announcement-renderer', // 待實機確認
       giftHeader: 'ytd-sponsorships-live-chat-header-renderer', // 待實機確認
       poll: 'yt-live-chat-poll-renderer',                     // 待實機確認
