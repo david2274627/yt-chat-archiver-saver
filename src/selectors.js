@@ -189,8 +189,12 @@
     'yt-live-chat-banner-header-renderer',
     'yt-live-chat-message-input-renderer',
     'yt-live-chat-message-input-prompt-header-renderer',
+    'yt-live-chat-reply-button-view-model', // 2026-11-16 實測漏網（審查十追加三）
+    'yt-live-chat-like-button-view-model',  // 同上
   ]);
   S.messageTagPrefixes = Object.freeze(['yt-live-chat-', 'ytd-sponsorships-']);
+  // T3.5 規則式判斷：#items 的直接子節點（訊息元件）都是 *-renderer；yt-live-chat-* 標籤符合下列任一規則即視為子元件
+  S.subComponentPatterns = Object.freeze([/-view-model$/, /-button-/, /-badge-renderer$/, /-chip$/]);
 
   // 訊息元件標籤 → 訊息類型（F-02 擷取與 F-13 RECLASSIFY_SYSTEM 共用；background 也會載入本檔，不得在載入時存取 DOM）。
   // 不在表內的標籤存為 system（保存 rawTag）。禮物（gift）公告元件標籤尚未實機出現：取得後在此補一列，再執行重新分類。

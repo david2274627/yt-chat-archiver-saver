@@ -197,11 +197,13 @@ async function autoMigrateLegacy(force) {
 }
 
 // ---------------------------------------------------------------- T3.4 清除垃圾 system 紀錄（SW Console 手動執行）
-// rawTag 不以 yt-live-chat-／ytd-sponsorships- 開頭，或屬於子元件清單（selectors.js）→ 不是訊息元件
+// rawTag 不以 yt-live-chat-／ytd-sponsorships- 開頭，或屬於子元件清單，或（T3.5）yt-live-chat-* 符合子元件規則
+//（-view-model 結尾、含 -button-、-badge-renderer 結尾、-chip 結尾；selectors.js）→ 不是訊息元件
 function isJunkTag(tag) {
   const t = String(tag || '').toLowerCase();
   if (!t) return false;
-  return !SEL.messageTagPrefixes.some((p) => t.startsWith(p)) || SEL.nonMessageTags.includes(t);
+  if (!SEL.messageTagPrefixes.some((p) => t.startsWith(p)) || SEL.nonMessageTags.includes(t)) return true;
+  return t.startsWith('yt-live-chat-') && SEL.subComponentPatterns.some((re) => re.test(t));
 }
 // 用法：await YTCAS_BG.cleanupJunkSystem({ dryRun: true })  → 只回傳筆數；確認後 { dryRun: false } 才刪除
 async function cleanupJunkSystem(opts) {

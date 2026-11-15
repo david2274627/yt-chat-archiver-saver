@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v32**（前版：v31；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v33**（前版：v32；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -32,6 +32,7 @@
 - **v30 調整**（`docs/review-2026-11-15-6.md` 第 3 節，T3.1）：**F-12 改為開始收錄時執行**（擷取端擁有，T5 只做面板說明）；F-19 彈出視窗關閉改以 **`chrome.tabs.onRemoved`** 偵測（`pagehide` 為輔助，重新整理不誤觸接手）。
 - **v31 調整**（`docs/review-2026-11-16.md`）：T3.3 F-01 修剪**一律從最舊節點移除**（未擷取者先擷取）、`pending` 硬上限 200、回溯擷取時機與診斷欄位；T3.2 診斷輸出分級（第 7 節「相容」、`warnOnce` 等級）。
 - **v32 調整**（`docs/review-2026-11-16.md` 追加二，T3.4）：F-02 只處理 `#items` 的直接子節點（v31 以前會把訊息內部的徽章、圖示等存成 `system`）；清除已寫入的垃圾紀錄 `cleanupJunkSystem`。
+- **v33 調整**（`docs/review-2026-11-16.md` 追加三，T3.5）：子元件標籤改為規則式判斷；`viewer-engagement` 同一場次以內容去重；沒有寫入任何訊息的收錄紀錄不計入；清除預覽列出保留的標籤。
 
 ---
 
@@ -285,7 +286,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 保存文字、官方 Emoji、會員貼圖（`src` + `alt`）、雙時間軸、頭像、頻道直連網址。
 - 被修剪前一定先完成擷取（擷取在 MutationObserver 回呼內同步完成，修剪只動已擷取節點：以 `data-ytcas-saved="1"` 標記）。
 - （v32，`docs/review-2026-11-16.md` 追加二 T3.4）**只有 `#items` 的直接子節點是訊息**。observer 為了刪除偵測帶 `subtree`，`childList` 也會回報訊息內部的後代（徽章、圖示、按鈕、文字 span、`dom-if` 等），必須只處理 `record.target === #items` 的新增；擷取函式開頭另加防呆（父元素不是 `#items` 就略過）。「未知訊息元件」也只對直接子節點輸出。
-  - **清除已寫入的垃圾紀錄**（一次性資料庫維護）：Service Worker Console 執行 `YTCAS_BG.cleanupJunkSystem({ dryRun })`（未指定時為預覽 `dryRun: true`，只回傳各 `rawTag` 筆數；`dryRun: false` 才刪除並重算場次 `messageCount`）。對象：`type: 'system'`，`rawTag` 不以 `yt-live-chat-`／`ytd-sponsorships-` 開頭或屬於 `selectors.js` 的 `nonMessageTags` 子元件清單，`sources` 只含 `live`／`popout`／`replay`，且 `firstSeenAt` ≥ T3 部署時間（`T3_DEPLOYED_AT`，2026-11-15 23:00 +08:00）。舊資料遷移與匯入的紀錄一律不動。
+  - **清除已寫入的垃圾紀錄**（一次性資料庫維護）：Service Worker Console 執行 `YTCAS_BG.cleanupJunkSystem({ dryRun })`（未指定時為預覽 `dryRun: true`，只回傳各 `rawTag` 筆數；`dryRun: false` 才刪除並重算場次 `messageCount`）。對象：`type: 'system'`，`rawTag` 不以 `yt-live-chat-`／`ytd-sponsorships-` 開頭或屬於 `selectors.js` 的 `nonMessageTags` 子元件清單（v33：另以規則判斷，`yt-live-chat-*` 中以 `-view-model`、`-badge-renderer`、`-chip` 結尾或含 `-button-` 者一律視為子元件；直接子節點的訊息元件都是 `*-renderer`），`sources` 只含 `live`／`popout`／`replay`，且 `firstSeenAt` ≥ T3 部署時間（`T3_DEPLOYED_AT`，2026-11-15 23:00 +08:00）。舊資料遷移與匯入的紀錄一律不動。
 - 置頂訊息擷取（v25 確認）：新版面置頂列位於輸入列上方，來源仍是 `yt-live-chat-banner-manager`（`chat.bannerContainer`）＞ `yt-live-chat-banner-renderer` ＞ `#contents` 內的 `yt-live-chat-text-message-renderer#<訊息 id>`（結構同一般訊息），見 `docs/youtube-dom-notes.md` 2.4。
 - **時間戳**（v25）：直播訊息的 `span#timestamp` **有值**，`yt-live-chat-renderer[hide-timestamps]` 只是以 CSS 隱藏。擷取時直接讀 `#timestamp` 文字（當地時間字串；實機長度約 7 字元，確切格式待 T3 實作時確認，解析需容許上午／下午與 AM／PM 兩種寫法），配合擷取當下的日期還原 `timestampAbs`；還原結果比擷取時間晚超過 12 小時時視為前一天（跨日校正）；解析失敗時以擷取時間為準。`videoOffsetSec` 仍以 `startDate` 推算（4.3）。（v29）`#timestamp` 只到分鐘：`timestampAbs` 取「擷取時間夾在該分鐘範圍內」的值（`clamp(擷取時間, 該分鐘起點, 起點 + 59.999 秒)`），即時訊息因此保有秒級精度，回溯擷取的舊訊息則落在該分鐘的最後一刻。
 - **身分**（v25）：以 `yt-live-chat-text-message-renderer[author-type]`（`owner`／`moderator`／`member`…）為主，`#chat-badges` 內的徽章為輔（例如 `verified`）。

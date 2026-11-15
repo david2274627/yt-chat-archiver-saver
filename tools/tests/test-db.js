@@ -582,6 +582,11 @@
     eq((await DB.getStream(V)).messageCount, 8);
     eq([BG.isJunkTag('div'), BG.isJunkTag('yt-live-chat-author-chip'), BG.isJunkTag('yt-live-chat-paid-message-renderer'), BG.isJunkTag('ytd-sponsorships-live-chat-gift-redemption-announcement-renderer')],
       [true, true, false, false]);
+    // T3.5 規則式：-view-model、-button-、-badge-renderer、-chip；真訊息元件（*-renderer）都不受影響
+    eq(['yt-live-chat-reply-button-view-model', 'yt-live-chat-like-button-view-model', 'yt-live-chat-foo-view-model',
+      'yt-live-chat-icon-toggle-button-renderer', 'yt-live-chat-new-badge-renderer', 'yt-live-chat-some-chip'].map(BG.isJunkTag), [true, true, true, true, true, true]);
+    eq(Object.keys(self.YTCAS_SEL.messageTypeByTag).concat(['yt-live-chat-viewer-engagement-message-renderer', 'yt-live-chat-placeholder-item-renderer',
+      'yt-live-chat-ticker-sponsor-item-renderer']).filter(BG.isJunkTag), [], '訊息元件不得被判為子元件');
     const pre = await BG.cleanupJunkSystem();
     eq([pre.dryRun, pre.matched, pre.streams, pre.deleted], [true, 3, 1, 0], '未指定時為預覽');
     eq(pre.byTag, { 'yt-icon': 1, span: 1, 'yt-live-chat-author-badge-renderer': 1 });
