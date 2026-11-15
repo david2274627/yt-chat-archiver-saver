@@ -151,6 +151,18 @@
     },
   };
 
+  // 訊息元件標籤 → 訊息類型（F-02 擷取與 F-13 RECLASSIFY_SYSTEM 共用；background 也會載入本檔，不得在載入時存取 DOM）。
+  // 不在表內的標籤存為 system（保存 rawTag）。禮物（gift）公告元件標籤尚未實機出現：取得後在此補一列，再執行重新分類。
+  S.messageTypeByTag = Object.freeze({
+    'yt-live-chat-text-message-renderer': 'text',
+    'yt-live-chat-paid-message-renderer': 'superchat',        // 待實機確認
+    'yt-live-chat-paid-sticker-renderer': 'supersticker',
+    'yt-live-chat-membership-item-renderer': 'membership',
+    'ytd-sponsorships-live-chat-gift-redemption-announcement-renderer': 'membership',
+    'ytd-sponsorships-live-chat-gift-purchase-announcement-renderer': 'membership', // 待實機確認
+    'yt-live-chat-banner-redirect-renderer': 'raid',          // 待實機確認
+  });
+
   const warned = new Set();
   S.warnOnce = function (key, detail) {
     if (warned.has(key)) return;
