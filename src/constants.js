@@ -155,6 +155,27 @@
     ]),
   };
 
+  // T3.5：聊天室歡迎／守則提示（viewer-engagement）每次重新整理 id 都不同 → 同一場次以內容產生固定 id，只存一筆。
+  // capture.js（收錄）與 db.js（cleanupJunkSystem 合併既有重複）共用，確保兩邊算出相同的 id。
+  const fnv = function (str) {
+    let h1 = 0x811c9dc5, h2 = 0x01000193 ^ 0x5bd1e995;
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+      h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0;
+      h2 = (h2 ^ (h2 >>> 15)) >>> 0;
+    }
+    return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+  };
+  C.runsKeyText = function (runs) {
+    if (!Array.isArray(runs)) return '';
+    return runs.map((r) => (r && r.emoji ? (r.emoji.alt || r.emoji.shortcut || '') : (r && r.text) || ''))
+      .join('').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+  };
+  C.viewerEngagementId = function (videoId, runs) {
+    return 'ytcas-ve-' + fnv(String(videoId || '') + '\u0001' + C.runsKeyText(runs));
+  };
+
   C.isAllowedImageUrl = function (url) {
     try {
       const u = new URL(url);

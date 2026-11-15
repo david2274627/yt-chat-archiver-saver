@@ -201,6 +201,18 @@
     eq(CAP.parseMessage(h('yt-live-chat-ticker-sponsor-item-renderer'), { source: 'live', now: NOW }), null);
   });
 
+  test('T3.5 parseMessage：歡迎／守則提示（viewer-engagement）以場次＋內容產生固定 id（元素 id 每次不同也一樣）', () => {
+    const mk = (id) => h('yt-live-chat-viewer-engagement-message-renderer', { id }, [h('div', { id: 'card' }, [h('yt-icon', { id: 'icon' }),
+      h('div', { id: 'message-container' }, [h('yt-formatted-string', { id: 'message', text: '歡迎來到聊天室！' })])])]);
+    const a = CAP.parseMessage(mk('ChwRandom1'), { source: 'live', now: NOW, videoId: 'testVidVE01', startedAt: null });
+    const b = CAP.parseMessage(mk('ChwRandom2'), { source: 'live', now: NOW + 9999, videoId: 'testVidVE01', startedAt: null });
+    const c = CAP.parseMessage(mk('ChwRandom3'), { source: 'live', now: NOW, videoId: 'testVidVE02', startedAt: null });
+    eq(a.id, C.viewerEngagementId('testVidVE01', [{ text: '歡迎來到聊天室！' }]));
+    eq(a.id, b.id, '同場同內容 → 同 id');
+    assert(a.id !== c.id, '不同場次 → 不同 id');
+    eq([a.type, a.rawTag], ['system', 'yt-live-chat-viewer-engagement-message-renderer']);
+  });
+
   // ---------------------------------------------------------------- 引擎
   test('回溯擷取：開始收錄時 #items 既有 60 則全部送出；DOM 修剪到 ≤ 45；第一批滿 50 則立即送出', async () => {
     const { items } = buildChat();

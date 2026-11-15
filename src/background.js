@@ -208,8 +208,10 @@ function isJunkTag(tag) {
 // 用法：await YTCAS_BG.cleanupJunkSystem({ dryRun: true })  → 只回傳筆數；確認後 { dryRun: false } 才刪除
 async function cleanupJunkSystem(opts) {
   const dryRun = !(opts && opts.dryRun === false);
-  const r = await DB.cleanupJunkSystem({ dryRun, isJunkTag, since: C.T3_DEPLOYED_AT });
-  console.info('[ytcas] 清除垃圾 system 紀錄' + (dryRun ? '（預覽）' : ''), { matched: r.matched, deleted: r.deleted, streams: r.streams });
+  // T3.5：一併合併 viewer-engagement（歡迎／守則提示）的重複紀錄
+  const r = await DB.cleanupJunkSystem({ dryRun, isJunkTag, since: C.T3_DEPLOYED_AT, veTag: SEL.chat.viewerEngagement });
+  console.info('[ytcas] 清除垃圾 system 紀錄' + (dryRun ? '（預覽）' : ''), { matched: r.matched, deleted: r.deleted, streams: r.streams,
+    veDuplicates: r.veDuplicates, veMerged: r.veMerged });
   return r;
 }
 

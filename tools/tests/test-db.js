@@ -593,9 +593,40 @@
     eq((await DB.queryMessages(V)).length, 8, '預覽不刪');
     const r = await BG.cleanupJunkSystem({ dryRun: false });
     eq([r.matched, r.deleted], [3, 3]);
-    eq((await DB.queryMessages(V)).map((m) => m.id).sort(), ['k1', 'k2', 'k3', 'k4', 'k5']);
+    const veK1 = self.YTCAS_CONST.viewerEngagementId(V, [{ text: 'x' }]); // T3.5：k1 改用內容 id
+    eq((await DB.queryMessages(V)).map((m) => m.id).sort(), [veK1, 'k2', 'k3', 'k4', 'k5'].sort());
     eq((await DB.getStream(V)).messageCount, 5, 'messageCount 重算');
     eq((await BG.cleanupJunkSystem({ dryRun: false })).deleted, 0, '可重複執行');
+  });
+
+  test('T3.5 viewer-engagement 重複：同一場同內容保留最早一筆並改用內容 id；之後收錄的同內容以 id 合併；遷移紀錄不動', async () => {
+    await resetAll();
+    const VE = 'yt-live-chat-viewer-engagement-message-renderer';
+    const ve = (id, text, t) => ({ id, type: 'system', rawTag: VE, authorHandle: '', runs: [{ text }], timestampAbs: t, videoOffsetSec: null });
+    const now = Date.now();
+    // 每次重新整理一筆（id 都不同）：同內容 3 筆、不同內容 1 筆，另一場 1 筆
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [ve('ve-a1', '歡迎來到聊天室', now - 3000)] });
+    await sleep(5);
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [ve('ve-a2', '歡迎來到聊天室', now - 2000), ve('ve-b1', '請遵守守則', now - 2000)] });
+    await sleep(5);
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [ve('ve-a3', '歡迎來到聊天室', now - 1000)] });
+    await DB.saveMessages({ videoId: V2, source: 'live', messages: [ve('ve-c1', '歡迎來到聊天室', now)] });
+    await DB.saveMessages({ videoId: V, source: 'legacy', preserve: true, messages: [ve('ve-old1', '歡迎來到聊天室', now - 9000)] });
+    const pre = await BG.cleanupJunkSystem();
+    eq([pre.veGroups, pre.veDuplicates, pre.veMerged], [3, 2, 0], '預覽：3 組需處理（含只需改 id 的）、2 筆重複');
+    const r = await BG.cleanupJunkSystem({ dryRun: false });
+    eq([r.veMerged, r.veRekeyed], [2, 3]);
+    const C = self.YTCAS_CONST;
+    const idA = C.viewerEngagementId(V, [{ text: '歡迎來到聊天室' }]);
+    const list = (await DB.queryMessages(V)).filter((m) => m.rawTag === VE);
+    eq(list.map((m) => m.id).sort(), [idA, C.viewerEngagementId(V, [{ text: '請遵守守則' }]), 've-old1'].sort(), '每組一筆；遷移紀錄不動');
+    const kept = list.find((m) => m.id === idA);
+    assert(kept.aliasIds.includes('ve-a1'), '保留最早一筆（原 id 記入別名）');
+    eq((await DB.getStream(V)).messageCount, 3);
+    // 之後收錄（capture.js 以同一函式產生 id）→ 以 id 合併，不再新增
+    const r2 = await DB.saveMessages({ videoId: V, source: 'live', messages: [ve(idA, '歡迎來到聊天室', now + 1000)] });
+    eq([r2.added, (await DB.getStream(V)).messageCount], [0, 3]);
+    eq((await BG.cleanupJunkSystem({ dryRun: false })).veMerged, 0, '可重複執行');
   });
 
   test('F-03／3.2：頻道解析佇列存 storage.session，失敗退避、SW 重啟後接續', async () => {

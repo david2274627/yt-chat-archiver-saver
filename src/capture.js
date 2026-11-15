@@ -191,6 +191,8 @@
       }
     }
     if (isDeletedEl(el)) { m.deleted = true; m.deletedAt = ctx.now; }
+    // T3.5：歡迎／守則提示每次重新整理 id 都不同 → 同一場次以內容產生固定 id（只存一筆）
+    if (tag === S.chat.viewerEngagement && ctx.videoId) m.id = C.viewerEngagementId(ctx.videoId, m.runs);
     return m;
   }
 
@@ -237,7 +239,7 @@
       if (opts.onStatus) try { opts.onStatus(s); } catch (_) { /* ignore */ }
     };
 
-    const ctxNow = () => ({ source, now: now(), startedAt: st.stream.startedAt ?? null, endedAt: st.stream.endedAt ?? null,
+    const ctxNow = () => ({ source, videoId: st.videoId, now: now(), startedAt: st.stream.startedAt ?? null, endedAt: st.stream.endedAt ?? null,
       scheduledStartAt: st.stream.scheduledStartAt ?? null });
 
     // ------------------------------------------------ 送出（3.2：重試 0.5／1／2 秒；失敗留待下一批）

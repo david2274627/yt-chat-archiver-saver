@@ -732,7 +732,9 @@
     const isJunk = typeof p.isJunkTag === 'function' ? p.isJunkTag : () => false;
     const db = await open();
     const byVideo = new Map();
-    const out = { dryRun, since, scanned: 0, matched: 0, byTag: {}, streams: 0, deleted: 0 };
+    const veGroups = new Map(); // T3.5：viewer-engagement 重複（同一場、同內容）→ 保留最早一筆
+    const out = { dryRun, since, scanned: 0, matched: 0, byTag: {}, streams: 0, deleted: 0,
+      veGroups: 0, veDuplicates: 0, veMerged: 0, veRekeyed: 0 };
     await new Promise((res, rej) => {
       const r = db.transaction('messages', 'readonly').objectStore('messages').openCursor();
       r.onerror = () => rej(r.error);
@@ -743,18 +745,35 @@
         if (v.type === T.SYSTEM) {
           out.scanned++;
           const src = Array.isArray(v.sources) ? v.sources : [];
-          if (v.rawTag && isJunk(v.rawTag) && src.length && src.every((s) => CAPTURE_ONLY.has(s)) && (num(v.firstSeenAt) ?? 0) >= since) {
+          const inScope = src.length && src.every((s) => CAPTURE_ONLY.has(s)) && (num(v.firstSeenAt) ?? 0) >= since;
+          if (v.rawTag && isJunk(v.rawTag) && inScope) {
             out.matched++;
             out.byTag[v.rawTag] = (out.byTag[v.rawTag] || 0) + 1;
             if (!byVideo.has(v.videoId)) byVideo.set(v.videoId, []);
             byVideo.get(v.videoId).push(v.id);
+          } else if (p.veTag && v.rawTag === p.veTag && inScope) {
+            const key = C.viewerEngagementId(v.videoId, v.runs);
+            if (!veGroups.has(key)) veGroups.set(key, []);
+            veGroups.get(key).push(v);
           }
         }
         cur.continue();
       };
     });
-    out.streams = byVideo.size;
+    // viewer-engagement：每組保留 firstSeenAt 最早的一筆，改用內容 id（之後收錄的同內容直接以 id 合併）
+    const vePlan = []; // { videoId, keep, drop[], key }
+    for (const [key, list] of veGroups) {
+      list.sort((a, b) => (num(a.firstSeenAt) ?? 0) - (num(b.firstSeenAt) ?? 0));
+      const keep = list[0];
+      const drop = list.slice(1);
+      if (!drop.length && keep.id === key) continue;
+      vePlan.push({ videoId: keep.videoId, keep, drop, key });
+      out.veGroups++;
+      out.veDuplicates += drop.length;
+    }
+    out.streams = new Set([...byVideo.keys(), ...vePlan.map((x) => x.videoId)]).size;
     if (dryRun) return out;
+    const touched = new Set();
     for (const [videoId, ids] of byVideo) {
       await withLock(videoId, async () => {
         const t = db.transaction('messages', 'readwrite');
@@ -763,8 +782,25 @@
         await done(t);
       });
       out.deleted += ids.length;
-      await recountStream(videoId);
+      touched.add(videoId);
     }
+    for (const g of vePlan) {
+      await withLock(g.videoId, async () => {
+        const t = db.transaction('messages', 'readwrite');
+        const s = t.objectStore('messages');
+        for (const d of g.drop) s.delete(d.id);
+        if (g.keep.id !== g.key) {
+          s.delete(g.keep.id);
+          const rec = Object.assign({}, g.keep, { id: g.key, aliasIds: union(g.keep.aliasIds, [g.keep.id]).filter((a) => a !== g.key) });
+          s.put(rec);
+          out.veRekeyed++;
+        }
+        await done(t);
+      });
+      out.veMerged += g.drop.length;
+      touched.add(g.videoId);
+    }
+    for (const videoId of touched) await recountStream(videoId);
     return out;
   }
 
