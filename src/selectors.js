@@ -76,6 +76,7 @@
       ticker: 'yt-live-chat-ticker-renderer',
       itemList: '#item-list',
       items: '#item-list #items',
+      anyItems: '#items', // 診斷用：頁面上所有 #items 的數量（2026-11-16 實測：2 個，第 2 個不可見）
       inputPanel: '#input-panel',
       messageInput: 'yt-live-chat-message-input-renderer',
 

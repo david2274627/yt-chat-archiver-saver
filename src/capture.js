@@ -220,7 +220,9 @@
       items: null, banner: null,
       queue: [], unflushed: new Set(), sending: null, batchTimer: 0, trimTimer: 0, pollTimer: 0, statsTimer: 0,
       pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
-      stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0 },
+      stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
+        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0 },
+      seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       f12: null, viewMode: null, // F-12 結果：null（未執行）／running／switched／already／failed:<原因>
     };
@@ -350,15 +352,23 @@
     }
 
     // ------------------------------------------------ 擷取
-    function captureNode(el) {
+    // how：observer／backfill／sweep（定時補掃）／trim（修剪前補擷取）／pending（等待期超過上限）
+    // force：等待場次資訊期間（pending）也解析並排入佇列（收錄開始後才送出）
+    function captureNode(el, how, force) {
       if (el.nodeType !== 1 || el.dataset[SAVED]) return;
-      if (st.mode !== 'capturing') return;
+      if (st.mode !== 'capturing' && !(force && st.mode === 'pending')) return;
       let m = null;
-      try { m = parseMessage(el, ctxNow()); } catch (e) { console.warn('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
+      try { m = parseMessage(el, ctxNow()); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
       if (!m) { el.dataset[SAVED] = 'skip'; return; }
       el.dataset[SAVED] = '1';
       if (m.deleted && m.id) st.deletedReported.add(m.id);
       st.stats.captured++;
+      if (how && how !== 'observer') st.stats[how === 'backfill' ? 'backfillCaptured' : 'lateCaptured']++;
+      // 同一頁已擷取過的 id 再次出現（YouTube 重新插入節點）：只計數供診斷，去重由 background 負責
+      if (m.id) {
+        if (st.seenIds.has(m.id)) st.stats.dupCaptured++;
+        else { if (st.seenIds.size > 20000) st.seenIds.clear(); st.seenIds.add(m.id); }
+      }
       enqueue(m);
     }
 
@@ -384,28 +394,39 @@
     }
 
     // ------------------------------------------------ 修剪（F-01：數量觸發為主、計時器保底）
-    // 收錄中與等待場次資訊時只移除已處理的節點；暫停、無 videoId、失去連線時不擷取，最舊的節點直接移除
+    // T3.3（審查十追加）：一律從最舊的節點移除，不得跳過未擷取的舊節點去移除較新的節點
+    //（v29 的「只移除已標記節點」會在列表開頭有一批未標記節點時卡住：新訊息一標記就被移除、舊節點永遠留著）。
+    //   收錄中：最舊節點未擷取 → 先擷取（標記）再移除；解析失敗標 skip 後移除。
+    //   暫停、無 videoId、失去連線、已停止：不擷取，直接移除最舊的。
+    //   等待場次資訊（pending）：保留未擷取節點以便回溯擷取，但超過 PENDING_MAX 時先解析排入佇列再移除最舊的。
+    const PENDING_MAX = 200;
     function trim() {
       const box = st.items;
       if (!box) return;
       const freeAll = st.mode === 'paused' || st.mode === 'disconnected' || st.mode === 'no-video-id' || st.mode === 'stopped';
-      let over = box.children.length - C.DOM_MAX_MESSAGES;
-      if (over <= 0) return;
-      for (let el = box.firstElementChild; el && over > 0;) {
-        const next = el.nextElementSibling;
-        if (freeAll || el.dataset[SAVED]) {
-          if (st.mode === 'capturing') checkDeleted(el);
-          el.remove();
-          over--;
-          st.stats.trimmed++;
+      const pending = st.mode === 'pending';
+      const limit = pending ? PENDING_MAX : C.DOM_MAX_MESSAGES;
+      let over = box.children.length - limit;
+      while (over > 0) {
+        const el = box.firstElementChild;
+        if (!el) break;
+        if (!el.dataset[SAVED] && !freeAll) {
+          captureNode(el, pending ? 'pending' : 'trim', pending);
+          if (!el.dataset[SAVED]) break; // 仍無法擷取（理論上不會發生）：寧可不修剪也不遺失
         }
-        el = next;
+        if (st.mode === 'capturing') checkDeleted(el);
+        el.remove();
+        over--;
+        st.stats.trimmed++;
       }
     }
 
     function onItemsMutation(records) {
       for (const r of records) {
-        if (r.type === 'childList') r.addedNodes.forEach(captureNode);
+        if (r.type === 'childList') {
+          st.stats.observedAdded += r.addedNodes.length;
+          r.addedNodes.forEach((n) => captureNode(n, 'observer'));
+        }
         else if (r.type === 'attributes' && st.mode === 'capturing') {
           const el = r.target.closest && r.target.closest('[data-ytcas-saved="1"]');
           if (el && st.items && el.parentElement === st.items) checkDeleted(el);
@@ -443,12 +464,17 @@
       return true;
     }
 
-    // 回溯擷取（F-02 v28）：#items 內既有訊息全部擷取一次（重複由 id 去重）
-    function backfill() {
+    // 回溯擷取（F-02 v28）：#items 內既有訊息全部擷取一次（重複由 id 去重）。
+    // T3.3：先確認 st.items 就是目前的 #items（YouTube 可能整個換掉列表元素），不是就重新掛上。
+    // how：backfill（開始收錄、重新掛上、F-12 切換後）／sweep（定時補掃：observer 漏掉的節點）
+    function backfill(how) {
+      if (st.items !== doc.querySelector(S.chat.items) || (st.items && !st.items.isConnected)) attach();
       if (!st.items) return;
-      Array.from(st.items.children).forEach(captureNode);
+      if ((how || 'backfill') === 'backfill') st.stats.backfillRuns++;
+      Array.from(st.items.children).forEach((el) => captureNode(el, how || 'backfill'));
       capturePinned();
       trim();
+      if ((how || 'backfill') === 'backfill') flush(); // 等待期排入佇列的訊息（pending）在收錄開始後立即送出
     }
 
     function streamMeta() {
@@ -492,7 +518,7 @@
       // background 已知的開播／結束時間（彈出視窗由 FETCH_STREAM_META 補齊）
       if (r.stream) for (const k of ['startedAt', 'endedAt', 'scheduledStartAt']) if (st.stream[k] == null && typeof r.stream[k] === 'number') st.stream[k] = r.stream[k];
       setStatus('capturing');
-      backfill();
+      backfill('backfill');
       if (!st.f12) autoLiveMode(); // F-12（v30）：開始收錄時切到「即時聊天室」，同一頁只做一次
     }
 
@@ -515,6 +541,8 @@
         st.viewMode = viewMode();
         if (r.startsWith('failed')) S.warnOnce('F-12:' + r, '無法自動切換到「即時聊天室」');
         if (opts.onF12) try { opts.onF12({ f12: r, viewMode: st.viewMode }); } catch (_) { /* ignore */ }
+        // T3.3：切換後 YouTube 會重新渲染列表（可能整個換掉 #items）→ 稍後再回溯擷取一次
+        if (r === 'switched') setTimeout(() => { if (st.mode === 'capturing') backfill('backfill'); }, 500);
       };
       const t0 = Date.now();
       while (viewItems().length < 2) {
@@ -560,16 +588,31 @@
       const s = st.stats;
       if (!s.captured && !final) return;
       // 只記筆數（id 一致性驗證：重播時 idMerged ≫ fpMerged 代表直播與重播的訊息 id 相同）
+      // T3.3 診斷：itemsIsCurrent（st.items 是否為目前的 #items 且仍在頁面上）、unmarkedNodes（#items 內未擷取數）、
+      // observedAdded（這一分鐘 observer 看到的新增節點）、backfillRuns、backfillCaptured（回溯擷取到的）、
+      // lateCaptured（定時補掃或修剪前才擷取到的 = observer 漏掉的）、dupCaptured（同頁同 id 再次出現 = YouTube 重新插入）
+      const box = st.items;
+      const cur = doc.querySelector(S.chat.items);
       console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), { videoId: st.videoId, source, mode: st.mode, captured: s.captured,
         added: s.added, idMerged: s.merged + s.unchanged - s.fpMerged, fpMerged: s.fpMerged, dropped: s.dropped, rejected: s.rejected,
-        trimmed: s.trimmed, pinned: s.pinned, deleted: s.deleted, deletedMissing: s.deletedMissing, domNodes: st.items ? st.items.children.length : null });
+        trimmed: s.trimmed, pinned: s.pinned, deleted: s.deleted, deletedMissing: s.deletedMissing,
+        domNodes: box ? box.children.length : null,
+        itemsIsCurrent: !!box && box === cur && box.isConnected,
+        itemsCount: doc.querySelectorAll(S.chat.anyItems).length,
+        unmarkedNodes: box ? Array.from(box.children).filter((el) => !el.dataset[SAVED]).length : null,
+        observedAdded: s.observedAdded, backfillRuns: s.backfillRuns, backfillCaptured: s.backfillCaptured,
+        lateCaptured: s.lateCaptured, dupCaptured: s.dupCaptured, f12: st.f12 });
+      s.observedAdded = 0; // 每分鐘歸零
     }
 
     // ------------------------------------------------ 對外
+    // 定時：重新確認列表元素（T3.3：v29 只在「原本沒有列表」時回溯，YouTube 換掉列表元素後新列表的既有節點永遠未擷取）、
+    // 補掃 observer 漏掉的節點、保底修剪
     function tick() {
-      const had = !!st.items;
+      const prev = st.items;
       const ok = attach();
-      if (ok && !had && st.mode === 'capturing') backfill();
+      if (ok && st.items !== prev && st.mode === 'capturing') backfill('backfill');
+      else if (ok && st.mode === 'capturing') backfill('sweep');
       if (!ok && st.mode !== 'stopped') S.warnOnce('chat.items', S.chat.items);
       trim();
     }
@@ -587,7 +630,7 @@
           if (st.videoId) { flush(); endSession(); logStats(true); }
           st.videoId = vid;
           st.stream = deriveTimes(st.info);
-          st.pinnedSent.clear(); st.deletedReported.clear(); st.pendingDeleted.length = 0;
+          st.pinnedSent.clear(); st.deletedReported.clear(); st.pendingDeleted.length = 0; st.seenIds.clear();
           for (const k of Object.keys(st.stats)) st.stats[k] = 0;
           // 新影片：先前標記過的節點屬於舊影片，不再擷取（iframe 通常會重新載入，這裡只是保險）
           setStatus('pending');

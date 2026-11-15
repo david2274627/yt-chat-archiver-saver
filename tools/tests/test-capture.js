@@ -533,6 +533,98 @@
     eq(r.result, { f12: 'failed:no-menu', viewMode: 'unknown' });
   });
 
+  // ---------------------------------------------------------------- T3.3 修剪卡住（審查十追加）
+  const unmarked = (box) => Array.from(box.children).filter((el) => !el.dataset.ytcasSaved).length;
+
+  test('T3.3(a)：開始前已有 76 個未擷取節點、等待期間又加入 20 個 → 收錄後全數擷取、DOM ≤ 45、未標記 ≤ 5；新訊息留在畫面上', async () => {
+    const { items } = buildChat();
+    for (let i = 0; i < 76; i++) items.append(textMsg({ id: 'OLD' + i }));
+    const send = mockSend(async (msg) => { if (msg.type === RT.CAPTURE_START) await sleep(150); return defaultReply(msg); });
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidT33a' });
+    for (let i = 0; i < 20; i++) items.append(textMsg({ id: 'PEND' + i }));
+    await tick();
+    eq(items.children.length, 96, '等待期間未達硬上限：不修剪');
+    await until(() => e.state().mode === 'capturing');
+    await until(() => new Set(savedIds(send)).size === 96, 3000, '96 則全數送出');
+    assert(items.children.length <= 45, 'DOM ' + items.children.length);
+    assert(unmarked(items) <= 5, '未標記 ' + unmarked(items));
+    const fresh = textMsg({ id: 'NEW1' });
+    items.append(fresh);
+    await tick();
+    assert(fresh.isConnected, '新訊息不可一出現就被移除');
+    assert(items.children.length <= 45);
+    e.stop();
+  });
+
+  test('T3.3：等待期間超過硬上限 200 → 先解析排入佇列再移除最舊的；收錄開始後全數送出', async () => {
+    const { items } = buildChat();
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const send = mockSend(async (msg) => { if (msg.type === RT.CAPTURE_START) await gate; return defaultReply(msg); });
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidT33p' });
+    for (let i = 0; i < 250; i++) items.append(textMsg({ id: 'P' + i }));
+    await tick();
+    eq(items.children.length, 200, '硬上限');
+    eq(send.of(RT.SAVE_MESSAGES).length, 0, '收錄開始前不送');
+    release();
+    await until(() => new Set(savedIds(send)).size === 250, 3000, '250 則全數送出');
+    assert(items.children.length <= 45);
+    e.stop();
+  });
+
+  test('T3.3：收錄中 YouTube 把 #items 整個換掉（新列表帶 76 個既有節點）→ 定時檢查重新掛上並回溯，DOM ≤ 45', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidT33r' });
+    await until(() => e.state().mode === 'capturing');
+    const fresh = h('div', { id: 'items' });
+    for (let i = 0; i < 76; i++) fresh.append(textMsg({ id: 'R' + i }));
+    items.replaceWith(fresh);
+    e._tick(); // 等同 3.5 秒保底計時器觸發
+    await until(() => new Set(savedIds(send)).size === 76, 3000, '新列表 76 則全數送出');
+    assert(fresh.children.length <= 45, 'DOM ' + fresh.children.length);
+    eq(unmarked(fresh), 0);
+    eq(e.state().stats.backfillRuns >= 2, true, '開始時＋重新掛上');
+    const n = textMsg({ id: 'R-NEW' });
+    fresh.append(n);
+    await until(() => savedIds(send).includes('R-NEW'), 2000);
+    assert(n.isConnected, '新訊息留在畫面上');
+    e.stop();
+  });
+
+  test('T3.3(b)：F-12 切換後列表整批重建（換新 #items、含已擷取過的 id）→ 全數擷取、DOM ≤ 45；同 id 計入 dupCaptured', async () => {
+    buildChat();
+    const items0 = stage.querySelector('#items');
+    for (let i = 0; i < 30; i++) items0.append(textMsg({ id: 'TOP' + i }));
+    const m = addViewMenu({ mode: 'top' });
+    // 模擬 YouTube：切到「即時」時以新的列表元素重新渲染 60 則（含先前 30 則同 id）
+    m.a2.addEventListener('click', () => {
+      setTimeout(() => {
+        const box = h('div', { id: 'items' });
+        for (let i = 0; i < 30; i++) box.append(textMsg({ id: 'TOP' + i }));
+        for (let i = 0; i < 30; i++) box.append(textMsg({ id: 'LIVE' + i }));
+        stage.querySelector('#items').replaceWith(box);
+      }, 50);
+    });
+    const send = mockSend();
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidT33b' });
+    await until(() => e.state().f12 === 'switched', 3000, 'F-12 切換');
+    await until(() => new Set(savedIds(send)).size === 60, 3000, '重建後 60 個 id 全數擷取');
+    const box = stage.querySelector('#items');
+    assert(box.children.length <= 45, 'DOM ' + box.children.length);
+    eq(unmarked(box), 0);
+    eq(e.state().stats.dupCaptured, 30, '同 id 重新插入只計數');
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];
