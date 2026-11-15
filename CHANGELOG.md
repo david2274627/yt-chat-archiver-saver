@@ -37,7 +37,8 @@
   - 本輪報告 `docs/reports/2026-11-15-v25-measure-fix.md`（commit `162bfc6`）。
 - **T1 通過（2026-11-15）**，v26（`docs/review-2026-11-15-2.md`）：
   - PoC v24.2：投票卡 `#action-panel` 入白名單、搬移後重新初始化與看門狗（commit `c2d9ca5`）。
-  - 規格 v26、DOM 筆記、補測原文、T1 定稿（本段落所在的 commit）。
+  - 規格 v26、DOM 筆記、補測原文、T1 定稿（commit `6162700`）。
+- D1 設計稿 `design/mockups.html`：方向 A「沉穩工具感」／方向 B「柔和現代感」× 淺色／深色（本段落所在的 commit；⏸ 等待使用者選定方向）。
 
 ### 規格 v26（2026-11-15，依 `docs/review-2026-11-15-2.md`）
 - **T1 通過並關閉**（v24.1 PoC 實機補測）；`docs/poc-clip-path.md` 新增「T1 定稿」。
