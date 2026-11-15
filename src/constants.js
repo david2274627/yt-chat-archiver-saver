@@ -115,7 +115,16 @@
       SEEK_TO: 'SEEK_TO',
       TOGGLE_PANEL: 'TOGGLE_PANEL', // v24：chat frame 頂部列的 F-09 開關被點擊
       THEME: 'THEME', // v27：top → 面板 iframe，{ theme: 'light'|'dark' }（YouTube 實際外觀，SPEC 10.2）
+      // v29（SPEC 4.3）：top frame 提供場次資訊與影片長度給 chat frame；chat frame 回報收錄狀態
+      STREAM_INFO_REQUEST: 'STREAM_INFO_REQUEST',
+      STREAM_INFO: 'STREAM_INFO',
+      CAPTURE_STATUS: 'CAPTURE_STATUS',
     }),
+    // v29：chat frame 等 STREAM_INFO 的重送間隔與上限
+    STREAM_INFO_RETRY_MS: 1000,
+    STREAM_INFO_MAX_WAIT_MS: 30000,
+    // F-19：FETCH_STREAM_META 等待上限（彈出視窗 CAPTURE_START 時）
+    STREAM_META_TIMEOUT_MS: 5000,
 
     // v27 主題設定（chrome.storage.sync；邏輯在 src/theme.js）
     THEME_MODE_KEY: 'themeMode',

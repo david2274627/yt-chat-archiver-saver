@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T3 擷取引擎測試</title>
+<style>
+  :root { --bg:#fff; --fg:#221d33; --ok:#0a7552; --ng:#c9362f; --mut:#766e8c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#15121d; --fg:#ece9f5; --ok:#5fd6a6; --ng:#ee6259; --mut:#948cae; } }
+  body { background:var(--bg); color:var(--fg); font:14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; margin:16px; }
+  .ok { color:var(--ok); } .ng { color:var(--ng); } .mut { color:var(--mut); }
+  li { margin:2px 0; } pre { white-space:pre-wrap; }
+  #stage { display: none; }
+</style>
+</head>
+<body>
+<h1>T3 擷取引擎測試</h1>
+<p class="mut">模擬聊天室結構只依 <code>docs/youtube-dom-notes.md</code> 建構；結果代表「模擬頁：邏輯檢查通過；真實結構待實機」。送出函式為假函式，不連線、不寫入任何資料庫。</p>
+<p id="summary">執行中…</p>
+<ol id="list"></ol>
+<div id="stage"></div>
+<script src="mock-chrome.js"></script>
+<script src="../../src/constants.js"></script>
+<script src="../../src/selectors.js"></script>
+<script src="../../src/capture.js"></script>
+<script src="test-capture.js"></script>
+</body>
+</html>

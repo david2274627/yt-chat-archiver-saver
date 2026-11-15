@@ -34,7 +34,16 @@
 | D2 設計稿與 token 一致、對比度符合 10.3 | ✅ | 2026-11-15 使用者視覺確認通過 |
 | D2 設計稿「自動」主題跟隨系統即時切換 | ✅ | 2026-11-15 使用者實機確認（Windows 設定切換） |
 | T2 資料層單元測試（`tools/tests/test-db.html`） | ✅ | 2026-11-15：30／30 通過（瀏覽器真實 IndexedDB，chrome.* 假物件） |
-| T2 實機：重新載入後 Service Worker 無錯誤、F-11 自動遷移筆數一致 | ⬜ | 待使用者 🔄 後回報（`chrome.storage.local` 的 `legacyCounts`／`migratedCounts`） |
+| T2 實機：重新載入後 Service Worker 無錯誤 | ✅ | 2026-11-15 使用者回報 |
+| T2 實機：F-11 自動遷移筆數一致 | ⬜ | 2026-11-15：回報 `legacyCounts: null`（未偵測到舊庫）。查明 Chrome 內的 IndexedDB 是 v3 首次啟動時才建立，舊資料只在 `bak_v1`；待使用者依 HANDOFF 第 0 步第 5 點還原後重跑 |
+| T2 資料層單元測試（v29 追加 F-19 `FETCH_STREAM_META`） | ✅ | 2026-11-15：32／32 通過 |
+| 寫入壓力測試（SPEC 第 7 節，`tools/tests/test-stress.html`） | ✅ | 2026-11-15：各情境 P95 14～48ms（≤ 100ms）、同一場連續 10 萬則無錯誤、筆數一致、記憶體不增長；每次約在 7 萬筆寫入時有 1 批約 5 秒（推測為 IndexedDB 內部整理），見 T3 報告 |
+| T3 擷取引擎測試（`tools/tests/test-capture.html`） | ✅ | 2026-11-15：20／20 通過（模擬頁：邏輯檢查通過；真實結構待實機） |
+| T3 實機：直播中 IndexedDB 持續增加、DOM 節點 ≤ 50 | ⬜ | 待使用者實測（T3 報告第 5 節） |
+| T3 實機：背景 30 分鐘後 DOM 節點 ≤ 50 | ⬜ | |
+| T3 實機：直播／重播訊息 id 一致性（只比對筆數） | ⬜ | 依 `idMerged`／`fpMerged` 統計；結果寫入 `docs/youtube-dom-notes.md` |
+| T3 實機：`phase` 判斷來源（`startDate`／`endDate`／`isLiveBroadcast` 診斷） | ⬜ | |
+| T3 實機：F-19 AC (a)(b)(e)(g) | ⬜ | |
 | 影片與頁面主體上沒有任何套件元素（10.1 原則 6，每個 ⏸ 關卡必查） | ✅ | 2026-11-15 v24.1 PoC；之後每個 ⏸ 關卡仍需檢查 |
 
 ## 回歸（F-01 ～ F-09）

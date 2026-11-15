@@ -207,13 +207,74 @@ function vid(msg) {
   return msg.videoId;
 }
 
+// ---------------------------------------------------------------- F-19 FETCH_STREAM_META
+// 彈出視窗沒有 top frame：抓 watch 頁 HTML 只讀開播／結束時間、標題、頻道（已有資料不重抓；同一 videoId 同時只抓一次）
+const metaInflight = new Map();
+function parseWatchHtml(html) {
+  const W = SEL.watchHtml;
+  const out = {};
+  for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
+    const ip = /\bitemprop\s*=\s*["']([^"']+)["']/i.exec(tag);
+    const nm = /\bname\s*=\s*["']([^"']+)["']/i.exec(tag);
+    const ct = /\bcontent\s*=\s*"([^"]*)"|\bcontent\s*=\s*'([^']*)'/i.exec(tag);
+    if (!ct) continue;
+    const val = decodeEntities(ct[1] ?? ct[2] ?? '');
+    if (ip && W.metaItemprop.includes(ip[1]) && out[ip[1]] == null) out[ip[1]] = val;
+    if (nm && W.metaName.includes(nm[1]) && out[nm[1]] == null) out[nm[1]] = val;
+  }
+  const meta = {};
+  const t = (s) => { const v = s ? Date.parse(s) : NaN; return Number.isFinite(v) ? v : null; };
+  const sd = t(out.startDate), ed = t(out.endDate);
+  if (ed != null) { meta.endedAt = ed; if (sd != null) meta.startedAt = sd; }
+  else if (sd != null && sd <= Date.now()) meta.startedAt = sd;
+  else if (sd != null) meta.scheduledStartAt = sd;
+  if (out.title) meta.title = out.title.slice(0, 500);
+  if (out.isLiveBroadcast != null) meta.isLive = /^true$/i.test(out.isLiveBroadcast) && ed == null;
+  const block = W.authorBlock.exec(html);
+  if (block) {
+    const u = W.authorUrl.exec(block[1]);
+    const n = W.authorName.exec(block[1]);
+    if (u) {
+      const m = /\/(@[^/?#"']+)/.exec(u[1]);
+      if (m) { try { meta.channelHandle = decodeURIComponent(m[1]); } catch (_) { meta.channelHandle = m[1]; } }
+      meta.channelUrl = u[1].replace(/^http:/, 'https:');
+    }
+    if (n) meta.channelName = decodeEntities(n[1]).slice(0, 200);
+  }
+  return meta;
+}
+
+async function fetchStreamMeta(videoId) {
+  if (metaInflight.has(videoId)) return metaInflight.get(videoId);
+  const p = (async () => {
+    const r = await fetch('https://www.youtube.com/watch?v=' + encodeURIComponent(videoId), { credentials: 'omit' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return parseWatchHtml(await r.text());
+  })().finally(() => metaInflight.delete(videoId));
+  metaInflight.set(videoId, p);
+  return p;
+}
+
+const withTimeout = (p, ms) => Promise.race([p, new Promise((res) => setTimeout(() => res(null), ms))]);
+const pickTimes = (s) => (s ? { startedAt: s.startedAt ?? null, endedAt: s.endedAt ?? null, scheduledStartAt: s.scheduledStartAt ?? null, channelHandle: s.channelHandle || '' } : null);
+
 const handlers = {
   async [RT.CAPTURE_START](msg) {
     const videoId = vid(msg);
-    const policy = await capturePolicy(await handleOf(videoId, msg.stream));
+    let stream = msg.stream && typeof msg.stream === 'object' ? Object.assign({}, msg.stream) : {};
+    // F-19：彈出視窗缺場次資訊 → 先抓 watch 頁（最多等 5 秒），暫停判斷才知道頻道
+    if (msg.source === 'popout' || msg.source === 'replay') {
+      const known = await DB.getStream(videoId);
+      const need = !(known && known.title && known.channelHandle && (known.startedAt != null || known.scheduledStartAt != null));
+      if (need && !stream.channelHandle) {
+        const meta = await withTimeout(fetchStreamMeta(videoId).catch((e) => { console.info('[ytcas] 場次資訊抓取失敗', String(e && e.message)); return null; }), C.STREAM_META_TIMEOUT_MS);
+        if (meta) stream = Object.assign(meta, stream);
+      }
+    }
+    const policy = await capturePolicy(await handleOf(videoId, stream));
     if (!policy.allowed) return { allowed: false, reason: policy.reason };
-    const r = await DB.captureStart({ videoId, source: msg.source, duration: msg.duration, stream: msg.stream });
-    return Object.assign({ allowed: true }, r);
+    const r = await DB.captureStart({ videoId, source: msg.source, duration: msg.duration, stream });
+    return Object.assign({ allowed: true, stream: pickTimes(await DB.getStream(videoId)) }, r);
   },
 
   async [RT.CAPTURE_END](msg) {
@@ -360,5 +421,5 @@ chrome.runtime.onStartup.addListener(() => {
 onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
-self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, kickQueue, autoMigrateLegacy, readQueue,
-  _inflight: inflight };
+self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
+  autoMigrateLegacy, readQueue, _inflight: inflight };

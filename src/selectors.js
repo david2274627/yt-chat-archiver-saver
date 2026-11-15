@@ -13,8 +13,10 @@
       showHideButton: 'ytd-live-chat-frame #show-hide-button',
       watchFlexy: 'ytd-watch-flexy',
       video: 'video.html5-main-video',
-      // 直播開始時間（推算 videoOffsetSec；筆記 1.2 確認存在）
+      // 直播開始時間（推算 videoOffsetSec；筆記 1.2 確認存在）。待機室時是預定時間或不存在：待實機確認（T3 診斷）
       startDateMeta: 'meta[itemprop="startDate"]',
+      endDateMeta: 'meta[itemprop="endDate"]',             // 待實機確認
+      isLiveMeta: 'meta[itemprop="isLiveBroadcast"]',       // 筆記 1.2 確認存在；值的寫法待實機確認
       titleMeta: 'meta[name="title"]',
       channelLink: 'ytd-watch-metadata ytd-channel-name a, #owner ytd-channel-name a',
       darkThemeAttr: 'html[dark]', // 深色狀態待實機確認（筆記 1.5）
@@ -134,6 +136,17 @@
       // 直播也有值，只是 yt-live-chat-renderer[hide-timestamps] 以 CSS 隱藏
       timestamp: '#timestamp',
       purchaseAmount: '#purchase-amount, #purchase-amount-chip',
+      // v29（T3 擷取）
+      badgeTypeAttr: 'type',                  // yt-live-chat-author-badge-renderer[type=verified|moderator|…]：待實機確認
+      emojiShortcutAttr: 'shared-tooltip-text', // 表符 img 的快捷碼屬性：待實機確認（取不到時只存 alt）
+      stickerImg: '#sticker img',             // #sticker-container > yt-img-shadow#sticker 確認；內部 img 待實機確認
+      paidStickerColorVars: ['--yt-live-chat-paid-sticker-background-color'], // 確認（筆記 2.4）
+      paidMessageColorVars: ['--yt-live-chat-paid-message-primary-color'],    // 待實機確認
+      membership: { primaryText: '#header-primary-text', subtext: '#header-subtext' }, // 確認（筆記 3）
+      // 置頂列內的訊息（筆記 2.4：banner-renderer > #contents > text-message-renderer#<id>）
+      bannerPinnedMessage: 'yt-live-chat-banner-renderer #contents yt-live-chat-text-message-renderer',
+      // 刪除狀態：span#deleted-state 確認存在（筆記 2.4）；被刪除時的屬性名稱與內容待實機確認
+      deleted: { attr: 'is-deleted', stateEl: '#deleted-state' },
 
       // F-10 彈窗與按鈕（筆記 2.5）
       emojiPickerButton: '#emoji-picker-button',
@@ -150,6 +163,16 @@
       ],
     },
   };
+
+  // F-19 FETCH_STREAM_META：background 讀 watch 頁 HTML（沒有 DOM，以屬性名稱比對 meta／link 標籤）。
+  // 待實機確認：未登入抓取時是否有這些標籤；作者資訊推測位於 span[itemprop="author"] 內的 link[itemprop="url"／"name"]
+  S.watchHtml = Object.freeze({
+    metaItemprop: ['startDate', 'endDate', 'isLiveBroadcast'],
+    metaName: ['title'],
+    authorBlock: /<span[^>]*itemprop=["']author["'][^>]*>([\s\S]*?)<\/span>/i,
+    authorUrl: /<link[^>]*itemprop=["']url["'][^>]*href=["']([^"']+)["']/i,
+    authorName: /<link[^>]*itemprop=["']name["'][^>]*content=["']([^"']*)["']/i,
+  });
 
   // 訊息元件標籤 → 訊息類型（F-02 擷取與 F-13 RECLASSIFY_SYSTEM 共用；background 也會載入本檔，不得在載入時存取 DOM）。
   // 不在表內的標籤存為 system（保存 rawTag）。禮物（gift）公告元件標籤尚未實機出現：取得後在此補一列，再執行重新分類。

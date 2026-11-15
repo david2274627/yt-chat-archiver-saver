@@ -53,6 +53,7 @@ Claude Code 會自動讀取 `CLAUDE.md`。進入後貼上：
 |---|---|
 | T1 clip-path 實測 | 照 `docs/poc-clip-path.md` 步驟測：上半部能否捲動/點擊測試面板、下方輸入框能否打字。回報「成功」或「失敗＋截圖」 |
 | D1 設計稿 | 用 Chrome 開 `design/mockups.html`，切換方向 A/B、淺色/深色，選一個並說明想調整的地方 |
+| T3 收錄實測 | 依 T3 報告（`docs/reports/2026-11-15-t3-capture.md`）第 5 節：直播收錄、DOM 節點數、背景分頁、彈出式聊天室、重播 id 比對；回貼 Console 的 `[ytcas]` 統計與診斷行（只有筆數、屬性與時間） |
 | T5 VOD 與按鈕 | 開一部有聊天重播的 VOD，測自動跟隨、手動捲動、點時間碼跳轉 |
 | T6 F-10 | 直播中依 SPEC 6.5 AC 1～7 測輸入、表符、`$` |
 | T8 全面回歸 | 照 `docs/test-checklist.md` 全部測一次並填寫 |

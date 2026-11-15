@@ -50,7 +50,9 @@
   - **T2** `db.js`／`background.js`（本段落所在的 commit）：`DB_VERSION` 2 與 v1→v2 遷移、`capture_sessions`、F-14 合併規則（別名、跨來源後備去重、`deleted`、`phase` 事後重算）、F-18 `versions`／`offsets`／`linkedVideos`、F-19 `popout` 與覆蓋範圍合併、F-11 唯讀遷移與 JSON 匯入（v2.6.0／v3）、v3 匯出 `formatVersion` 2、F-15 暫停判斷、F-16 用量與批次刪除、頻道名稱解析佇列（`storage.session`）、新 runtime 訊息與管理操作權限檢查；`selectors.js` 新增 `messageTypeByTag`；測試頁 `tools/tests/test-db.html`（30 項通過）（commit `a1db67c`）。
   - 本輪報告 `docs/reports/2026-11-15-t2-data-layer.md`（commit `f358c4c`；T2 完成，下一步 T3）。
 - v29／T3（`docs/review-2026-11-15-5.md`）：
-  - 規格 v29、備份位置改為 repo 外、還原步驟、測試頁攔截對外連線、本審查報告（本段落所在的 commit）。
+  - 規格 v29、備份位置改為 repo 外、還原步驟、測試頁攔截對外連線、本審查報告（commit `d1bd2bc`）。
+  - 寫入壓力測試頁 `tools/tests/test-stress.html`：P95 14～48ms、10 萬則無錯誤、記憶體不增長（commit `c9f1d5b`）。
+  - **T3** 擷取引擎 `src/capture.js`（解析、回溯擷取、數量觸發修剪、筆數批次、重試、暫停、刪除通知順序、置頂、降落）、`content.js` 三種環境（top frame `STREAM_INFO`、嵌入式 chat frame、彈出式聊天室）、F-19 `FETCH_STREAM_META` 與自動接手（展開聊天室）、`selectors.js` 擷取欄位、診斷輸出（只有筆數與屬性）；測試頁 `test-capture.html`（20 項）、`test-db.html` 追加 2 項（32 項）（本段落所在的 commit）。
 
 ### 規格 v29（2026-11-15，依 `docs/review-2026-11-15-5.md` 第 3 節）
 - T2 實機確認：Service Worker 無錯誤；自動遷移回報**未偵測到舊資料庫**（`legacyCounts: null`）。調查結果：Chrome 裡本擴充功能的 IndexedDB 是 v3 第一次啟動時（2026-11-15 20:45:52）才建立的，舊資料只剩 `indexeddb_bak\bak_v1` 備份；HANDOFF 新增還原步驟。4.1 補充設計 9 點使用者與審查端同意。

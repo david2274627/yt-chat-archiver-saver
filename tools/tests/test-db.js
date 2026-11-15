@@ -483,6 +483,46 @@
     eq(BG.parseChannelHtml('<meta property="og:title" content="X"><meta property="og:image" content="https://evil.example/x.jpg">').avatar, '');
   });
 
+  test('F-19 FETCH_STREAM_META：watch 頁 meta 解析（開播／結束、標題、頻道；結構待實機確認）', () => {
+    const html = '<meta name="title" content="測試 &amp; 直播"><span itemprop="author" itemscope itemtype="http://schema.org/Person">' +
+      '<link itemprop="url" href="http://www.youtube.com/@Host%E5%8F%B0"><link itemprop="name" content="主播台"></span>' +
+      '<span itemprop="publication" itemscope><meta itemprop="isLiveBroadcast" content="True">' +
+      '<meta itemprop="startDate" content="2026-11-15T12:00:00+00:00"><meta itemprop="endDate" content="2026-11-15T14:00:00+00:00"></span>';
+    const m = BG.parseWatchHtml(html);
+    eq(m, { endedAt: Date.parse('2026-11-15T14:00:00Z'), startedAt: Date.parse('2026-11-15T12:00:00Z'), title: '測試 & 直播', isLive: false,
+      channelHandle: '@Host台', channelUrl: 'https://www.youtube.com/@Host%E5%8F%B0', channelName: '主播台' });
+    const future = new Date(Date.now() + 3600e3).toISOString();
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + future + '"><meta itemprop="isLiveBroadcast" content="True">'),
+      { scheduledStartAt: Date.parse(future), isLive: true }, '待機室：預定時間');
+    eq(BG.parseWatchHtml('<html></html>'), {});
+  });
+
+  test('F-19 CAPTURE_START（popout）：缺場次資訊時先抓 watch 頁，再依頻道判斷暫停；回傳開播時間', async () => {
+    await resetAll();
+    const urls = [];
+    self.fetch = async (url) => {
+      urls.push(String(url));
+      return new Response('<meta name="title" content="T"><span itemprop="author"><link itemprop="url" href="http://www.youtube.com/@popHost"><link itemprop="name" content="P"></span>' +
+        '<meta itemprop="startDate" content="2026-11-15T12:00:00+00:00"><meta itemprop="isLiveBroadcast" content="True">', { status: 200 });
+    };
+    try {
+      const r = await send({ type: 'CAPTURE_START', videoId: V, source: 'popout' });
+      eq([r.ok, r.allowed, r.stream.startedAt, r.stream.channelHandle], [true, true, Date.parse('2026-11-15T12:00:00Z'), '@popHost']);
+      eq(urls, ['https://www.youtube.com/watch?v=' + V]);
+      const s = await DB.getStream(V);
+      eq([s.title, s.channelName, s.popoutCaptureCount], ['T', 'P', 1]);
+      await send({ type: 'CAPTURE_START', videoId: V, source: 'popout' });
+      eq(urls.length, 1, '已有資料不重抓');
+      await chrome.storage.local.set({ captureExcludedChannels: ['@pophost'] });
+      eq((await send({ type: 'CAPTURE_START', videoId: V2, source: 'popout' })).reason, 'channel', '抓到頻道後才判斷暫停');
+      // 直播（嵌入式）不抓
+      await send({ type: 'CAPTURE_START', videoId: 'vidCCCCCCC3', source: 'live', stream: { channelHandle: '@x' } });
+      eq(urls.length, 2);
+    } finally {
+      self.fetch = self.__blockedFetch;
+    }
+  });
+
   test('F-03／3.2：頻道解析佇列存 storage.session，失敗退避、SW 重啟後接續', async () => {
     await resetAll();
     await sleep(300); // 等前面測試排入的解析工作結束（測試期間 fetch 一律被攔截，不連外）
