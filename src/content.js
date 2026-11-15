@@ -41,10 +41,23 @@
       try { window.parent.postMessage(Object.assign({ __ytcas: true, type }, payload || {}), YT); } catch (_) { /* 非 YouTube 頁面內嵌 */ }
     };
 
+    // 診斷（只記屬性名稱與狀態）：phase 判斷來源（F-14 第 3 點）與 F-12 結果。F-12 有結果時輸出，最晚 10 秒
+    let diagDone = false;
+    const diag = (f12) => {
+      if (diagDone) return;
+      diagDone = true;
+      const r = document.querySelector(S.chat.renderer);
+      const s = engine.state();
+      console.info('[ytcas] 聊天室環境（診斷）', { env, source, rendererAttrs: r ? r.getAttributeNames() : null,
+        hasItems: !!document.querySelector(S.chat.items), urlHasV: !!urlVid, mode: s.mode,
+        viewMode: (f12 && f12.viewMode) || s.viewMode, f12: (f12 && f12.f12) || s.f12 || 'not-run' });
+    };
     const engine = CAP.createEngine({
       doc: document, source, send, isConnected: connected,
       onStatus: (s) => post(FM.CAPTURE_STATUS, s),
+      onF12: (r) => diag(r),
     });
+    setTimeout(() => diag(null), 10000);
     engine.start();
 
     if (env === 'popout') {
@@ -85,13 +98,6 @@
         if ('captureEnabled' in changes || 'captureExcludedChannels' in changes) engine.recheckPolicy();
       });
     } catch (_) { /* ignore */ }
-
-    // 診斷（只記屬性名稱）：phase 判斷來源實機確認用（F-14 第 3 點）
-    setTimeout(() => {
-      const r = document.querySelector(S.chat.renderer);
-      console.info('[ytcas] 聊天室環境（診斷）', { env, source, rendererAttrs: r ? r.getAttributeNames() : null,
-        hasItems: !!document.querySelector(S.chat.items), urlHasV: !!urlVid });
-    }, 3000);
 
     // 離開頁面：送出剩餘訊息並結束 session（送不到時由 background 以最後寫入時間補 endedAt）
     window.addEventListener('pagehide', () => engine.stop());

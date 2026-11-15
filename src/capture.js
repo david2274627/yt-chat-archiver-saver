@@ -222,6 +222,7 @@
       pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0 },
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
+      f12: null, viewMode: null, // F-12 結果：null（未執行）／running／switched／already／failed:<原因>
     };
 
     const setStatus = (mode, extra) => {
@@ -492,6 +493,50 @@
       if (r.stream) for (const k of ['startedAt', 'endedAt', 'scheduledStartAt']) if (st.stream[k] == null && typeof r.stream[k] === 'number') st.stream[k] = r.stream[k];
       setStatus('capturing');
       backfill();
+      if (!st.f12) autoLiveMode(); // F-12（v30）：開始收錄時切到「即時聊天室」，同一頁只做一次
+    }
+
+    // ------------------------------------------------ F-12 自動切換「即時聊天室」
+    // 只依位置與 aria-selected（第 1 項 = 重點、第 2 項 = 即時），不依文字。先直接點；沒切成再「展開選單 → 點」；
+    // 仍失敗就 warnOnce 放棄，不重試。選單可能比 #items 晚出現：最多等 F12_MENU_WAIT_MS。
+    const F12_STEP_MS = 300;
+    const F12_MENU_WAIT_MS = 5000;
+    const viewItems = () => Array.from(doc.querySelectorAll(S.chat.viewSelector.items));
+    const sel = (a) => !!a && a.getAttribute('aria-selected') === 'true';
+    function viewMode() {
+      const it = viewItems();
+      if (it.length < 2) return 'unknown';
+      return sel(it[1]) ? 'live' : (sel(it[0]) ? 'top' : 'unknown');
+    }
+    async function autoLiveMode() {
+      st.f12 = 'running';
+      const done = (r) => {
+        st.f12 = r;
+        st.viewMode = viewMode();
+        if (r.startsWith('failed')) S.warnOnce('F-12:' + r, '無法自動切換到「即時聊天室」');
+        if (opts.onF12) try { opts.onF12({ f12: r, viewMode: st.viewMode }); } catch (_) { /* ignore */ }
+      };
+      const t0 = Date.now();
+      while (viewItems().length < 2) {
+        if (st.mode !== 'capturing') { st.f12 = null; return; }
+        if (Date.now() - t0 > F12_MENU_WAIT_MS) return done('failed:no-menu');
+        await sleep(250);
+      }
+      if (st.mode !== 'capturing') { st.f12 = null; return; } // 暫停中不切換
+      let it = viewItems();
+      if (sel(it[1])) return done('already');
+      if (!sel(it[0])) return done('failed:unknown-state');
+      it[1].click();
+      await sleep(F12_STEP_MS);
+      if (sel(viewItems()[1])) return done('switched');
+      const trig = doc.querySelector(S.chat.viewSelector.trigger);
+      if (!trig) return done('failed:no-trigger');
+      trig.click();
+      await sleep(F12_STEP_MS);
+      it = viewItems();
+      if (it[1]) it[1].click();
+      await sleep(F12_STEP_MS);
+      return done(sel(viewItems()[1]) ? 'switched' : 'failed:not-selected');
     }
 
     function pauseCapture(reason) {
@@ -576,7 +621,8 @@
         setStatus('stopped');
       },
       flush,
-      state: () => ({ mode: st.mode, videoId: st.videoId, queue: st.queue.length, session: st.session, stream: Object.assign({}, st.stream), stats: Object.assign({}, st.stats), observers: liveObservers }),
+      state: () => ({ mode: st.mode, videoId: st.videoId, queue: st.queue.length, session: st.session, stream: Object.assign({}, st.stream),
+        stats: Object.assign({}, st.stats), observers: liveObservers, f12: st.f12, viewMode: st.viewMode || viewMode() }),
       _trim: trim,
       _tick: tick,
     };

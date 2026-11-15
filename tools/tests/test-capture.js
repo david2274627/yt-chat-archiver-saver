@@ -457,6 +457,82 @@
     eq([end.captureSessionId != null, end.source], [true, 'popout']);
   });
 
+  // ---------------------------------------------------------------- F-12（v30：開始收錄時）
+  // 選單結構依筆記 2.3：#view-selector > yt-sort-filter-sub-menu-renderer#live-chat-view-selector-sub-menu > yt-dropdown-menu
+  //   > tp-yt-paper-menu-button#menu-button（#trigger；tp-yt-iron-dropdown#dropdown > #contentWrapper > tp-yt-paper-listbox#menu > a, a）
+  // YouTube 的點擊行為（是否需先展開）待實機確認：requireOpen 模擬「需先展開」，broken 模擬「點了也沒切」
+  function addViewMenu(o) {
+    const header = stage.querySelector('yt-live-chat-header-renderer');
+    const a1 = h('a', { 'aria-selected': o.mode === 'live' ? 'false' : 'true' });
+    const a2 = h('a', { 'aria-selected': o.mode === 'live' ? 'true' : 'false' });
+    const trigger = h('div', { id: 'trigger' });
+    let open = false;
+    const clicks = [];
+    trigger.addEventListener('click', () => { clicks.push('trigger'); open = true; });
+    const pick = (a, b) => () => {
+      clicks.push(a === a1 ? 'a1' : 'a2');
+      if (o.broken || (o.requireOpen && !open)) return;
+      a.setAttribute('aria-selected', 'true'); b.setAttribute('aria-selected', 'false'); open = false;
+    };
+    a1.addEventListener('click', pick(a1, a2));
+    a2.addEventListener('click', pick(a2, a1));
+    header.append(h('div', { id: 'primary-content' }, [h('div', { id: 'view-selector' }, [
+      h('yt-sort-filter-sub-menu-renderer', { id: 'live-chat-view-selector-sub-menu' }, [h('yt-dropdown-menu', {}, [
+        h('tp-yt-paper-menu-button', { id: 'menu-button' }, [trigger,
+          h('tp-yt-iron-dropdown', { id: 'dropdown' }, [h('div', { id: 'contentWrapper' }, [h('tp-yt-paper-listbox', { id: 'menu' }, [a1, a2])])])]),
+      ])]),
+    ])]));
+    return { a1, a2, clicks };
+  }
+  async function f12Run(menu, allowed) {
+    buildChat();
+    const m = menu ? addViewMenu(menu) : null;
+    const send = mockSend(async (msg) => (msg.type === RT.CAPTURE_START && allowed === false ? { ok: true, allowed: false, reason: 'global' } : defaultReply(msg)));
+    let result = null;
+    const e = engine({ send, onF12: (r) => { result = r; } });
+    e.start();
+    e.setInfo({ videoId: 'testVidF12x' });
+    return { e, m, get result() { return result; } };
+  }
+
+  test('F-12：開始收錄時從「重點」切到「即時」（直接點擊即可）', async () => {
+    const r = await f12Run({ mode: 'top' });
+    await until(() => r.result, 3000, 'F-12 結果');
+    eq(r.result, { f12: 'switched', viewMode: 'live' });
+    eq(r.m.clicks, ['a2']);
+    eq(r.e.state().f12, 'switched');
+  });
+
+  test('F-12：直接點沒有切換 → 展開選單再點', async () => {
+    const r = await f12Run({ mode: 'top', requireOpen: true });
+    await until(() => r.result, 3000, 'F-12 結果');
+    eq(r.result, { f12: 'switched', viewMode: 'live' });
+    eq(r.m.clicks, ['a2', 'trigger', 'a2']);
+  });
+
+  test('F-12：已是「即時」→ 不做任何操作；切換失敗 → failed 且不重試', async () => {
+    let r = await f12Run({ mode: 'live' });
+    await until(() => r.result, 3000);
+    eq([r.result.f12, r.m.clicks.length], ['already', 0]);
+    r.e.stop();
+    r = await f12Run({ mode: 'top', broken: true });
+    await until(() => r.result, 3000);
+    eq(r.result, { f12: 'failed:not-selected', viewMode: 'top' });
+    await sleep(700);
+    eq(r.m.clicks, ['a2', 'trigger', 'a2'], '不重試迴圈');
+  });
+
+  test('F-12：F-15 暫停中不切換；沒有選單 → failed:no-menu（不報錯）', async () => {
+    let r = await f12Run({ mode: 'top' }, false);
+    await until(() => r.e.state().mode === 'paused');
+    await sleep(800);
+    eq([r.m.clicks.length, r.result, r.e.state().f12], [0, null, null]);
+    r.e.stop();
+    r = await f12Run(null);
+    await until(() => r.result, 7000, '等選單逾時');
+    eq(r.result, { f12: 'failed:no-menu', viewMode: 'unknown' });
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];
