@@ -38,7 +38,19 @@
 - **T1 通過（2026-11-15）**，v26（`docs/review-2026-11-15-2.md`）：
   - PoC v24.2：投票卡 `#action-panel` 入白名單、搬移後重新初始化與看門狗（commit `c2d9ca5`）。
   - 規格 v26、DOM 筆記、補測原文、T1 定稿（commit `6162700`）。
-- D1 設計稿 `design/mockups.html`：方向 A「沉穩工具感」／方向 B「柔和現代感」× 淺色／深色（本段落所在的 commit；⏸ 等待使用者選定方向）。
+- D1 設計稿 `design/mockups.html`：方向 A「沉穩工具感」／方向 B「柔和現代感」× 淺色／深色（commit `3a6690b`）。**使用者 2026-11-15 選定方向 B**。
+- v27（`docs/review-2026-11-15-3.md`）：
+  - 規格 v27、附錄 D 訊息元件清單腳本、test-checklist（本段落所在的 commit）。
+
+### 規格 v27（2026-11-15，依 `docs/review-2026-11-15-3.md`）
+- **D1 選定方向 B「柔和現代感」**；10.9 填入已選定方向；10.3 圓角改為 8／14px，新增 `--ytcas-on-accent`、`--ytcas-on-danger`、`--ytcas-gift`、`--ytcas-gift-soft`。
+- 10.2 主題系統取代舊版：`themeMode`（自動／淺色／深色，預設自動）存 `chrome.storage.sync`、所有介面即時同步；自動時內嵌面板跟隨 YouTube 外觀、後台／popup／匯出 HTML 跟隨系統；新增 frame 訊息 `THEME`（4.3）與共用模組 `src/theme.js`；不做明暗滑桿。
+- 新增 **F-13 YouTube 禮物（Jewels）訊息**：`gift` 類型與欄位；膠囊列改為 4 個（「💰 SC／禮物」「👑 會員」）；元件標籤待實機，先存 `system`（保存 `rawTag`），之後以 `RECLASSIFY_SYSTEM` 重新分類。
+- 新增 **F-14 重複收錄與合併規則**：一場一份存檔、訊息以 id 合併（不覆蓋、只補空欄位、`sources` 累加、重播 offset 優先）、後備指紋去重、刪除訊息標記、`capture_sessions` 收錄紀錄與覆蓋範圍、「清空此場次後重新收錄」；**待機室／結束後聊天 `phase`**（`pre` 負 offset、`post`、檢視器分隔線、時間軸同步排除）。
+- 4.1：`DB_VERSION` 2、streams／messages 新欄位、`[videoId+fp]` 索引、`capture_sessions`；4.2 新增 `CAPTURE_START/END`、`RESET_STREAM`、`RECLASSIFY_SYSTEM`、`MESSAGE_DELETED`。
+- 1.3：沒開分頁的時段不會被收錄；劇院模式支援維持待議（候選 A／B／C）。
+- 第 8 節：D1 ✅；D2 改為 ⏸；T2 加入 `capture_sessions` 與合併規則；T3 第一步為直播／重播 id 一致性驗證與 `phase` 判斷來源確認；T4／T5／T7 對應調整。第 9 節新增 v27 必測情境。
+- `docs/poc-clip-path.md` 附錄 D：訊息元件清單腳本（只輸出標籤與數量）。
 
 ### 規格 v26（2026-11-15，依 `docs/review-2026-11-15-2.md`）
 - **T1 通過並關閉**（v24.1 PoC 實機補測）；`docs/poc-clip-path.md` 新增「T1 定稿」。

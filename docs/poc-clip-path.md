@@ -213,6 +213,33 @@ F12 → Console 左上角 frame 選單選**聊天室的 iframe**（名稱含 `li
 })();
 ```
 
+## 附錄 D：訊息元件清單（遇到禮物等新訊息類型時使用，v27）
+用途：取得聊天室裡實際出現的訊息元件標籤（例如有人送禮時的公告元件，F-13），補進 `selectors.js`。
+F12 → Console 左上角 frame 選單選**聊天室的 iframe**（名稱含 `live_chat`）→ 貼上並按 Enter。
+- 只輸出**元件標籤名稱與數量**，不輸出任何訊息文字、id、屬性值。
+- 範圍：訊息列表 `#items` 的直接子元素，以及跑馬燈 `yt-live-chat-ticker-renderer` 內的所有自訂元件（標籤名稱含 `-`）。
+- 禮物公告可能只停留幾秒或只出現在跑馬燈，建議看到送禮後立刻執行；沒看到新標籤時可隔幾秒再跑一次。
+```js
+(() => {
+  const count = (els) => {
+    const m = {};
+    for (const e of els) { const t = e.tagName.toLowerCase(); m[t] = (m[t] || 0) + 1; }
+    return Object.fromEntries(Object.entries(m).sort((a, b) => b[1] - a[1]));
+  };
+  const items = document.querySelector('#item-list #items');
+  const ticker = document.querySelector('yt-live-chat-ticker-renderer');
+  const out = {
+    page: location.pathname,
+    items: items ? count(items.children) : '找不到 #items',
+    ticker: ticker ? count([...ticker.querySelectorAll('*')].filter((e) => e.tagName.includes('-'))) : '找不到跑馬燈',
+  };
+  const s = JSON.stringify(out, null, 1);
+  console.log(s);
+  try { copy(s); } catch (_) { /* copy 被覆蓋時略過 */ }
+  return '完成：結果已印在上方（可能也已複製到剪貼簿）';
+})();
+```
+
 ## 歷史：第一次實測步驟（2026-11-14，v22 版 PoC）
 > 當時的左下角控制盒已移除（違反 10.1 原則 6），步驟僅保留紀錄：開啟 PoC → 確認露出 84px → 點擊／滾輪穿透（div 與擴充功能 iframe 下層）→ 輸入框可打字 → 完全不裁切時表符、`$`、付款視窗位置 → 裁切對象改為 `iframe#chatframe` 比較 → 劇院模式 → 關閉還原。
 

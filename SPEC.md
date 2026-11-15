@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v26**（前版：v25；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v27**（前版：v26；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -26,6 +26,7 @@
 - **v24 調整**：F-09 依目前 YouTube 版面（聊天室右上角 `✕`、無「隱藏聊天室」列、影片下方「聊天室／開啟面板」卡片）改為**多重錨點**，並決定**預設開啟、不記住關閉狀態**（5.C、6.5）；新增 frame 訊息 `TOGGLE_PANEL`（4.3）；頁面層付款視窗選擇器定案為 `#buyFlowDivId`，移除萬用規則（6.3、6.4）；第 9 節加入 Holodex+ 相容性測試。v23 依據的審查內容有遺失，本版補回。另依 v23 PoC 補測：`inputHeight` 改為 **`bottomZoneHeight`（底部互動區高度，含置頂列、投票卡）**（4.3、6.2、6.3）；6.2 新增「聊天室摺疊」狀態，劇院模式／窄版面監看要求（6.4）；F-07 與原生置頂列的關係、F-02 置頂來源待確認；6.5 AC 新增第 12、13 條；第 9 節新增置頂列／投票卡必測情境。
 - **v25 調整**（依 `docs/youtube-dom-notes.md` 實機結構）：依賴 YouTube DOM 的功能一律以該筆記為準（第 9 節）；底部互動區改為**白名單**量測並加合理性退回（6.3）；F-09 頂部列按鈕位置定案（`#live-chat-header-context-menu` 前）；彈窗選擇器定案（6.3）；F-02 直播訊息改讀 `#timestamp`、身分改讀 `author-type` 屬性、未知訊息元件存為 `system`；F-03 以 `@handle` 為鍵；新增 **F-12 自動切換「即時聊天室」**；1.3 新增「只能保存 YouTube 實際送到分頁的訊息」；6.4 版面狀態判斷屬性。
 - **v26 調整**（v24.1 PoC 補測，`docs/review-2026-11-15-2.md`）：**T1 通過並關閉**（第 8 節）；投票卡 `#chat > #action-panel` 入白名單、合理性規則調整、面板最小高度與退讓（6.2、6.3）；iframe 搬移重載後的重新初始化流程與看門狗（6.4）；**劇院模式一律退讓，但擷取與修剪持續運作**（6.2、6.4、6.5 AC 14）；退讓時的按鈕樣式（10.4）；F-02 重播以 `#timestamp` 取得 `videoOffsetSec`、略過佔位元素、新增收到贈送會員；F-12 重播同樣適用。
+- **v27 調整**（`docs/review-2026-11-15-3.md`）：**D1 選定方向 B「柔和現代感」**（10.9）；主題系統改為 `themeMode` 自動／淺色／深色，存 `chrome.storage.sync`、所有介面即時同步（10.2，取代舊版）；新增 frame 訊息 `THEME`（4.3）；新增 **F-13 YouTube 禮物（Jewels）訊息**（`gift` 類型，膠囊改為 4 個）；新增 **F-14 重複收錄與合併規則**（一場一份存檔、訊息以 id 合併、後備指紋去重、`capture_sessions` 收錄紀錄、刪除訊息標記、**待機室／結束後聊天 `phase`**）；資料模型與 `DB_VERSION` 2（4.1）；1.3 新增「沒開分頁的時段不會被收錄」；第 8 節 T2／T3 對應調整。
 
 ---
 
@@ -48,7 +49,8 @@
 - 不做雲端同步、不上傳任何聊天資料到外部伺服器。
 - 不自行實作 SC 付款流程（一律交給 YouTube 原生 UI）。
 - 不支援 Firefox / Safari / 行動版。
-- （v26）**劇院模式下不提供優化面板**（聊天室被 YouTube 壓成 152px 小框，見 6.4）；是否另外提供檢視方式（例如獨立視窗的檢視器）列為 **3.0.0 之後的待議事項**，本版不做。劇院模式下訊息擷取與 DOM 修剪仍持續運作。
+- （v26）**劇院模式下不提供優化面板**（聊天室被 YouTube 壓成 152px 小框，見 6.4）；是否另外提供檢視方式（例如獨立視窗的檢視器）列為 **3.0.0 之後的待議事項**，本版不做。劇院模式下訊息擷取與 DOM 修剪仍持續運作。（v27：使用者 2026-11-15 決定**維持待議**；候選方向為 A 劇院模式時拉高聊天室外框、B Chrome 側邊欄、C 獨立小視窗，評估紀錄見 `docs/review-2026-11-15-3.md` 第 7 節。）
+- （v27）**沒有開著分頁的時段不會被收錄**：套件只在聊天室 iframe 存在、分頁開著時擷取；YouTube 也不提供事後補抓待機室或直播結束後聊天的方式（F-14）。中途離開的空檔會在後台的覆蓋範圍上看得到。
 - （v25）**套件只能保存 YouTube 實際送到此分頁的訊息**：被封鎖、被管理員隱藏、被 YouTube 垃圾訊息過濾的訊息不在存檔內；F-12 會自動切到「即時聊天室」以盡量取得完整訊息流，但仍以 YouTube 實際送出的為限。
 
 ---
@@ -125,26 +127,48 @@ yt-chat-archiver-saver/
 
 > v2.6.0 的舊資料庫（`YTLiveChatArchiverDB_V6`，結構見 `docs/legacy-v2.6.0-data.md`）**不得**以 v3 程式升級、修改或刪除，只能唯讀複製（F-11）。
 
+> **v27：`DB_VERSION` 升為 2**（新增 `capture_sessions` 資料表、messages 新欄位與 `[videoId+fp]` 索引）。`onupgradeneeded` 依 `oldVersion` 逐版遷移；v1 既有紀錄補上預設值（`sources: ['live']`、`phase: 'live'`、`offsetSource: 'estimated'`、`deleted: false`）。一場直播／一部影片 = 一份存檔，規則見 F-14。
+
 **streams**（keyPath `videoId`）
 ```js
 { videoId, title, channelName, channelUrl, isLive: boolean,
-  startedAt: number /*ms*/, lastMessageAt: number, messageCount: number }
+  startedAt: number /*ms，實際開播時間；未開播時為 null*/, lastMessageAt: number, messageCount: number,
+  // v27（F-14）
+  scheduledStartAt: number|null /* 待機室的預定開播時間 */, endedAt: number|null /* 直播結束時間 */,
+  liveCaptureCount: number, replayCaptureCount: number /* 由 capture_sessions 彙總，供場次清單顯示 */ }
 ```
 
-**messages**（keyPath `id`；索引 `videoId`, `[videoId+videoOffsetSec]`, `[videoId+type]`）
+**messages**（keyPath `id`；索引 `videoId`, `[videoId+videoOffsetSec]`, `[videoId+type]`, `[videoId+fp]`（v27））
 ```js
 { id /* YouTube 訊息 id，去重用 */, videoId,
-  type: 'text'|'superchat'|'supersticker'|'membership'|'milestone'|'raid'|'system',
+  type: 'text'|'superchat'|'supersticker'|'gift'|'membership'|'milestone'|'raid'|'system',  // v27 新增 gift（F-13）
   authorHandle /* '@xxx' 或空 */, authorChannelId /* 'UC...' 或空；v25：直播訊息沒有作者連結，多數情況取不到 */,
   authorUrl /* v25：以 https://www.youtube.com/@handle 組成；有 channelId 時才用 /channel/UC... */,
   authorAvatar, authorBadges: string[] /* 'owner'|'moderator'|'member'|'verified' */,
   runs: Array<{ text } | { emoji: { src, alt, shortcut } }>,  // 富媒體內容
   amount?: string, color?: string,      // SC / 超級貼圖
   stickerSrc?: string,
-  timestampAbs: number /*ms epoch*/, videoOffsetSec: number|null }
+  giftName?: string, giftImage?: string, giftCount?: number, jewels?: number,  // v27：gift（F-13），聊天室有顯示才存
+  rawTag?: string,  // v27：type 為 system 時保存原始元件標籤名稱，供 RECLASSIFY_SYSTEM 重新分類（F-13）
+  timestampAbs: number /*ms epoch*/, videoOffsetSec: number|null,
+  // v27（F-14）
+  phase: 'pre'|'live'|'post',            // 待機室／直播中／結束後；pre 的 videoOffsetSec 為負值（開播時間未定時先存 null，開播後回填）
+  offsetSource: 'replay'|'estimated',    // replay = 重播 #timestamp 精確值；estimated = 由 startDate 推算
+  sources: Array<'live'|'replay'|'import'|'legacy'>,  // 累加，不重複
+  firstSeenAt: number, lastSeenAt: number,
+  deleted?: boolean, deletedAt?: number, // 被管理員刪除時保留原內容並標記
+  fp: string }                           // 後備去重指紋（F-14）
 ```
 
 **pinned_messages**（keyPath `id`；索引 `videoId`）— 結構同 messages，另加 `pinnedAt`。
+
+**capture_sessions**（v27，keyPath `id` 自動遞增；索引 `videoId`）— 每次開始收錄記一筆（F-14）
+```js
+{ id, videoId, source: 'live'|'replay', startedAt: number, endedAt: number|null,
+  firstOffset: number|null, lastOffset: number|null,  // 本次收錄涵蓋的 videoOffsetSec 範圍（pre 可為負）
+  phases: Array<'pre'|'live'|'post'>,                 // 本次收錄涵蓋哪幾段
+  added: number, merged: number }                     // 新增筆數／合併（已存在）筆數
+```
 
 **channels**（keyPath `handleOrId`）
 ```js
@@ -162,6 +186,10 @@ yt-chat-archiver-saver/
 | `LIST_STREAMS` / `DELETE_STREAM` / `EXPORT_STREAM` | viewer/popup → bg | 依名稱 |
 | `RESOLVE_CHANNELS` | bg 內部 | `handles[]` |
 | `CHANNEL_RESOLVED` | bg → viewers | `{ handleOrId, displayName, avatar }` |
+| `CAPTURE_START` / `CAPTURE_END` | chat frame → bg | `{ videoId, source }` → 回傳 `captureSessionId`（v27，F-14；`CAPTURE_END` 在 `pagehide`／導航時送出，送不到時由 bg 以最後寫入時間補 `endedAt`） |
+| `RESET_STREAM` | viewer → bg | `{ videoId }`（v27：「清空此場次後重新收錄」，需二次確認） |
+| `RECLASSIFY_SYSTEM` | viewer → bg | `{ videoId? }`（v27，F-13：依目前 `selectors.js` 重新分類既存的 `system` 紀錄，一次性） |
+| `MESSAGE_DELETED` | chat frame → bg | `{ videoId, id, deletedAt }`（v27，F-14） |
 
 ### 4.3 frame 間訊息（`window.postMessage`）
 
@@ -177,6 +205,7 @@ yt-chat-archiver-saver/
 |---|---|---|
 | `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, bottomZoneHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗；v24 起 `inputHeight` 改名 `bottomZoneHeight`，定義見 6.3） |
 | `TOGGLE_PANEL` | chat frame → top | `{}`（v24：使用者點了聊天室頂部列的 F-09 按鈕；top 端只接受 `event.source === iframe#chatframe.contentWindow` 且 origin 為 youtube.com） |
+| `THEME` | top → viewer iframe | `{ theme: 'light'|'dark' }`（v27：top frame 監看 `html[dark]` 的實際外觀，開啟面板時送一次、變更時再送；面板依 `themeMode` 決定是否採用，見 10.2） |
 | `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`） |
 | `SEEK_TO` | viewer iframe → top | `{ seconds }` |
 
@@ -204,7 +233,8 @@ yt-chat-archiver-saver/
 - **略過佔位元素**（v26）：`yt-live-chat-placeholder-item-renderer` 不擷取、不計入未知元件。
 - **會員訊息欄位對應**（v26）：`yt-live-chat-membership-item-renderer`（`type: 'membership'`）：`#header #author-photo img#img` → `authorAvatar`；`#header-content #author-name` → 名稱；`#chat-badges` → 徽章；`#header-primary-text`、`#header-subtext` → `runs` 開頭的系統文字（例如加入會員、會員月數；有 `has-primary-header-text` 屬性時 primary 為主標）；`#content #message` → 使用者留言（里程碑訊息，可能為空）；`#timestamp`（此元件為 `div#timestamp`）→ 時間。
 - **收到贈送會員**（v26）：`ytd-sponsorships-live-chat-gift-redemption-announcement-renderer` 歸入 `type: 'membership'`（內部結構待實機確認；先保存作者與可見文字）。跑馬燈內的 `yt-live-chat-ticker-sponsor-item-renderer` 不擷取（同一事件已在訊息列表出現）。
-- AC：同一訊息不重複寫入（以 `id` 去重）；匯出 JSON 與畫面數量一致。
+- （v27）禮物訊息見 F-13；重複收錄、合併、刪除標記與 `phase` 見 F-14。
+- AC：同一訊息不重複寫入（以 `id` 去重，合併規則見 F-14）；匯出 JSON 與畫面數量一致。
 
 **F-03 全自動頻道名稱解析**（v2.6.0 已驗證可行，重寫照做）
 - 無手動改名按鈕。`@Handle` 由 bg 抓頻道頁 `og:title`、`og:image` 解析；併發上限 **3**，失敗指數退避，快取 **7 天**。
@@ -222,6 +252,53 @@ yt-chat-archiver-saver/
 - **v3 JSON 匯出**含 `formatVersion` 欄位（初版 `1`），確保可匯入回來。
 - **時間碼為盡力而為**（v23）：舊資料的 `timestamp` 是擷取時間，`videoOffsetSec` 可能缺漏或有誤差；遷移資料的 VOD 同步（F-08）為盡力而為，不列入 6.5 AC。
 - AC：遷移後舊資料庫筆數不變；v3 場次數與訊息數與舊資料一致；同一檔案匯入兩次不產生重複；匯入格式錯誤時顯示錯誤，不寫入任何資料。
+- （v27）遷移與匯入同樣套用 F-14 的合併規則（`sources` 分別記 `legacy`、`import`）。
+
+**F-13 YouTube 禮物（Jewels）訊息**（v27 新增）
+- **背景**：YouTube「禮物（Gifts）」是觀眾以 Jewels（在手機 App 購買的虛擬貨幣）送出的動畫貼圖，送出後聊天室會顯示公告；已從直式直播擴展到橫式直播。這與「贈送會員資格（gift memberships）」是**不同的功能**。實機已確認輸入區有 `div#jewels-gifts-button`（`docs/youtube-dom-notes.md` 2.5）。
+- **類型 `gift`**（`constants.js` 的 `MSG_TYPE.GIFT`）。欄位：作者、頭像、`giftName`（禮物名稱）、`giftImage`（禮物圖片，需在圖片白名單內）、`giftCount`（數量，若有）、`jewels`（Jewels 數值，聊天室有顯示才存）、`timestampAbs`、`videoOffsetSec`。
+- **分類**：`superchat`、`supersticker`、`gift` 歸入「💰 SC／禮物」膠囊；贈送會員（`gift-purchase`）、收到會員（`gift-redemption`）、新會員、里程碑歸入新的「👑 會員」膠囊（F-05）。
+- **元件標籤未知**：禮物公告元件尚未在實機出現，`selectors.js` 標「待實機確認」。在取得標籤前，依 F-02「未知元件」規則 `console.info` 一次並存為 `system`。使用者遇到禮物時執行 `docs/poc-clip-path.md` 附錄 D「訊息元件清單」腳本，取得標籤後補 `selectors.js`，並以 `RECLASSIFY_SYSTEM`（4.2）把既存的 `system` 紀錄重新分類：只依保存時記下的元件標籤（`system` 紀錄需保存 `rawTag`）判斷，不重新解析文字；可重複執行，結果寫入診斷（只記筆數）。
+- 視覺與 SC 卡片可區分（10.4）。
+- AC：禮物公告以 `gift` 保存並出現在「💰 SC／禮物」膠囊；與贈送會員不混淆；標籤補上前收錄的 `system` 紀錄在重新分類後改為 `gift`，筆數不變、無重複。
+
+**F-14 重複收錄與合併規則**（v27 新增）
+- **原則**：一場直播／一部影片 = 一份存檔（以 `videoId` 為鍵）；同一則訊息只存一次（以 YouTube 訊息 id 為鍵）。重複進入只會**補進缺的**，不會覆蓋，也不會另存一份。
+
+| 情境 | 行為 |
+|---|---|
+| 同一場直播重新整理／離開再回來 | 同一份存檔；已存在的訊息以 id 略過，新訊息加入 |
+| 直播結束後看 VOD 重播 | 同一份存檔（同 `videoId`）。重播訊息與直播收錄的 id 相同 → 合併；不同 → 後備去重 |
+| 重複觀看同一部 VOD | 同一份存檔，不產生重複 |
+| 兩個分頁同時開同一場 | background 以 `videoId` 為單位序列化寫入，`put` 為冪等，不重複 |
+| 訊息被管理員刪除 | 保留原內容，標記 `deleted: true`、`deletedAt`；檢視器顯示「已刪除」標記（可篩選隱藏） |
+| v2.6.0 舊資料遷移（F-11）、JSON 匯入 | 同一套合併規則 |
+
+- **欄位合併**（同一 id 再次出現時）：
+  - 不覆蓋已有的非空欄位（保留第一次收錄的內容）。
+  - 補齊空欄位。例外：`videoOffsetSec` 在既有值為 `estimated`、新值來自重播 `#timestamp` 時，以重播值更新並改記 `offsetSource: 'replay'`。
+  - 更新 `lastSeenAt`；`sources` 累加（`live`、`replay`、`import`、`legacy`）。
+- **後備去重**（只在 id 不一致時啟用）：
+  - 指紋 `fp = hash(type + authorHandle + 正規化後的訊息文字（含表符 alt）+ round(videoOffsetSec / 3))`；同一 `videoId` 內 `fp` 相同且 id 不同時視為同一則，合併到先存在的紀錄，並記錄於診斷（只記筆數）。
+  - `videoOffsetSec` 為 `null` 的訊息不做後備去重。
+  - **T3 第一步必須先驗證**：同一場直播，直播中收錄的一則訊息與重播中同一則的 id 是否相同（只比對 id，不輸出內容），結果寫入 `docs/youtube-dom-notes.md`。
+- **收錄紀錄 `capture_sessions`**（4.1）：每次開始收錄（chat frame 開始擷取）記一筆，結束時補 `endedAt`、`lastOffset`、`added`、`merged`、`phases`。
+  - 後台場次清單顯示「直播收錄 2 次・重播 1 次」，以及**時間軸覆蓋範圍**（只會收錄實際有開著的時段，中途離開的空檔一目了然；含 `pre`／`post`）。
+  - 不提供「另存新檔」；提供「清空此場次後重新收錄」（`RESET_STREAM`，需二次確認：刪除該 `videoId` 的 messages、pinned_messages、capture_sessions，保留 streams 基本資料）。
+- **待機室與直播結束後的聊天（`phase`）**：直播開始前的待機室、直播結束後聊天室仍開放的幾分鐘，聊天室都在運作，但這兩段**不會出現在 VOD 重播裡**，是套件存檔的獨有價值，必須保留。
+  1. **照常收錄**：只要 `live_chat` 聊天室 iframe 存在、分頁開著，就擷取與修剪，不論直播是否已開始或已結束。
+  2. **`phase`**：`pre`（開播前）／`live`（直播中）／`post`（結束後）。`pre` 的 `videoOffsetSec` 存**負值**（距開播的秒數），開播時間未確定時先存 `null`，開播後回填；`post` 依開播時間照算（會超過 VOD 長度）。
+  3. **判斷方式（待 T3 實機確認）**：開播時間來源 `meta[itemprop="startDate"]` 在待機室是「預定時間」還是不存在、開播後如何變化；結束訊號（頁面是否出現「直播已結束」、`isLiveBroadcast`／`endDate` meta、聊天室系統訊息等）。只記錄標籤與屬性，寫入 `docs/youtube-dom-notes.md`。判斷不確定時依 `timestampAbs` 與已知開播／結束時間推算，並允許事後修正（開播或結束時間確定後，由 bg 重算該場次的 `phase` 與 `pre` 的 offset）。
+  4. **檢視器**：訊息清單以分隔線區隔「直播開始前（待機室）」「直播中」「直播結束後」；VOD 時間軸同步（F-08）只作用於 `live` 段，`pre`／`post` 不參與跟隨與跳轉，時間碼顯示為「開播前 12:34」「結束後 3:05」，不可點擊。
+  5. **合併**：重播不會帶入 `pre`／`post` 訊息，這兩段只來自直播收錄，合併與去重規則不變。
+- AC：
+  1. 同一場直播重新整理 3 次，訊息總數等於不重複 id 數；場次清單只有一筆。
+  2. 直播收錄後看 VOD 重播，同一份存檔；重播補到的訊息 `sources` 含 `replay`，`offsetSource` 更新為 `replay`。
+  3. 兩個分頁同時開同一場，無重複。
+  4. 被刪除的訊息保留並顯示「已刪除」，可篩選隱藏。
+  5. 同一 JSON 匯入兩次、遷移重跑，均無重複。
+  6. 場次清單正確顯示收錄次數與覆蓋範圍；「清空此場次後重新收錄」需二次確認。
+  7. 在待機室開著聊天室 → 有存檔且標 `pre`；開播後同一份存檔繼續累加；結束後幾分鐘的訊息標 `post`；觀看 VOD 時 `pre`／`post` 訊息完整保留且不干擾時間軸同步。
 
 ### B. 檢視器 UI（`viewer.html` / `viewer.js`）
 
@@ -230,7 +307,9 @@ yt-chat-archiver-saver/
 - 後台：場次切換、匯入 JSON（F-11）、匯出離線 HTML（v21：表符、會員貼圖、頭像一律由 background 抓取並內嵌為 data URL，同一網址只抓一次；抓取失敗時退回 alt 文字/色塊；內建離線搜尋框）、匯出 JSON（含 `formatVersion`）、刪除。
 
 **F-05 快速分類膠囊列**（v2.6.0 已驗證可行）
-- 「全部訊息（N）」、「💰 Super Chat」（含超級貼圖）、「✨ 實況主降落」。
+- （v27 改為 4 個）「全部訊息（N）」、「💰 SC／禮物」（Super Chat、超級貼圖、禮物 `gift`）、「👑 會員」（新會員、里程碑、贈送會員、收到會員）、「✨ 實況主降落」。
+- 340px 寬時仍為單列：空間不足時「全部」只顯示數字，各膠囊縮短間距；仍不足時膠囊列可水平捲動（不換行）。
+- （v27）另有「隱藏已刪除訊息」切換（F-14），放在面板 ⋯ 選單與後台篩選區，不佔膠囊列。
 - 降落 = Raid 橫幅 + 帶 `verified` 徽章的其他實況主發言；**排除** `constants.js` 的 `BOT_BLOCKLIST`（至少 `Nightbot`、`StreamElements`、`Streamlabs`、`Moobot`、`Fossabot`，比對不分大小寫，同時比對名稱與 @Handle）以及本台 `owner`/`moderator`。
 
 **F-06 搜尋列順序**（v2.6.0 已驗證可行）
@@ -244,6 +323,7 @@ yt-chat-archiver-saver/
 
 **F-08 VOD 時間軸雙向同步**（v2.6.0 已驗證可行；預設開啟，無開關）
 - 依 `VOD_TIME` 對 `videoOffsetSec` 二分搜尋定位、平滑捲動、藍框高亮當前訊息。
+- （v27）只作用於 `phase: 'live'` 的訊息；`pre`／`post` 段不參與跟隨與跳轉（F-14）。
 - 使用者手動往上捲 → 暫停跟隨，底部出現「↓ 恢復自動捲動」。
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
 
@@ -424,14 +504,14 @@ yt-chat-archiver-saver/
 |---|---|---|---|
 | T0 | 專案骨架：`manifest.json`、`src/` 結構、`selectors.js`、`constants.js`、空白 `tokens.css`、套件圖示 | commit | Chrome「載入未封裝項目」無錯誤 |
 | T1 ✅ 通過（2026-11-15） | **clip-path PoC**：最小 content script，在 top frame 建立重疊容器，下層放一個可捲動/可點擊的測試面板，上層原生 `ytd-live-chat-frame` 套 `clip-path`，從 `iframe#chatframe` 底邊往上露出 84px（可調），即 `inset(${iframeBottom - frameTop - 84}px 0 0 0)`；下層可切換 div / 擴充功能 iframe，另可「完全不裁切」並觀察 top frame 付款視窗（v22） | `docs/poc-clip-path.md`（測試步驟、結論、Chrome 版本） | 使用者回報：上半部點擊/滾輪落到測試面板、下方輸入框可打字。成功 → 方案 A；失敗 → 方案 B（6.6），並更新本 SPEC。**v23：通過，F-10 定案方案 A**（Chrome 157.0.8103.51）；劇院模式錯位與頁面層付款視窗偵測於 T1 補測確認（PoC 改為錨定聊天室內部、clip 套在 iframe）。**v26：T1 關閉**。v24.1 補測在實機確認錨點、量測、付款視窗、摺疊退讓、不遮擋影片全部成立（`docs/review-2026-11-15-2.md` 3.4）；PoC 程式保留到 T9 移除 |
-| D1 ⏸ | **設計稿**：依第 10 節做 `design/mockups.html`，提出 **2 種視覺方向**，每種含淺色/深色 | 設計稿 HTML | 使用者選定方向（可要求修改） |
-| D2 | 將選定方向落實為 `tokens.css` 與元件 CSS；更新第 10 節「已選定方向」 | commit | 設計稿與 token 一致 |
-| T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03）；F-11 自動遷移（唯讀複製，不動舊資料庫） | commit | 以 DevTools 呼叫訊息 API 可寫入/查詢；遷移後舊庫筆數不變、新舊筆數一致 |
-| T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02） | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50 |
-| T4 | viewer 核心：虛擬清單、訊息列、膠囊列、雙搜尋列、置頂卡片（F-04～F-07） | commit | 對既有場次資料可篩選、搜尋、高亮 |
-| T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09）；自動切換「即時聊天室」（F-12，v25） | commit | 使用者在 VOD 與直播實測 |
+| D1 ✅ 選定方向 B（2026-11-15） | **設計稿**：依第 10 節做 `design/mockups.html`，提出 **2 種視覺方向**，每種含淺色/深色 | 設計稿 HTML | 使用者選定方向（可要求修改）。**v27：選定方向 B「柔和現代感」**，修改意見為主題自動跟隨系統並可手動選擇（10.2） |
+| D2 ⏸ | 將選定方向落實為 `tokens.css`、`theme.js` 與元件 CSS；更新第 10 節「已選定方向」；設計稿只保留方向 B，頂部改為正式的「自動／淺色／深色」分段按鈕（自動實際跟隨系統），並加入禮物訊息、「👑 會員」膠囊、已刪除訊息、場次收錄來源與覆蓋範圍、待機室／結束後分隔線、主題設定 UI（v27） | commit | 設計稿與 token 一致；對比度符合 10.3；使用者視覺確認 |
+| T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03）；F-11 自動遷移（唯讀複製，不動舊資料庫）；（v27）`DB_VERSION` 2：`capture_sessions` 資料表、messages 新欄位與 `[videoId+fp]` 索引、v1→v2 遷移；F-14 合併規則（欄位合併、`sources` 累加、後備指紋去重、以 `videoId` 序列化寫入）、`CAPTURE_START/END`、`RESET_STREAM`、`RECLASSIFY_SYSTEM`、`MESSAGE_DELETED`；`phase` 事後重算 | commit | 以 DevTools 呼叫訊息 API 可寫入/查詢；遷移後舊庫筆數不變、新舊筆數一致；同一批訊息寫兩次無重複（F-14 AC 1、3、5） |
+| T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02）；（v27）**第一步：直播／重播訊息 id 一致性驗證**（只比對 id，結果寫入 `docs/youtube-dom-notes.md`，決定後備去重的啟用條件）；`phase` 判斷來源的實機確認（`startDate`／結束訊號，只記標籤與屬性）；`gift` 擷取（標籤待實機）、`system` 保存 `rawTag`；刪除訊息偵測 | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50；id 一致性驗證結果已寫入筆記 |
+| T4 | viewer 核心：虛擬清單、訊息列、膠囊列（v27：4 個）、雙搜尋列、置頂卡片（F-04～F-07）；（v27）`pre`／`live`／`post` 分隔線、已刪除標記與隱藏切換、禮物卡片 | commit | 對既有場次資料可篩選、搜尋、高亮 |
+| T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09）；自動切換「即時聊天室」（F-12，v25）；（v27）`THEME` 傳遞、時間軸同步排除 `pre`／`post` | commit | 使用者在 VOD 與直播實測 |
 | T6 ⏸ | F-10 完整實作：輸入區/彈窗偵測、`CHAT_INPUT_STATE`、clip 狀態機、面板底部 padding、關閉還原（第 6 節） | commit | 使用者依 6.5 AC 1～7 實測 |
-| T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON（含 `formatVersion`）、刪除；F-11 JSON 匯入 UI（v2.6.0 / v3 格式、預覽、去重）與「刪除舊版資料」按鈕 | commit | 匯出 HTML 離線開啟可搜尋；同一 JSON 匯入兩次無重複 |
+| T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON（含 `formatVersion`）、刪除；F-11 JSON 匯入 UI（v2.6.0 / v3 格式、預覽、去重）與「刪除舊版資料」按鈕；（v27）主題設定 UI（後台設定區、popup 底部）、場次清單收錄次數與覆蓋範圍、「清空此場次後重新收錄」、「重新分類系統訊息」 | commit | 匯出 HTML 離線開啟可搜尋；同一 JSON 匯入兩次無重複 |
 | T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部，更新 `docs/test-checklist.md` | commit | 使用者確認測試清單全數通過 |
 | T9 | 發版 3.0.0：移除 `src/poc/` 與 manifest 中 PoC 的 content script、`web_accessible_resources` 的 `poc-panel.html`；更新 `manifest.json`、`VERSION`、`CHANGELOG.md` | `release: v3.0.0` | 見 `CLAUDE.md` 版本規則 |
 
@@ -445,6 +525,7 @@ yt-chat-archiver-saver/
 - **YouTube DOM 依據**（v25）：所有依賴 YouTube DOM 結構的功能（量測、錨點、彈窗偵測、擷取）以 `docs/youtube-dom-notes.md` 記錄的實機結構為準。模擬頁測試只能證明「程式邏輯沒錯」，報告中標為「模擬頁：邏輯檢查通過；真實結構待實機」，實機確認後才可標 ✅。新取得的診斷資料寫入該筆記（標註日期與 Chrome 版本），原始輸出存於 `docs/diag/`。
 - **相容性**（v24）：使用者裝有 Holodex+（Console 會出現 `[Holodex+] live chat overrides injected`，它也會修改直播聊天室）。回歸測試需在**有／無 Holodex+** 兩種情況下各測一次；實測遇到錯位或樣式異常時，先停用 Holodex+ 重測以排除干擾。
 - **必測情境**（v24）：有**置頂訊息列**的直播、有**投票卡**的直播（底部互動區高度會變）；劇院模式與窄版面。
+- **必測情境**（v27）：待機室（開播前）開著聊天室直到開播、直播結束後留在頁面幾分鐘；同一場重新整理與直播後看重播（F-14）；有人送禮的直播（F-13）；主題 `auto` 下切換 Windows 淺色／深色與 YouTube 外觀（10.2）。
 - **版面**（v24）：需同時測目前版面（聊天室右上角 `✕`、影片下方「聊天室／開啟面板」卡片）與舊版面（有「隱藏聊天室」列，若仍能遇到）。
 
 ---
@@ -459,12 +540,27 @@ yt-chat-archiver-saver/
 5. **安靜的動態**：動畫只用在狀態轉換（展開、跟隨捲動、clip 切換），120～200ms；`prefers-reduced-motion` 時關閉。
 6. **不遮擋影片與頁面主體**（v23，使用者硬性要求）：套件在 YouTube 頁面上的所有 UI（按鈕、面板、提示、設定）只能出現在**聊天室區域內**，或擴充功能 popup／後台分頁；**不得**有 `position: fixed` 或任何浮在影片、標題、說明、留言區上的元素；暫時提示（toast）也只能出現在面板內部。此原則適用於所有開發階段（含 PoC 與設計稿）。
 
-### 10.2 主題切換
-| 介面 | 依據 |
-|---|---|
-| 內嵌面板、注入按鈕 | 跟隨 YouTube：top frame 偵測 `html[dark]`，以 `postMessage` 或 URL 參數 `theme=dark|light` 傳給 viewer iframe，YouTube 切換主題時即時同步 |
-| 後台檢視器、popup | 預設跟隨 `prefers-color-scheme`，後台提供「系統 / 淺色 / 深色」切換（存 `chrome.storage.local`） |
-| 匯出 HTML | 內建兩套 token，跟隨閱讀者系統設定 |
+### 10.2 主題系統（v27，取代舊版「主題切換」）
+**設定**：存 `chrome.storage.sync`，所有介面共用；後台與 popup 都能修改，變更透過 `chrome.storage.onChanged` **即時套用到所有開啟中的介面**。
+
+| 設定 | 選項 | 預設 |
+|---|---|---|
+| 主題模式 `themeMode` | `auto`（自動）／`light`（淺色）／`dark`（深色） | `auto` |
+
+> 使用者 2026-11-15 確認：「手動調整深淺」指的是手動選擇淺色或深色兩種配色，**不需要**明暗程度滑桿。
+
+**`auto` 的判斷來源**：
+| 介面 | 來源 | 即時切換方式 |
+|---|---|---|
+| 內嵌面板、注入按鈕 | YouTube 目前實際套用的外觀（top frame `html[dark]`）。YouTube 外觀設為「使用裝置主題」時即等同系統設定 | top frame 以 `MutationObserver` 監看 `html` 的 `dark` 屬性 → `postMessage`（`THEME`，4.3）通知面板 iframe；chat frame 內的注入按鈕直接跟隨 chat frame 本身的外觀 |
+| 後台檢視器、popup、匯出 HTML | 系統設定 `prefers-color-scheme` | `matchMedia('(prefers-color-scheme: dark)').addEventListener('change', …)` |
+
+> 內嵌面板跟隨 YouTube 而非直接跟隨系統，是為了避免「YouTube 是淺色、面板是深色」的突兀。若使用者把 YouTube 外觀設為「使用裝置主題」，兩者一致。
+
+- `light`／`dark` 時所有介面固定該配色，不受 YouTube 或系統影響（內嵌面板也是）。
+- **實作**：`src/theme.js` 共用模組（viewer、popup、匯出 HTML），負責讀取設定、決定實際主題、監聽變更、在 `<html>` 套用 `data-theme="light|dark"`；內嵌面板的 YouTube 外觀由 `THEME` 訊息傳入。匯出 HTML 內嵌兩套 token 與同一段判斷（無 `chrome.*` 時視為 `auto`）。
+- **UI 位置**：後台「設定」區與 popup 底部各一組分段按鈕「自動／淺色／深色」。內嵌面板不放設定 UI，但面板頂部列的 ⋯ 選單提供「切換主題」快捷（依序 自動 → 淺色 → 深色）。
+- 首次繪製前就要套用主題（讀取 `storage.sync` 前先依來源猜測，避免閃白）。
 
 ### 10.3 設計 Token（`src/styles/tokens.css`，D1/D2 定稿）
 必須至少定義下列變數（值由設計稿決定，以下為命名與用途）：
@@ -480,11 +576,13 @@ yt-chat-archiver-saver/
               --ytcas-raid; --ytcas-raid-soft;   /* 實況主降落 */
               --ytcas-member; --ytcas-owner; --ytcas-moderator;
               --ytcas-danger;        /* 關閉優化面板按鈕 */
+              --ytcas-on-accent; --ytcas-on-danger;  /* v27：accent／danger 實心底上的文字色 */
+              --ytcas-gift; --ytcas-gift-soft;       /* v27：禮物卡（F-13） */
   /* 字體 */  --ytcas-font: "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
               --ytcas-font-mono: ui-monospace,"SF Mono",Consolas,monospace;  /* 時間碼 */
   /* 字級 */  --ytcas-fs-xs:11px; --ytcas-fs-sm:12px; --ytcas-fs-md:13px; --ytcas-fs-lg:15px; --ytcas-fs-xl:18px;
   /* 間距 4px 基準 */ --ytcas-space-1:4px … --ytcas-space-6:24px;
-  /* 圓角 */  --ytcas-radius-sm:6px; --ytcas-radius-md:10px; --ytcas-radius-pill:999px;
+  /* 圓角 */  --ytcas-radius-sm:8px; --ytcas-radius-md:14px; --ytcas-radius-pill:999px;  /* v27：方向 B 定稿 */
   /* 陰影 */  --ytcas-shadow-1; --ytcas-shadow-2;
   /* 動態 */  --ytcas-ease: cubic-bezier(.2,.8,.2,1); --ytcas-dur:160ms;
 }
@@ -498,7 +596,10 @@ yt-chat-archiver-saver/
 |---|---|
 | **注入按鈕**（F-09） | 三種形態（v24）：(1) 聊天室頂部列：與 `⋮` 同高的小型圖示按鈕＋提示文字「開啟優化面板」；(2) 影片下方卡片：與「開啟面板」同高、水平並排的膠囊按鈕；(3) 優化面板頂部列：`--ytcas-danger` 實心「關閉優化面板」。關閉狀態為次要按鈕樣式；皆有 hover / focus-visible / active 狀態。**退讓狀態**（v26，劇院模式或聊天室摺疊）：頂部列按鈕顯示停用樣式，提示文字「劇院模式下無法使用優化面板」；影片下方卡片的按鈕用**低調的停用樣式**（降低對比、無底色），**不得**使用紅色或警示色 |
 | **頂部工具區** | 由上而下：膠囊列 → 雙搜尋列 → 置頂卡片。embed 模式整體高度 ≤ 96px（置頂卡片收合時） |
-| **膠囊列**（F-05） | 「全部 N」「💰 Super Chat N」「✨ 降落 N」；選中為 `--ytcas-accent-soft` 底 + accent 文字；數字用 tabular-nums |
+| **膠囊列**（F-05） | （v27）「全部 N」「💰 SC／禮物 N」「👑 會員 N」「✨ 降落 N」；選中為 `--ytcas-accent-soft` 底 + accent 文字；數字用 tabular-nums；340px 寬仍單列（「全部」只顯示數字，見 F-05） |
+| **禮物卡**（F-13，v27） | 與 SC 卡區分：不用等級色實心底，改為 `--ytcas-gift-soft` 淡底 + `--ytcas-gift` 左側色條；左側禮物圖片 40px，右側「送出 禮物名稱 ×數量」與 Jewels 數值（有才顯示） |
+| **已刪除訊息**（F-14，v27） | 內容降為 `--ytcas-text-3`、加刪除線，名稱旁「已刪除」細框徽章；可由「隱藏已刪除訊息」切換隱藏 |
+| **時段分隔線**（F-14，v27） | 細線＋置中標籤「直播開始前（待機室）」「直播中」「直播結束後」；`pre`／`post` 段的時間碼改為「開播前 12:34」「結束後 3:05」純文字，不可點擊 |
 | **雙搜尋列**（F-06） | 左「過濾使用者 (頻道名稱 / @代碼)...」、右「搜尋訊息關鍵字或表符...」；各帶圖示與清除鈕；過濾中的使用者以 chip 顯示，可點 × 移除 |
 | **置頂卡片**（F-07） | 浮在工具區下方；左側主播頭像 + 「置頂」標籤；收合時單行省略，點擊展開全文；`--ytcas-shadow-1` |
 | **訊息列** | 頭像 24px → 時間碼（mono、`--ytcas-timecode`、可點）→ 名稱（主名稱粗體 + 淡色 @Handle）→ 徽章 → 內容；表符與文字基線對齊，表符高 20px（會員貼圖 24px）；行高 1.45；hover 顯示淡底 |
@@ -508,8 +609,8 @@ yt-chat-archiver-saver/
 | **VOD 當前訊息**（F-08） | `--ytcas-current-ring` 2px 內框，平滑移動 |
 | **「↓ 恢復自動捲動」** | 底部置中浮動膠囊按鈕，位於原生底部互動區（`bottomZoneHeight`）之上 8px |
 | **空狀態 / 載入中** | 尚無訊息、搜尋無結果、資料庫載入中，各有簡短文字與圖示 |
-| **後台檢視器** | 左側欄：場次清單（標題、頻道、日期、訊息數、直播/重播標籤、搜尋）；主區：同內嵌面板元件；頂部動作列：匯出 HTML、匯出 JSON、刪除（刪除需確認對話框） |
-| **popup**（寬 360px） | 目前分頁狀態（是否在擷取、本場訊息數）→「開啟檢視器」主按鈕 → 最近 5 個場次 |
+| **後台檢視器** | 左側欄：場次清單（標題、頻道、日期、訊息數、直播/重播標籤、搜尋；v27：收錄次數「直播收錄 2 次・重播 1 次」與覆蓋範圍條，含 `pre`／`post`）；主區：同內嵌面板元件；頂部動作列：匯出 HTML、匯出 JSON、刪除（刪除需確認對話框）；（v27）「清空此場次後重新收錄」（二次確認）；設定區含主題分段按鈕 |
+| **popup**（寬 360px） | 目前分頁狀態（是否在擷取、本場訊息數）→「開啟檢視器」主按鈕 → 最近 5 個場次 →（v27）底部主題分段按鈕「自動／淺色／深色」 |
 | **匯出 HTML** | 單一檔案、離線可用；頂部標題列（場次資訊）+ 搜尋框 + 訊息清單，沿用同一套 token |
 
 ### 10.5 版面
@@ -534,5 +635,9 @@ yt-chat-archiver-saver/
 - 使用假資料（虛構頻道名稱與頭像色塊），不使用真實使用者頭像。
 
 ### 10.9 已選定方向
-（D2 完成後由 Claude Code 填寫：方向、主色、調整紀錄）
+- **方向 B「柔和現代感」**（使用者 2026-11-15 選定）：帶紫的柔和底色、大圓角（`--ytcas-radius-sm` 8px／`--ytcas-radius-md` 14px）、以柔和陰影取代邊框、彩度較高的紫色強調、膠囊為實心底、訊息列留白較多。
+- **主色**：紫色 `--ytcas-accent`（淺色、深色各一值，定稿數值與對比度見 `src/styles/tokens.css` 與 D2 報告）。時間碼、VOD 當前訊息維持藍色系；關閉優化面板維持紅色功能狀態色。
+- **調整紀錄**：
+  - v27：主題改為「自動／淺色／深色」三選一，自動跟隨 YouTube（內嵌面板）或系統（後台、popup、匯出 HTML），變更即時套用（10.2）；不做明暗程度滑桿。
+  - v27：新增禮物卡、「👑 會員」膠囊、已刪除訊息、時段分隔線、場次覆蓋範圍（10.4）。
 
