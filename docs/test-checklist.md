@@ -41,17 +41,17 @@
 | T3 擷取引擎測試（`tools/tests/test-capture.html`） | ✅ | 2026-11-15：T3.1 後 24／24 通過（含 F-12；模擬頁：邏輯檢查通過；真實結構待實機） |
 | T3.1 F-12 開始收錄 2 秒內自動切到「即時聊天室」（嵌入式／彈出式／重播；暫停中不切） | ✅ | 2026-11-16 嵌入式直播實測 `f12: switched`（彈出式／重播待測）； v30；診斷 `viewMode`／`f12` |
 | T3.1 F-19 按 ✕ 關閉彈出視窗 → 主分頁 5 秒內接手；彈出視窗 F5 不誤觸接手 | ⬜ | v30；`test-db.html` 34／34（邏輯） |
-| T3.1 站內換頁後場次資訊（`videoId`、`startDate`）更新 | ⬜ | 審查九 3.3 |
+| T3.1 站內換頁後場次資訊（`videoId`、`startDate`）更新 | ✅ | 2026-11-16 01:47：`videoId`、`startDate` 皆更新、舊場次送出結束統計（審查十追加三 A） |
 | T3.3 修剪卡住修正：模擬頁（既有 76 未擷取＋等待期 20、等待期超過 200、`#items` 被換掉、F-12 後整批重建） | ✅ | 2026-11-16：`test-capture.html` 28／28（模擬頁：邏輯檢查通過；真實結構待實機） |
 | T3.2 首頁、一般影片、直播各開一次，擴充功能「錯誤」頁不新增項目 | ✅ | 2026-11-16 01:41 使用者實測（審查十追加二 A）； v31 診斷輸出分級（審查十）；warnOnce 等級在測試頁確認 info／warn／debug 正確 |
 | T3.3 實機：收錄 5 分鐘後 `#items` ≤ 50、`unmarkedNodes` ≤ 5、新訊息不會一出現就消失 | ✅ | 2026-11-16 01:41：45 節點、`unmarkedNodes: 0`、`itemsIsCurrent: true`、新訊息正常顯示； 2026-11-16 實測 B 發現 76 節點、0 標記（審查十追加） |
 | T3.4 只擷取 `#items` 直接子節點：模擬頁（訊息內部後代延遲渲染不產生紀錄） | ✅ | 2026-11-16：`test-capture.html` 29／29；`test-db.html` 35／35（含 `cleanupJunkSystem`） |
-| T3.4 實機：Console 不再出現 `yt-icon`、`span` 等「未知訊息元件」；`cleanupJunkSystem` 預覽筆數合理後刪除 | ⬜ | |
-| T3.4 實機：`dupCaptured` 間隔 1 分鐘不再增加（一次性）或持續增加（進 T3.5） | ⬜ | 審查十追加二 B-2 |
-| T3 實機：直播中 IndexedDB 持續增加、DOM 節點 ≤ 50 | ⬜ | 待使用者實測（T3 報告第 5 節） |
-| T3 實機：背景 30 分鐘後 DOM 節點 ≤ 50 | ⬜ | |
+| T3.4 實機：Console 不再出現 `yt-icon`、`span` 等「未知訊息元件」；`cleanupJunkSystem` 預覽筆數合理後刪除 | ✅ | 2026-11-16：未知元件與 `[Violation]` 不再出現；預覽 matched 2604 → 刪除 2604（審查十追加三 C、E） |
+| T3.4 實機：`dupCaptured` 間隔 1 分鐘不再增加（一次性）或持續增加（進 T3.5） | ✅ | 2026-11-16：第 5／6 分鐘 72 → 72，一次性（F-12 切換時重建），不需改修剪方式 |
+| T3 實機：直播中 IndexedDB 持續增加、DOM 節點 ≤ 50 | ✅ | 2026-11-16：`added` 19 → 321、`#items` 45（低流量，每分鐘約 8 則；高流量留待 T8） |
+| T3 實機：背景 30 分鐘後 DOM 節點 ≤ 50 | ✅ | 2026-11-16 02:45：背景約 35 分鐘後 45、`unmarkedNodes 0`、`dropped 0`（低流量；高流量留待 T8） |
 | T3 實機：直播／重播訊息 id 一致性（只比對筆數） | ⬜ | 依 `idMerged`／`fpMerged` 統計；結果寫入 `docs/youtube-dom-notes.md` |
-| T3 實機：`phase` 判斷來源（`startDate`／`endDate`／`isLiveBroadcast` 診斷） | ⬜ | |
+| T3 實機：`phase` 判斷來源（`startDate`／`endDate`／`isLiveBroadcast` 診斷） | ⬜ | v33 加入結束訊號診斷；待下次遇到直播結束時取得結構（T3 報告「T3.5」） |`n| T3.5 子元件規則式判斷、`viewer-engagement` 去重、空的／重新載入的收錄紀錄、預覽列出保留標籤、結束偵測：模擬頁 | ✅ | 2026-11-16：`test-db.html` 38／38、`test-capture.html` 31／31 |`n| T3.5 實機：`cleanupJunkSystem` 重跑清掉 reply／like-button 6 筆、`viewer-engagement` 合併為每場每內容一筆 | ⬜ | |`n| T3.5 實機：直播結束時反覆重新載入不再增加收錄次數；結束後訊息標 `post` | ⬜ | 需遇到直播結束 |
 | T3 實機：F-19 AC (a)(b)(e)(g) | ⬜ | |
 | 影片與頁面主體上沒有任何套件元素（10.1 原則 6，每個 ⏸ 關卡必查） | ✅ | 2026-11-15 v24.1 PoC；之後每個 ⏸ 關卡仍需檢查 |
 

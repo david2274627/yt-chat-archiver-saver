@@ -67,7 +67,19 @@
   - 只擷取 `#items` 的直接子節點（observer 的 subtree 會回報訊息內部後代）；規格 v32（commit `43ab68d`）。
   - `YTCAS_BG.cleanupJunkSystem({ dryRun })` 清除被誤存的子元件 `system` 紀錄（只動 T3 後收錄的）（commit `2e2c9d6`）。
   - 模擬頁測試：訊息內部後代延遲渲染不產生紀錄；測試清單 T3.2／T3.3 實機 ✅（commit `45c0b2a`）。
-  - T3 報告追加「T3.4」（本段落所在的 commit）。
+  - T3 報告追加「T3.4」（commit `4bdca8c`）。
+- v33／T3.5（`docs/review-2026-11-16.md` 追加三 D～F）：
+  - 子元件標籤規則式判斷（`-view-model`、`-button-`、`-badge-renderer`、`-chip`）；規格 v33（commit `18c7fb0`）。
+  - 歡迎／守則提示同一場次以內容去重，清除函式合併既有重複（commit `0d0961f`）。
+  - 60 秒內重新載入沿用同一筆收錄紀錄、空的收錄紀錄刪除並扣回次數；F-19 接手改用 `gen`（commit `d5b165b`）。
+  - 清除預覽列出保留的 `system` 標籤 `keptByTag`（commit `966b14b`）。
+  - 直播結束偵測（`endDate` 每 30 秒重讀）與結束訊號診斷（commit `ca5bfa7`）。
+  - T3 報告追加「T3.5」、測試清單更新（實測 C 背景 30 分鐘、站內換頁、T3.4 實機 ✅）（本段落所在的 commit）。
+
+### 規格 v33（2026-11-16，依 `docs/review-2026-11-16.md` 追加三）
+- F-02：子元件標籤規則式判斷；`viewer-engagement` 以 `viewerEngagementId(videoId, runs)` 為 id；`cleanupJunkSystem` 合併既有重複、預覽列出 `keptByTag`。
+- 4.1 `capture_sessions`：60 秒內重新載入沿用同一筆（`CAPTURE_MERGE_GAP_MS`、`reloads`、`resumed`）；空的收錄紀錄刪除並扣回次數；F-19 接手以 `gen` 判斷重新整理。
+- F-14 `phase`：直播結束偵測（`endDate` 每 30 秒重讀）與候選訊號診斷；尚無實機確認的結束訊號。
 
 ### 規格 v32（2026-11-16，依 `docs/review-2026-11-16.md` 追加二）
 - F-02：只有 `#items` 的直接子節點是訊息；擷取函式防呆；「未知訊息元件」只對直接子節點輸出。
