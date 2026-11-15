@@ -625,6 +625,37 @@
     e.stop();
   });
 
+  // ---------------------------------------------------------------- T3.4 只處理 #items 的直接子節點
+  test('T3.4：訊息內部後代延遲渲染（徽章、圖示、按鈕、span、dom-if）→ 不產生新紀錄、observedAdded 不增加、不輸出未知元件', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidT34a' });
+    await until(() => e.state().mode === 'capturing');
+    const el = textMsg({ id: 'T34MSG' });
+    items.append(el);
+    await until(() => savedIds(send).includes('T34MSG'), 2000);
+    const added0 = e.state().stats.observedAdded;
+    const infos = [];
+    const orig = console.info;
+    console.info = (...a) => { infos.push(String(a[0])); orig.apply(console, a); };
+    try {
+      // 實測 Console 出現過的子元件標籤（審查十追加二 A）
+      el.querySelector('#chat-badges').append(h('yt-live-chat-author-badge-renderer', { type: 'moderator' }, [h('yt-icon')]));
+      el.querySelector('#message').append(h('span', { text: ' 追加' }), h('yt-img-shadow', {}, [h('yt-image')]));
+      el.append(h('yt-button-view-model', {}, [h('button-view-model')]), h('dom-if'), h('div'));
+      await sleep(1300); // 超過 1 秒批次保底
+      e._tick();
+      await sleep(50);
+    } finally { console.info = orig; }
+    eq(savedIds(send), ['T34MSG'], '沒有新紀錄');
+    eq(e.state().stats.observedAdded, added0, 'observedAdded 不增加');
+    eq(e.state().stats.captured, 1);
+    eq(infos.filter((s) => s.includes('未知訊息元件')).length, 0, '不輸出未知元件');
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];
