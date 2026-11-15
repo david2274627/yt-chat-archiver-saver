@@ -59,13 +59,15 @@
   function bottomZone() {
     const root = document.querySelector(S.chat.renderer);
     const vh = window.innerHeight;
-    if (!root) { S.warnOnce('poc:chat.renderer', S.chat.renderer); return { list: [], top: null }; }
+    if (!root) { S.warnOnce('poc:chat.renderer', S.chat.renderer); return { list: [], wlTop: null, ovTop: null }; }
     const list = [];
     const add = (el, r, use) => {
-      if (list.length < ZONE_MAX) list.push({ el: tagId(el), top: Math.max(0, Math.round(r.top)), h: Math.round(r.height), parents: parentChain(el), use });
+      if (list.length < ZONE_MAX) list.push({ el: tagId(el), top: Math.round(r.top), h: Math.round(r.height), parents: parentChain(el), use });
     };
-    let minTop = null;
-    const count = (r) => { const t = Math.max(0, Math.round(r.top)); if (minTop == null || t < minTop) minTop = t; };
+    // 白名單與覆蓋層分開統計：合理性檢查對兩者的規則不同（review-2026-11-15-2 §3.1）
+    let wlTop = null;
+    let ovTop = null;
+    const lower = (cur, r) => { const t = Math.round(r.top); return cur == null || t < cur ? t : cur; };
 
     // 1. 白名單
     const counted = new Set();
@@ -74,7 +76,7 @@
         const r = visibleRect(el);
         if (!r) return;
         counted.add(el);
-        count(r);
+        wlTop = lower(wlTop, r);
         add(el, r, '計入：白名單 ' + sel);
       });
     }
@@ -85,7 +87,7 @@
       if (or.height > 0) add(overlay, or, '排除：覆蓋層容器本身');
       for (const { el, r } of overlayChunks(overlay)) {
         counted.add(el);
-        count(r);
+        ovTop = lower(ovTop, r);
         add(el, r, '計入：覆蓋層子元素');
       }
     }
@@ -104,7 +106,7 @@
       }
     };
     walk(root);
-    return { list, top: minTop };
+    return { list, wlTop, ovTop };
   }
 
   function measure() {
@@ -130,8 +132,12 @@
     const z = bottomZone();
     msg.vh = vh;
     msg.zone = z.list;
-    msg.zoneFromBottom = z.top == null ? null : vh - z.top; // 量測 v3：iframe 底邊 − 白名單／覆蓋層子元素中最高者的頂端
-    msg.algo = 'v3';
+    // 量測 v3：iframe 底邊 − 最高者的頂端；白名單與覆蓋層子元素分開回報，由 top frame 做合理性檢查
+    msg.wlFromBottom = z.wlTop == null ? null : vh - z.wlTop;
+    msg.ovFromBottom = z.ovTop == null ? null : vh - z.ovTop;
+    const all = [msg.wlFromBottom, msg.ovFromBottom].filter((v) => v != null);
+    msg.zoneFromBottom = all.length ? Math.max(...all) : null;
+    msg.algo = 'v3.1';
     const key = JSON.stringify(msg);
     if (key === last) return;
     last = key;

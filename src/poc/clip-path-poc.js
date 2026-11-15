@@ -41,6 +41,9 @@
     metaRaf: 0,
     expanding: false,
     paused: false,         // 摺疊保護中
+    watchdog: 0,
+    loadTarget: null,      // 已綁定 load 事件的 iframe
+    frameParent: null,     // 上次確認的 ytd-live-chat-frame 父元素（用來偵測搬移）
     layoutMo: null,
     flexyMo: null,
     flexyTreeMo: null,
@@ -77,13 +80,21 @@
     const m = state.measure;
     if (!m) return { px: null, src: '等待量測', suspect: '' };
     const h = iframeH();
+    // 量測時的 iframe 高度與現在不同（例如劇院模式切換、iframe 搬移重載）→ 舊值作廢，等新的量測
+    if (m.vh != null && h > 0 && Math.abs(m.vh - h) > 2) return { px: null, src: '量測過期（等待重新量測）', suspect: `量測時 iframe 高 ${m.vh}px，現在 ${h}px` };
     const fallback = m.found ? m.fromBottom : null; // null = 量測不到 → 視同無輸入區
-    const v3 = m.zoneFromBottom;
-    if (v3 == null) return { px: fallback, src: '後備（#input-panel）', suspect: 'v3 量不到' };
-    if (h > 0 && (v3 > h * SUSPECT_RATIO || h - v3 < MIN_PANEL_VISIBLE_PX)) {
-      return { px: fallback, src: '後備（#input-panel）', suspect: `v3 ${v3}px 可疑（${v3 > h * SUSPECT_RATIO ? '> iframe 高 60%' : '面板可見 < ' + MIN_PANEL_VISIBLE_PX + 'px'}）` };
+    const notes = [];
+    // 覆蓋層子元素（非白名單來源）：超過 iframe 高 60% 視為可疑，不採計
+    let ov = m.ovFromBottom;
+    if (ov != null && h > 0 && ov > h * SUSPECT_RATIO) { notes.push(`覆蓋層 ${ov}px > iframe 高 60%，不採計`); ov = null; }
+    const cands = [m.wlFromBottom, ov].filter((v) => v != null);
+    if (!cands.length) return { px: fallback, src: '後備（#input-panel）', suspect: notes.concat('v3 量不到').join('；') };
+    const v3 = Math.max(...cands);
+    // 白名單元素只保留一條：面板可見高度需 ≥ 160px
+    if (h > 0 && h - v3 < MIN_PANEL_VISIBLE_PX) {
+      return { px: fallback, src: '後備（#input-panel）', suspect: notes.concat(`v3 ${v3}px 會讓面板可見 < ${MIN_PANEL_VISIBLE_PX}px`).join('；') };
     }
-    return { px: v3, src: 'v3', suspect: '' };
+    return { px: v3, src: 'v3', suspect: notes.join('；') };
   }
 
   // 原始露出值（未 clamp）
@@ -387,7 +398,7 @@
     const set = (k, v) => { const e = p.querySelector(`[data-k="${k}"]`); if (e) e.textContent = String(v); };
     const r = revealPx();
     const m = state.measure;
-    const src = state.auto ? (autoReveal().suspect ? '（自動・後備）' : '（自動）') : '（手動）';
+    const src = state.auto ? (autoReveal().src.startsWith('後備') ? '（自動・後備）' : '（自動）') : '（手動）';
     set('sum', `露出 ${state.noClip ? '不裁切' : (r == null ? '量測不到' : r + 'px')}${src}｜${state.auto ? 'Alt+Shift+M 手動' : 'Alt+Shift+↑↓ 調整'}｜點擊 ${state.clicks}｜滾輪 ${state.wheels}｜最後 ${state.lastClick}`);
     set('expand', state.expanded ? '收合 ▲' : '展開 ▼');
     set('noClip', state.noClip ? '恢復裁切' : '不裁切');
@@ -397,7 +408,7 @@
     const h = iframeH();
     if (range && h > 0 && Number(range.max) !== h) range.max = String(h); // 滑桿上限 = iframe 高度
     const a = autoReveal();
-    const v3 = m && m.zoneFromBottom != null ? `v3 底部互動區 ${m.zoneFromBottom}px` : 'v3 量測不到';
+    const v3 = m && m.zoneFromBottom != null ? `v3 底部互動區 ${m.zoneFromBottom}px（白名單 ${m.wlFromBottom ?? '—'}／覆蓋層 ${m.ovFromBottom ?? '—'}）` : 'v3 量測不到';
     const v1 = m ? (m.found ? `後備 #input-panel 高 ${m.height}px／頂端距底 ${m.fromBottom}px` : '後備 找不到 #input-panel') : '';
     set('measure', m ? `${v3}；${v1}；iframe 高 ${h}px；採用：${a.src}${a.suspect ? '（' + a.suspect + '）' : ''}` : '等待 chat frame 回報…');
     set('zone', m && m.zone && m.zone.length ? m.zone.map((z) => `${z.el}@${z.top}+${z.h}［${z.use}］`).join('、') : '—');
@@ -583,6 +594,7 @@
         found: !!d.found, height: num(d.height), fromBottom: num(d.fromBottom),
         rows: Array.isArray(d.rows) ? d.rows.slice(0, 12).map(String) : [],
         vh: num(d.vh), zoneFromBottom: num(d.zoneFromBottom),
+        wlFromBottom: num(d.wlFromBottom), ovFromBottom: num(d.ovFromBottom),
         zone: Array.isArray(d.zone) ? d.zone.slice(0, 40).map((z) => ({ el: String(z.el), top: num(z.top), h: num(z.h), parents: String(z.parents || ''), use: String(z.use || '') })) : [],
         algo: String(d.algo || ''),
       };
@@ -727,10 +739,71 @@
       if (!p || !f || p.nextElementSibling !== f || !f.classList.contains('ytcas-poc-iframe')) placePanel();
     });
     state.frameMo.observe(frame, { childList: true });
-    iframe.contentWindow?.postMessage({ __ytcas: true, type: 'POC_INPUT_REQUEST' }, YT);
+    state.measure = null; // 開啟時一律重新量測，不沿用關閉期間的舊值
+    requestMeasure();
     watchPopups();
+    bindIframeLoad();
+    state.frameParent = frame.parentElement;
+    state.watchdog = setInterval(watchdog, 1000);
     log('開啟', { chrome: chromeVer });
     return true;
+  }
+
+  // ---------------- 重新初始化與看門狗（review-2026-11-15-2 §3.2、§6） ----------------
+  function requestMeasure() {
+    try { els().iframe?.contentWindow?.postMessage({ __ytcas: true, type: 'POC_INPUT_REQUEST' }, YT); } catch (_) { /* iframe 尚未就緒 */ }
+  }
+
+  // iframe 在 DOM 中被搬移（劇院模式切換）會重新載入：chat frame 的 content script 重跑、舊量測失效
+  function bindIframeLoad() {
+    const { iframe } = els();
+    if (!iframe || state.loadTarget === iframe) return;
+    state.loadTarget?.removeEventListener('load', onIframeLoad);
+    iframe.addEventListener('load', onIframeLoad);
+    state.loadTarget = iframe;
+  }
+  function onIframeLoad() { if (state.on) reinit('iframe load'); }
+
+  // 重置量測狀態 → 重綁 observer → 重新握手 → 重新套用 clip
+  function reinit(reason) {
+    if (!state.on) return;
+    const { frame, iframe } = els();
+    if (!frame || !iframe) return;
+    state.measure = null;
+    lastPosted = '';
+    state.ro?.disconnect();
+    state.ro = null;
+    state.layoutMo?.disconnect();
+    state.layoutMo = null;
+    state.frameMo?.disconnect();
+    state.frameMo = new MutationObserver(() => {
+      const p = document.getElementById(PANEL_ID);
+      const { iframe: f } = els();
+      if (!p || !f || p.nextElementSibling !== f || !f.classList.contains('ytcas-poc-iframe')) placePanel();
+    });
+    state.frameMo.observe(frame, { childList: true });
+    state.frameParent = frame.parentElement;
+    bindIframeLoad();
+    placePanel(); // 內含重綁 ResizeObserver、watchLayout、applyClip
+    requestMeasure();
+    log('恢復流程', reason, layoutInfo());
+  }
+
+  // 每秒檢查：聊天室是否被搬移／iframe 被替換、面板是否還在、量測是否過期，以及暫停條件是否解除
+  function watchdog() {
+    if (!state.on) return;
+    const { frame, iframe } = els();
+    if (!frame || !iframe) return; // 聊天室被關閉：由 mountAnchors 負責關閉 PoC
+    if (frame.parentElement !== state.frameParent) { reinit('聊天室被搬到 ' + tagIdOf(frame.parentElement)); return; }
+    if (state.loadTarget !== iframe || state.ro?.__target !== iframe) { reinit('iframe 被替換'); return; }
+    const p = document.getElementById(PANEL_ID);
+    if (!p || p.parentElement !== frame || p.nextElementSibling !== iframe) { reinit('面板不在聊天室內'); return; }
+    const a = state.auto ? autoReveal() : null;
+    if (!state.measure || (a && a.src.startsWith('量測過期'))) requestMeasure();
+    const before = state.paused;
+    p.style.height = iframe.offsetHeight + 'px';
+    applyClip(); // 重新檢查 isCollapsed()；暫停／恢復時內部會 log 版面資訊
+    if (before !== state.paused) render();
   }
 
   function disable() {
@@ -751,6 +824,9 @@
     state.flexyTreeMo?.disconnect();
     state.flexyTreeMo = null;
     state.paused = false;
+    clearInterval(state.watchdog);
+    state.loadTarget?.removeEventListener('load', onIframeLoad);
+    state.loadTarget = null;
     document.getElementById(PANEL_ID)?.remove();
     frame?.classList.remove('ytcas-poc-frame');
     if (iframe) {

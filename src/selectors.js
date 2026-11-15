@@ -78,8 +78,11 @@
       messageInput: 'yt-live-chat-message-input-renderer',
 
       // F-10 底部互動區（SPEC 6.3；筆記 2.1，2026-11-15）。白名單，依畫面由上而下：
-      //   置頂列（banner-manager）→ 輸入區外層（#panel-pages）→ 輸入區（#input-panel）
+      //   投票卡等動作面板（#chat > #action-panel，2026-11-15 補測確認；內部是否為 action-panel-renderer／poll-renderer 待實機確認）
+      //   → 置頂列（banner-manager）→ 輸入區外層（#panel-pages）→ 輸入區（#input-panel）
+      // 只計「可見且高度 > 0」者
       bottomZone: [
+        '#chat > #action-panel',
         'yt-live-chat-banner-manager',
         '#panel-pages',
         '#input-panel',
