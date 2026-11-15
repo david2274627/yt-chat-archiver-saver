@@ -299,12 +299,13 @@ async function handoffToMainTab(videoId) {
   return true;
 }
 
-// 回傳是否應該通知（同一 session 只通知一次）
-function markNotified(tabId, sid) {
+// 回傳是否應該通知（同一 session 只通知一次）。gen：每次 CAPTURE_START 換新（T3.5 起重新整理會沿用同一筆 session，
+// 不能再用 sid 判斷「期間是否重新開始收錄」）
+function markNotified(tabId, sid, gen) {
   return withPopout(async () => {
     const m = await readPopout();
     const e = m[tabId];
-    if (!e || e.sid !== sid || e.notified) return false;
+    if (!e || e.sid !== sid || e.gen !== gen || e.notified) return false;
     e.notified = true;
     await writePopout(m);
     return true;
@@ -344,7 +345,7 @@ const handlers = {
     if (msg.source === 'popout' && typeof tabId === 'number' && tabId >= 0) {
       await withPopout(async () => {
         const m = await readPopout();
-        m[tabId] = { videoId, sid: r.captureSessionId, notified: false };
+        m[tabId] = { videoId, sid: r.captureSessionId, gen: Date.now() + '-' + Math.random().toString(36).slice(2, 8), notified: false };
         await writePopout(m);
       });
     }
@@ -356,10 +357,11 @@ const handlers = {
     // F-19：彈出視窗 pagehide（輔助訊號）→ 等一下再通知主分頁；期間同一分頁重新開始收錄（重新整理）就不接手
     if (s && s.source === 'popout') {
       const tabId = sender && sender.tab && sender.tab.id;
+      const gen = typeof tabId === 'number' && tabId >= 0 ? (((await readPopout())[tabId]) || {}).gen : undefined;
       setTimeout(async () => {
         try {
           if (typeof tabId === 'number' && tabId >= 0) {
-            if (await markNotified(tabId, s.id)) await handoffToMainTab(s.videoId);
+            if (await markNotified(tabId, s.id, gen)) await handoffToMainTab(s.videoId);
           } else {
             await handoffToMainTab(s.videoId); // 沒有分頁資訊：直接通知
           }

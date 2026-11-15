@@ -44,6 +44,8 @@
     VERSION_DURATION_TOLERANCE_SEC: 2,
     // 未收到 CAPTURE_END 的 session，超過此時間沒有寫入就以 lastWriteAt 補 endedAt
     CAPTURE_STALE_MS: 2 * 60 * 1000,
+    // T3.5：同一 videoId＋source，上一筆收錄在這段時間內結束 → 重新載入，沿用同一筆收錄紀錄
+    CAPTURE_MERGE_GAP_MS: 60 * 1000,
     // 覆蓋範圍合併時，小於此間隔的空檔忽略（批次送出的間隔）
     COVERAGE_GAP_TOLERANCE_MS: 5000,
     // F-11 遷移每批筆數

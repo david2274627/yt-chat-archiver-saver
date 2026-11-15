@@ -464,6 +464,21 @@
         const versionId = source === 'replay'
           ? resolveVersion(stream.versions, p.duration, now)
           : (stream.versions.length ? 'v1' : resolveVersion(stream.versions, null, now));
+        // T3.5（審查十追加三 F-1）：同一 videoId、同一 source、同一版本，上一筆在 60 秒內結束（或 60 秒內仍有寫入）
+        // → 視為重新載入，沿用同一筆收錄紀錄，不算新的一次收錄
+        const csStore = t.objectStore('capture_sessions');
+        const prev = (await req(csStore.index('videoId').getAll(videoId)))
+          .filter((x) => x.source === source && x.versionId === versionId)
+          .sort((a, b) => b.startedAt - a.startedAt)[0];
+        const lastAct = prev ? (prev.endedAt != null ? prev.endedAt : (prev.lastWriteAt || prev.startedAt)) : null;
+        if (prev && now - lastAct <= C.CAPTURE_MERGE_GAP_MS) {
+          prev.endedAt = null;
+          prev.reloads = (prev.reloads || 0) + 1;
+          csStore.put(prev);
+          sStore.put(stream);
+          out = { captureSessionId: prev.id, versionId, resumed: true };
+          return;
+        }
         stream[source + 'CaptureCount'] = (stream[source + 'CaptureCount'] || 0) + 1;
         sStore.put(stream);
         const session = {
@@ -480,35 +495,52 @@
     });
   }
 
+  // T3.5（審查十追加三 B-1）：結束時一則都沒寫入（added + merged === 0）的收錄紀錄刪除，並扣回場次的收錄次數
+  //（例如新聊天室載入時 YouTube 先建立又替換 iframe），避免後台「收錄次數」多算、覆蓋範圍出現空的 session
+  function dropIfEmpty(session, csStore, sStore) {
+    if (!session || (session.added || 0) + (session.merged || 0) > 0) return false;
+    csStore.delete(session.id);
+    const k = session.source + 'CaptureCount';
+    const r = sStore.get(session.videoId);
+    r.onsuccess = () => {
+      const st = r.result;
+      if (st && (st[k] || 0) > 0) { st[k]--; sStore.put(st); }
+    };
+    session.empty = true;
+    return true;
+  }
+
   async function captureEnd(p) {
     const db = await open();
-    const t = db.transaction('capture_sessions', 'readwrite');
+    const t = db.transaction(['capture_sessions', 'streams'], 'readwrite');
     const s = t.objectStore('capture_sessions');
     let session = null;
     const work = (async () => {
       session = await req(s.get(p.captureSessionId));
       if (!session || session.endedAt != null) return;
       session.endedAt = num(p.endedAt) !== null ? p.endedAt : Date.now();
-      s.put(session);
+      if (!dropIfEmpty(session, s, t.objectStore('streams'))) s.put(session);
     })();
     await Promise.all([work, done(t)]);
     return session;
   }
 
-  // 未收到 CAPTURE_END 的 session：超過 CAPTURE_STALE_MS 沒有寫入 → 以 lastWriteAt 補 endedAt
+  // 未收到 CAPTURE_END 的 session：超過 CAPTURE_STALE_MS 沒有寫入 → 以 lastWriteAt 補 endedAt（空的直接刪除）
   async function closeStaleSessions(now) {
     now = now || Date.now();
     const db = await open();
-    const t = db.transaction('capture_sessions', 'readwrite');
+    const t = db.transaction(['capture_sessions', 'streams'], 'readwrite');
+    const sStore = t.objectStore('streams');
+    const csStore = t.objectStore('capture_sessions');
     let closed = 0;
-    t.objectStore('capture_sessions').openCursor().onsuccess = (e) => {
+    csStore.openCursor().onsuccess = (e) => {
       const cur = e.target.result;
       if (!cur) return;
       const v = cur.value;
       const last = v.lastWriteAt || v.startedAt;
       if (v.endedAt == null && last < now - C.CAPTURE_STALE_MS) {
         v.endedAt = last;
-        cur.update(v);
+        if (!dropIfEmpty(v, csStore, sStore)) cur.update(v);
         closed++;
       }
       cur.continue();

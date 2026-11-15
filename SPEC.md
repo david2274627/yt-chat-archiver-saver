@@ -205,6 +205,7 @@ yt-chat-archiver-saver/
 ```
 - **覆蓋範圍合併**（v28，F-19 第 10 節）：同一場所有 session 的範圍（直播收錄用 `timestampAbs`、重播用 offset）合併成區間清單；所有 session 都沒涵蓋的時段為「空檔」。資料層提供 `coverage(videoId)` 回傳 `{ live: 區間[], replay: { [versionId]: 區間[] }, gaps: 區間[] }`，後台以醒目樣式標出空檔。
 - 超過 2 分鐘沒有寫入且未結束的 session，在 SW 啟動、`CAPTURE_START`、`LIST_STREAMS` 時以 `lastWriteAt`（無則 `startedAt`）補上 `endedAt`。
+- （v33，`docs/review-2026-11-16.md` 追加三 B-1、F-1）**重新載入不算新的一次收錄**：`CAPTURE_START` 時，同一 `videoId`、同一 `source`、同一 `versionId` 的上一筆在 60 秒內結束（或 60 秒內仍有寫入）→ 沿用同一筆（清除 `endedAt`、`reloads` +1、回傳 `resumed: true`），不增加 `liveCaptureCount` 等（`CAPTURE_MERGE_GAP_MS`）。**空的收錄紀錄不計入**：結束時（`CAPTURE_END` 或逾時補結束）`added + merged === 0` 的 session 直接刪除，並扣回場次的收錄次數。F-19 自動接手改以每次 `CAPTURE_START` 換新的 `gen` 判斷「期間是否重新開始收錄」（重新整理會沿用同一個 session id）。
 
 **channels**（keyPath `handleOrId`）
 ```js

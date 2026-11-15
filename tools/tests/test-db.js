@@ -133,8 +133,48 @@
     eq(await count(V), 4);
     const streams = await DB.listStreams();
     eq(streams.length, 1);
-    eq([streams[0].messageCount, streams[0].liveCaptureCount], [4, 3]);
+    // T3.5：60 秒內重新整理沿用同一筆收錄紀錄（不算新的一次收錄）
+    eq([streams[0].messageCount, streams[0].liveCaptureCount], [4, 1]);
+    eq((await DB.countAll()).capture_sessions, 1);
   });
+
+  test('T3.5 收錄紀錄：60 秒內重新載入沿用同一筆（endedAt 清除、reloads 累加）；超過 60 秒才算新的一次；來源不同各自一筆', async () => {
+    await resetAll();
+    const a = await DB.captureStart({ videoId: V, source: 'live' });
+    await DB.saveMessages({ videoId: V, messages: [msg()], source: 'live', captureSessionId: a.captureSessionId });
+    await DB.captureEnd({ captureSessionId: a.captureSessionId });
+    const b = await DB.captureStart({ videoId: V, source: 'live' });
+    eq([b.captureSessionId, b.resumed], [a.captureSessionId, true], '重新載入沿用');
+    let { sessions } = await DB.listCaptureSessions(V);
+    eq([sessions.length, sessions[0].endedAt, sessions[0].reloads], [1, null, 1]);
+    await DB.saveMessages({ videoId: V, messages: [msg()], source: 'live', captureSessionId: b.captureSessionId });
+    await DB.captureEnd({ captureSessionId: b.captureSessionId, endedAt: Date.now() - 61000 }); // 61 秒前結束
+    const c = await DB.captureStart({ videoId: V, source: 'live' });
+    assert(c.captureSessionId !== a.captureSessionId && !c.resumed, '超過 60 秒 → 新的一次');
+    const p = await DB.captureStart({ videoId: V, source: 'popout' });
+    assert(p.captureSessionId !== c.captureSessionId, '不同來源各自一筆');
+    const s = await DB.getStream(V);
+    eq([s.liveCaptureCount, s.popoutCaptureCount], [2, 1]);
+  });
+
+  test('T3.5 收錄紀錄：結束時一則都沒寫入 → 刪除並扣回收錄次數（CAPTURE_END 與逾時補結束都適用）', async () => {
+    await resetAll();
+    const a = await DB.captureStart({ videoId: V, source: 'live' });
+    const end = await DB.captureEnd({ captureSessionId: a.captureSessionId });
+    eq(end.empty, true);
+    eq([(await DB.countAll()).capture_sessions, (await DB.getStream(V)).liveCaptureCount], [0, 0]);
+    const b = await DB.captureStart({ videoId: V, source: 'replay', duration: 600 });
+    eq((await DB.getStream(V)).replayCaptureCount, 1);
+    eq(await DB.closeStaleSessions(Date.now() + C_STALE() + 1000), 1, '逾時補結束');
+    eq([(await DB.countAll()).capture_sessions, (await DB.getStream(V)).replayCaptureCount], [0, 0], '空的直接刪除');
+    // 有寫入的保留
+    const c = await DB.captureStart({ videoId: V, source: 'live' });
+    await DB.saveMessages({ videoId: V, messages: [msg()], source: 'live', captureSessionId: c.captureSessionId });
+    eq((await DB.captureEnd({ captureSessionId: c.captureSessionId })).empty, undefined);
+    eq((await DB.countAll()).capture_sessions, 1);
+    void b;
+  });
+  function C_STALE() { return self.YTCAS_CONST.CAPTURE_STALE_MS; }
 
   test('F-14 情境 2：直播後看重播 → 同一份存檔，id 相同合併、offset 升級為 replay（AC 2）', async () => {
     await resetAll();
@@ -171,6 +211,7 @@
     for (let i = 0; i < 2; i++) {
       const cs = await DB.captureStart({ videoId: V, source: 'replay', duration: 1200 });
       await DB.saveMessages({ videoId: V, messages: list, source: 'replay', captureSessionId: cs.captureSessionId });
+      await DB.captureEnd({ captureSessionId: cs.captureSessionId, endedAt: Date.now() - 5 * 60000 }); // 隔一段時間再看（T3.5：60 秒內算同一次）
     }
     eq(await count(V), 3);
     eq((await DB.getStream(V)).replayCaptureCount, 2);
@@ -403,11 +444,12 @@
     eq([s0.added, s0.merged, s0.phases.sort(), s0.firstOffset], [3, 0, ['live', 'pre'], -5]);
     eq(r.sessions[1].source, 'popout');
     eq((await DB.getStream(V)).popoutCaptureCount, 1);
-    // 未送 CAPTURE_END 的 session：逾時後以 lastWriteAt（無則 startedAt）補上
+    // 未送 CAPTURE_END 的 session：逾時後以 lastWriteAt（無則 startedAt）補上（T3.5：一則都沒寫入的直接刪除，見另一項測試）
+    await send({ type: 'SAVE_MESSAGES', videoId: V, messages: [msg()], source: 'popout', captureSessionId: p.captureSessionId });
     const closed = await DB.closeStaleSessions(Date.now() + 10 * 60 * 1000);
     eq(closed, 1);
     const after = (await DB.listCaptureSessions(V)).sessions.find((x) => x.id === p.captureSessionId);
-    assert(after.endedAt === after.startedAt, '以 startedAt 補 endedAt');
+    assert(after.endedAt === after.lastWriteAt, '以 lastWriteAt 補 endedAt');
     assert(r.coverage.live.length >= 1, '覆蓋範圍');
   });
 
@@ -530,7 +572,9 @@
     chrome.tabs.sent.length = 0;
     try {
       const r = await send({ type: 'CAPTURE_START', videoId: V, source: 'popout', stream: { channelHandle: '@x' } }, POP(7));
-      eq((await BG.readPopout())[7], { videoId: V, sid: r.captureSessionId, notified: false }, '記下分頁（storage.session）');
+      const ent = (await BG.readPopout())[7];
+      eq([ent.videoId, ent.sid, ent.notified, typeof ent.gen], [V, r.captureSessionId, false, 'string'], '記下分頁（storage.session）');
+      await send({ type: 'SAVE_MESSAGES', videoId: V, messages: [msg()], source: 'popout', captureSessionId: r.captureSessionId }, POP(7)); // 有寫入才保留紀錄（T3.5）
       for (const f of M.listeners.removed) f(7);
       await sleep(200);
       eq(chrome.tabs.sent.map((s) => [s.tabId, s.msg.type, s.msg.source, s.msg.videoId]), [[3, 'CAPTURE_END', 'popout', V]], '只通知同一 videoId 的主分頁');
