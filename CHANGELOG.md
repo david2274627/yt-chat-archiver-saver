@@ -44,7 +44,21 @@
   - D2 `tokens.css` 定稿（方向 B 淺色／深色、`prefers-reduced-motion`）、`src/theme.js` 主題系統、`constants.js` 加入 `GIFT`／`THEME`、`tools/check-contrast.js`（48 組對比度全數通過）（commit `be1161f`）。
   - D2 設計稿更新：只保留方向 B，載入套件的 `tokens.css`／`components.css`／`theme.js`；正式「自動／淺色／深色」按鈕（自動即時跟隨系統）；禮物、「👑 會員」膠囊（300～450px 單列）、已刪除訊息、待機室／結束後分隔線、⋯ 選單、場次收錄次數與覆蓋範圍、清空重錄確認、後台與 popup 主題設定；新增 `src/styles/components.css`；對比度檢查增加徽章組合為 58 組，淺色 `owner`／`member` 加深以通過（commit `bc6475d`）。
   - `.gitignore` 加入 `_to_delete/`（commit `d754545`）。
-  - 本輪報告 `docs/reports/2026-11-15-d2-tokens.md`（本段落所在的 commit；⏸ D2 等待使用者視覺確認）。
+  - 本輪報告 `docs/reports/2026-11-15-d2-tokens.md`（commit `535c8d4`）。**D2 通過（2026-11-15）**。
+- v28（`docs/review-2026-11-15-4.md`）：
+  - 規格 v28、HANDOFF／README 加註「不要移除擴充功能」、本審查報告（本段落所在的 commit）。
+
+### 規格 v28（2026-11-15，依 `docs/review-2026-11-15-4.md`）
+- **D2 通過**（含「自動」跟隨 Windows 即時切換實機確認）；v27 的三項補充設計決定（`rawTag`、清空時保留場次基本資料、offset 為 null 不做指紋去重）使用者同意。
+- F-01：修剪改為 **MutationObserver 回呼內數量觸發為主、`setInterval` 保底**（背景分頁計時器節流）；新增 AC「背景 30 分鐘仍 ≤ 50」。F-02：批次滿 50 筆立即送；**啟動時回溯擷取 `#items` 既有訊息**（通則）。
+- 3.2：Service Worker 休眠對策（立即寫入 IndexedDB、頻道解析佇列存 `chrome.storage.session`、content script 重試 3 次、遷移分批可重跑）。
+- 1.3：聊天室關閉（`✕`）時不收錄；VOD 只收錄播放過的部分，「整部下載」列為 3.0.0 之後待議。
+- 新增 **F-15 收錄範圍與暫停**（預設全部自動收錄；`captureEnabled` 存 sync、`captureExcludedChannels` 存 local）、**F-16 儲存空間管理**（用量、各場次大小、批次刪除、2 GB 提醒、不自動刪除）、**F-17 每週自動備份**（`.json.gz`、重試 3 次、失敗才通知、保留 4 份、下載子資料夾／自選資料夾 PoC）、**F-18 VOD 版本**（原始時間碼永不改寫、`versions`／`offsets`／`linkedVideos`）、**F-19 彈出式聊天室視窗**（三種環境判斷、`popout` 收錄來源、降落情境、中途開關的連續性與自動接手、彈出視窗面板 T6-c PoC）。
+- F-14：重播 offset 更新限 v1；`system` 可被已知類型取代；後備去重**只跨來源**、只在 v1 時間軸、合併時記入 `aliasIds`；v2.6.0 舊 id 以去前綴的 YouTube id 作別名；新增 AC 8。
+- 4.1：streams 新增 `channelHandle`、`popoutCaptureCount`、`approxBytes`、`versions`、`linkedVideos`；messages 新增 `offsets`、`aliasIds`（multiEntry 索引）；`capture_sessions` 新增 `popout`、`versionId`、`lastWriteAt`、`firstTs`／`lastTs` 與覆蓋範圍合併。4.2 新增 `GET_CAPTURE_POLICY`、`GET_STORAGE_USAGE`、`DELETE_STREAMS`、`LIST_CAPTURE_SESSIONS`、`MIGRATE_LEGACY`、`IMPORT_DATA`、`SET_VERSION_LABEL`、`LINK_VIDEO`／`UNLINK_VIDEO`、`FETCH_STREAM_META`。F-11 匯出 `formatVersion` 升為 2。
+- 第 7 節：F-17 需 `alarms`、`downloads`、`notifications`、`offscreen`（T7 加入 manifest）；`tools/`、`design/`、`docs/` 不打包。
+- 第 8 節：D2 ✅；T2／T3／T7 擴充；新增 T6-c（彈出視窗面板 PoC）、T7-b（自選備份資料夾 PoC）、T8.5（`docs/USER-GUIDE.md`）。第 9 節新增 v28 必測情境；10.4 popup 收錄狀態、後台橫幅與儲存備份區。
+- 3.1：資料層測試改用 `tools/tests/test-db.html`（瀏覽器真實 IndexedDB），不使用 npm 相依。
 
 ### 規格 v27（2026-11-15，依 `docs/review-2026-11-15-3.md`）
 - **D1 選定方向 B「柔和現代感」**；10.9 填入已選定方向；10.3 圓角改為 8／14px，新增 `--ytcas-on-accent`、`--ytcas-on-danger`、`--ytcas-gift`、`--ytcas-gift-soft`。

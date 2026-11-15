@@ -17,4 +17,7 @@ claude   # 開頭指令見 docs/HANDOFF.md
 
 ## 安裝（開發版）
 1. Chrome 開啟 `chrome://extensions`，打開「開發人員模式」
-2. 「載入未封裝項目」→ 選擇本資料夾（含 `manifest.json` 的那層）
+2. 「載入未封裝項目」→ 選擇本資料夾（含 `manifest.json` 的那層）（只有第一次安裝時才做）
+
+> ⚠️ **不要在 `chrome://extensions` 按「移除」**：未封裝擴充功能被移除時，所有聊天存檔（IndexedDB）會一起永久刪除。
+> 更新程式碼：`git pull` 後在擴充功能卡片上按 🔄 重新載入，再重新整理 YouTube 分頁。
