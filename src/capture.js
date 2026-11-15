@@ -357,6 +357,7 @@
     // force：等待場次資訊期間（pending）也解析並排入佇列（收錄開始後才送出）
     function captureNode(el, how, force) {
       if (el.nodeType !== 1 || el.dataset[SAVED]) return;
+      if (!st.items || el.parentElement !== st.items) return; // T3.4 防呆：只擷取 #items 的直接子節點
       if (st.mode !== 'capturing' && !(force && st.mode === 'pending')) return;
       let m = null;
       try { m = parseMessage(el, ctxNow()); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
@@ -424,7 +425,10 @@
 
     function onItemsMutation(records) {
       for (const r of records) {
+        // T3.4：observer 為了刪除偵測帶 subtree，childList 也會回報訊息內部的後代（徽章、圖示、span…）；
+        // 只有 #items 的直接子節點才是訊息
         if (r.type === 'childList') {
+          if (r.target !== st.items) continue;
           st.stats.observedAdded += r.addedNodes.length;
           r.addedNodes.forEach((n) => captureNode(n, 'observer'));
         }
