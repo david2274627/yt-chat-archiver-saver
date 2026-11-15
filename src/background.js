@@ -211,7 +211,7 @@ async function cleanupJunkSystem(opts) {
   // T3.5：一併合併 viewer-engagement（歡迎／守則提示）的重複紀錄
   const r = await DB.cleanupJunkSystem({ dryRun, isJunkTag, since: C.T3_DEPLOYED_AT, veTag: SEL.chat.viewerEngagement });
   console.info('[ytcas] 清除垃圾 system 紀錄' + (dryRun ? '（預覽）' : ''), { matched: r.matched, deleted: r.deleted, streams: r.streams,
-    veDuplicates: r.veDuplicates, veMerged: r.veMerged });
+    veDuplicates: r.veDuplicates, veMerged: r.veMerged, keptTags: Object.keys(r.keptByTag).length });
   return r;
 }
 

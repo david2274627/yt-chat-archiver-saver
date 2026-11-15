@@ -634,6 +634,9 @@
     const pre = await BG.cleanupJunkSystem();
     eq([pre.dryRun, pre.matched, pre.streams, pre.deleted], [true, 3, 1, 0], '未指定時為預覽');
     eq(pre.byTag, { 'yt-icon': 1, span: 1, 'yt-live-chat-author-badge-renderer': 1 });
+    // T3.5 B-2：保留的 system 也列出（含不在範圍內的遷移／舊紀錄），合計 = scanned
+    eq(pre.keptByTag, { 'yt-live-chat-viewer-engagement-message-renderer': 1, 'yt-live-chat-something-new-renderer': 1, span: 2 });
+    eq(pre.matched + Object.values(pre.keptByTag).reduce((a, b) => a + b, 0), pre.scanned);
     eq((await DB.queryMessages(V)).length, 8, '預覽不刪');
     const r = await BG.cleanupJunkSystem({ dryRun: false });
     eq([r.matched, r.deleted], [3, 3]);

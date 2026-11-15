@@ -765,7 +765,7 @@
     const db = await open();
     const byVideo = new Map();
     const veGroups = new Map(); // T3.5：viewer-engagement 重複（同一場、同內容）→ 保留最早一筆
-    const out = { dryRun, since, scanned: 0, matched: 0, byTag: {}, streams: 0, deleted: 0,
+    const out = { dryRun, since, scanned: 0, matched: 0, byTag: {}, keptByTag: {}, streams: 0, deleted: 0,
       veGroups: 0, veDuplicates: 0, veMerged: 0, veRekeyed: 0 };
     await new Promise((res, rej) => {
       const r = db.transaction('messages', 'readonly').objectStore('messages').openCursor();
@@ -783,10 +783,15 @@
             out.byTag[v.rawTag] = (out.byTag[v.rawTag] || 0) + 1;
             if (!byVideo.has(v.videoId)) byVideo.set(v.videoId, []);
             byVideo.get(v.videoId).push(v.id);
-          } else if (p.veTag && v.rawTag === p.veTag && inScope) {
-            const key = C.viewerEngagementId(v.videoId, v.runs);
-            if (!veGroups.has(key)) veGroups.set(key, []);
-            veGroups.get(key).push(v);
+          } else {
+            // T3.5（審查十追加三 B-2）：保留的 system 紀錄也列出各 rawTag 筆數，方便檢查是否還有漏網的子元件
+            const tag = v.rawTag || '(無 rawTag)';
+            out.keptByTag[tag] = (out.keptByTag[tag] || 0) + 1;
+            if (p.veTag && v.rawTag === p.veTag && inScope) {
+              const key = C.viewerEngagementId(v.videoId, v.runs);
+              if (!veGroups.has(key)) veGroups.set(key, []);
+              veGroups.get(key).push(v);
+            }
           }
         }
         cur.continue();
