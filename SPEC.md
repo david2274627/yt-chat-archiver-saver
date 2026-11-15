@@ -29,7 +29,7 @@
 - **v27 調整**（`docs/review-2026-11-15-3.md`）：**D1 選定方向 B「柔和現代感」**（10.9）；主題系統改為 `themeMode` 自動／淺色／深色，存 `chrome.storage.sync`、所有介面即時同步（10.2，取代舊版）；新增 frame 訊息 `THEME`（4.3）；新增 **F-13 YouTube 禮物（Jewels）訊息**（`gift` 類型，膠囊改為 4 個）；新增 **F-14 重複收錄與合併規則**（一場一份存檔、訊息以 id 合併、後備指紋去重、`capture_sessions` 收錄紀錄、刪除訊息標記、**待機室／結束後聊天 `phase`**）；資料模型與 `DB_VERSION` 2（4.1）；1.3 新增「沒開分頁的時段不會被收錄」；第 8 節 T2／T3 對應調整。
 - **v28 調整**（`docs/review-2026-11-15-4.md`）：**D2 通過**；F-01 修剪改為**數量觸發為主、計時器保底**（背景分頁節流），F-02 批次以筆數為主、**啟動時回溯擷取既有訊息**；3.2 新增 **Service Worker 休眠對策**（立即寫入、佇列持久化、content script 重試）；1.3 新增聊天室關閉時不收錄、VOD 只收錄播放過的部分；新增 **F-15 收錄範圍與暫停**、**F-16 儲存空間管理**、**F-17 每週自動備份**、**F-18 VOD 版本（原始收錄與剪輯版分開）**、**F-19 彈出式聊天室視窗**；F-14 合併規則依 F-18 修正（原始時間碼永不改寫），並補上別名 id 與跨來源限制；新增權限 `alarms`、`downloads`、`notifications`、`offscreen`（T7 加入 manifest）；第 8 節 T2／T3／T7 擴充，新增 T6-c、T7-b、T8.5。
 - **v29 調整**（`docs/review-2026-11-15-5.md` 第 3 節，併入 T3）：第 7 節新增**寫入效能指標**與壓力測試頁（`tools/tests/test-stress.html`）；F-11 新增後台「重新執行舊資料遷移」入口（T7）；F-14／3.2 明訂**刪除通知的先後順序**；3.1 新增擷取引擎 `src/capture.js`；4.3 新增 frame 訊息 `STREAM_INFO_REQUEST`／`STREAM_INFO`／`CAPTURE_STATUS`（top frame 提供場次資訊與影片長度給 chat frame）；F-02 直播時間戳以擷取時間補足秒數；F-19 關閉彈出視窗後的自動接手分為 T3（展開聊天室、恢復收錄）與 T5（預設開啟面板）；測試頁一律攔截 `fetch` 與 `XMLHttpRequest`（`tools/tests/README.md`）。
-- **v30 調整**（`docs/review-2026-11-15-6.md` 第 3 節，T3.1）：**F-12 改為開始收錄時執行**（擷取端擁有，T5 只做面板說明）。
+- **v30 調整**（`docs/review-2026-11-15-6.md` 第 3 節，T3.1）：**F-12 改為開始收錄時執行**（擷取端擁有，T5 只做面板說明）；F-19 彈出視窗關閉改以 **`chrome.tabs.onRemoved`** 偵測（`pagehide` 為輔助，重新整理不誤觸接手）。
 
 ---
 
@@ -437,7 +437,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - **中途開啟／關閉的收錄連續性**（收錄優先）：
   1. 開關彈出視窗不會重複、不會覆蓋（同一 `videoId`、id 去重）；但切換瞬間可能有空檔 → 以 F-02「啟動時回溯擷取」補上大部分。
   2. **交接紀錄**：每個收錄來源各自建立 `capture_sessions`（`live`／`popout`／`replay`）；後台覆蓋範圍條合併顯示同一場所有 session，**真正的空檔**（所有 session 都沒涵蓋）以醒目樣式標出（4.1 覆蓋範圍合併）。
-  3. **關掉彈出視窗後自動接手**（預設開啟，可在設定關閉：`popoutHandoff`，`chrome.storage.sync`）：background 收到 `CAPTURE_END{ source: 'popout' }` 後通知同一 `videoId` 的主分頁；主分頁的嵌入式聊天室處於收起或移除狀態 → 自動展開聊天室恢復收錄，並依 F-09 預設開啟優化面板（劇院模式依 6.2 退讓，僅收錄）。（v29：T3 實作「展開聊天室（按影片下方卡片的原生按鈕）、恢復收錄」；「預設開啟優化面板」隨 F-09 在 T5 實作。彈出視窗在 `pagehide` 時送 `CAPTURE_END`；Chrome 關閉視窗時這則訊息可能送不到，此時不會觸發接手。）
+  3. **關掉彈出視窗後自動接手**（預設開啟，可在設定關閉：`popoutHandoff`，`chrome.storage.sync`）：background 收到 `CAPTURE_END{ source: 'popout' }` 後通知同一 `videoId` 的主分頁；主分頁的嵌入式聊天室處於收起或移除狀態 → 自動展開聊天室恢復收錄，並依 F-09 預設開啟優化面板（劇院模式依 6.2 退讓，僅收錄）。（v29：T3 實作「展開聊天室（按影片下方卡片的原生按鈕）、恢復收錄」；「預設開啟優化面板」隨 F-09 在 T5 實作。彈出視窗在 `pagehide` 時送 `CAPTURE_END`；Chrome 關閉視窗時這則訊息可能送不到。）（v30，`docs/review-2026-11-15-6.md` 3.2）**關閉偵測以 `chrome.tabs.onRemoved` 為主**：background 收到 `source: 'popout'` 的 `CAPTURE_START` 時，把 `sender.tab.id` → `{ videoId, captureSessionId, notified }` 記在 `chrome.storage.session`（`popoutTabs`，SW 重啟可接續；瀏覽器重開時清除）；該分頁關閉 → 補上 session 的 `endedAt` 並通知同一 `videoId` 的 watch 分頁（`tabs.query` 後比對 `v` 參數）。`pagehide` 的 `CAPTURE_END` 為輔助：等 3 秒（`POPOUT_RELOAD_GRACE_MS`），期間同一分頁重新開始收錄（重新整理）就不接手；同一 session 只通知一次。使用既有的 `tabs` 權限。
   4. **彈出視窗開啟時主分頁的行為**：待 T3 實機確認（嵌入式聊天室是否仍存在、是否仍收到訊息；只記錄結構與屬性）。仍存在 → 兩邊同時收錄、去重即可；被移除或改成提示畫面 → 主分頁不收錄，由彈出視窗負責，適用第 3 點。
 - AC：(a) 只開彈出視窗觀看直播 → 有存檔、DOM 節點 ≤ 50；(b) 主分頁與彈出視窗同開 → 不重複；(c) 主播降落後，彈出視窗持續收錄原直播的結束後聊天（`phase: post`），主分頁收錄新直播，兩份存檔各自正確；(d) 彈出視窗中 F-12 有切到「即時聊天室」；(e) 直播中開啟彈出視窗 → 關閉 → 再開啟 → 再關閉，重複 3 次，存檔無重複訊息；(f) 每次切換後回溯訊息補上切換期間的訊息（切換前後各 1 分鐘訊息數與重播比對，或時間連續性檢查）；(g) 關掉彈出視窗後主分頁 5 秒內自動恢復收錄；(h) 後台覆蓋範圍條正確顯示各來源與空檔。
 

@@ -15,7 +15,7 @@
   if (self.YTCAS_DB) self.YTCAS_DB.configure({ dbName: TEST_DB, legacyDbName: TEST_LEGACY });
   self.importScripts = function () { /* 已由 <script> 載入 */ };
 
-  const listeners = { message: [], changed: [], installed: [], startup: [] };
+  const listeners = { message: [], changed: [], installed: [], startup: [], removed: [] };
   function area(name) {
     let data = {};
     return {
@@ -61,7 +61,13 @@
       sync: area('sync'), local: area('local'), session: area('session'),
       onChanged: { addListener: (f) => listeners.changed.push(f) },
     },
-    tabs: { query: async () => [], sendMessage: async () => {} },
+    // tabs：_tabs 為假分頁清單（query 一律回傳全部，由 background 自行比對網址），sent 記錄 sendMessage
+    tabs: {
+      _tabs: [], sent: [],
+      query: async () => self.chrome.tabs._tabs.slice(),
+      sendMessage: async (tabId, m) => { self.chrome.tabs.sent.push({ tabId, msg: JSON.parse(JSON.stringify(m)) }); },
+      onRemoved: { addListener: (f) => listeners.removed.push(f) },
+    },
   };
   self.__mock = { listeners, broadcasts, TEST_DB, TEST_LEGACY };
 })();

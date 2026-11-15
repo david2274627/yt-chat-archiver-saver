@@ -125,6 +125,10 @@
     STREAM_INFO_MAX_WAIT_MS: 30000,
     // F-19：FETCH_STREAM_META 等待上限（彈出視窗 CAPTURE_START 時）
     STREAM_META_TIMEOUT_MS: 5000,
+    // F-19（v30）：彈出視窗分頁 → 收錄 session 對照（chrome.storage.session，SW 重啟可接續）
+    POPOUT_TABS_KEY: 'popoutTabs',
+    // pagehide 送來的 CAPTURE_END 等這麼久再接手：期間同一分頁重新開始收錄（重新整理）就不接手
+    POPOUT_RELOAD_GRACE_MS: 3000,
 
     // v27 主題設定（chrome.storage.sync；邏輯在 src/theme.js）
     THEME_MODE_KEY: 'themeMode',

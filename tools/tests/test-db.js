@@ -523,6 +523,52 @@
     }
   });
 
+  test('F-19 自動接手（v30）：彈出視窗分頁關閉（tabs.onRemoved）→ 補上結束時間並通知同一 videoId 的主分頁', async () => {
+    await resetAll();
+    const POP = (tabId) => ({ id: 'testextid', url: 'https://www.youtube.com/live_chat?is_popout=1&v=' + V, tab: { id: tabId } });
+    chrome.tabs._tabs = [{ id: 3, url: 'https://www.youtube.com/watch?v=' + V }, { id: 4, url: 'https://www.youtube.com/watch?v=' + V2 }];
+    chrome.tabs.sent.length = 0;
+    try {
+      const r = await send({ type: 'CAPTURE_START', videoId: V, source: 'popout', stream: { channelHandle: '@x' } }, POP(7));
+      eq((await BG.readPopout())[7], { videoId: V, sid: r.captureSessionId, notified: false }, '記下分頁（storage.session）');
+      for (const f of M.listeners.removed) f(7);
+      await sleep(200);
+      eq(chrome.tabs.sent.map((s) => [s.tabId, s.msg.type, s.msg.source, s.msg.videoId]), [[3, 'CAPTURE_END', 'popout', V]], '只通知同一 videoId 的主分頁');
+      const { sessions } = await DB.listCaptureSessions(V);
+      assert(sessions.find((s) => s.id === r.captureSessionId).endedAt != null, '補上 endedAt');
+      eq(await BG.readPopout(), {}, '對照表移除');
+      // 一般分頁關閉不影響
+      for (const f of M.listeners.removed) f(99);
+      await sleep(100);
+      eq(chrome.tabs.sent.length, 1);
+      // 設定關閉時不通知
+      await chrome.storage.sync.set({ popoutHandoff: false });
+      await send({ type: 'CAPTURE_START', videoId: V, source: 'popout', stream: { channelHandle: '@x' } }, POP(9));
+      await BG.onPopoutTabRemoved(9);
+      eq(chrome.tabs.sent.length, 1, 'popoutHandoff=false');
+    } finally { chrome.tabs._tabs = []; }
+  });
+
+  test('F-19 自動接手（v30）：pagehide 的 CAPTURE_END 等 3 秒；期間重新整理（同分頁重新開始）不接手；之後關閉分頁不重複通知', async () => {
+    await resetAll();
+    const POP = { id: 'testextid', url: 'https://www.youtube.com/live_chat?is_popout=1&v=' + V, tab: { id: 8 } };
+    chrome.tabs._tabs = [{ id: 3, url: 'https://www.youtube.com/watch?v=' + V }];
+    chrome.tabs.sent.length = 0;
+    try {
+      let r = await send({ type: 'CAPTURE_START', videoId: V, source: 'popout', stream: { channelHandle: '@x' } }, POP);
+      await send({ type: 'CAPTURE_END', captureSessionId: r.captureSessionId, source: 'popout' }, POP);
+      r = await send({ type: 'CAPTURE_START', videoId: V, source: 'popout', stream: { channelHandle: '@x' } }, POP); // 重新整理
+      await sleep(C_GRACE() + 300);
+      eq(chrome.tabs.sent.length, 0, '重新整理不接手');
+      await send({ type: 'CAPTURE_END', captureSessionId: r.captureSessionId, source: 'popout' }, POP);
+      await sleep(C_GRACE() + 300);
+      eq(chrome.tabs.sent.length, 1, 'pagehide 後接手一次');
+      await BG.onPopoutTabRemoved(8);
+      eq(chrome.tabs.sent.length, 1, '分頁關閉不重複通知');
+    } finally { chrome.tabs._tabs = []; }
+  });
+  function C_GRACE() { return self.YTCAS_CONST.POPOUT_RELOAD_GRACE_MS; }
+
   test('F-03／3.2：頻道解析佇列存 storage.session，失敗退避、SW 重啟後接續', async () => {
     await resetAll();
     await sleep(300); // 等前面測試排入的解析工作結束（測試期間 fetch 一律被攔截，不連外）

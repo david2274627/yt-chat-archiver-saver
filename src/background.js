@@ -258,8 +258,54 @@ async function fetchStreamMeta(videoId) {
 const withTimeout = (p, ms) => Promise.race([p, new Promise((res) => setTimeout(() => res(null), ms))]);
 const pickTimes = (s) => (s ? { startedAt: s.startedAt ?? null, endedAt: s.endedAt ?? null, scheduledStartAt: s.scheduledStartAt ?? null, channelHandle: s.channelHandle || '' } : null);
 
+// ---------------------------------------------------------------- F-19 彈出視窗關閉 → 主分頁接手（v30）
+// 主要訊號：chrome.tabs.onRemoved（直接關閉視窗時 pagehide 的 CAPTURE_END 可能送不到）；pagehide 為輔助。
+// 對照表 { [tabId]: { videoId, sid, notified } } 存 storage.session。
+let popoutChain = Promise.resolve();
+function withPopout(fn) {
+  const next = popoutChain.then(fn, fn);
+  popoutChain = next.catch(() => {});
+  return next;
+}
+async function readPopout() {
+  const o = await chrome.storage.session.get(C.POPOUT_TABS_KEY);
+  return o[C.POPOUT_TABS_KEY] || {};
+}
+const writePopout = (m) => chrome.storage.session.set({ [C.POPOUT_TABS_KEY]: m });
+
+async function handoffToMainTab(videoId) {
+  const st = await loadSettings();
+  if (st.popoutHandoff === false) return false;
+  await notifyTabs(videoId, { type: RT.CAPTURE_END, videoId, source: 'popout' });
+  return true;
+}
+
+// 回傳是否應該通知（同一 session 只通知一次）
+function markNotified(tabId, sid) {
+  return withPopout(async () => {
+    const m = await readPopout();
+    const e = m[tabId];
+    if (!e || e.sid !== sid || e.notified) return false;
+    e.notified = true;
+    await writePopout(m);
+    return true;
+  });
+}
+
+async function onPopoutTabRemoved(tabId) {
+  const e = await withPopout(async () => {
+    const m = await readPopout();
+    const x = m[tabId];
+    if (x) { delete m[tabId]; await writePopout(m); }
+    return x || null;
+  });
+  if (!e) return;
+  await DB.captureEnd({ captureSessionId: e.sid }); // 已結束的 session 不會被改寫
+  if (!e.notified) await handoffToMainTab(e.videoId);
+}
+
 const handlers = {
-  async [RT.CAPTURE_START](msg) {
+  async [RT.CAPTURE_START](msg, sender) {
     const videoId = vid(msg);
     let stream = msg.stream && typeof msg.stream === 'object' ? Object.assign({}, msg.stream) : {};
     // F-19：彈出視窗缺場次資訊 → 先抓 watch 頁（最多等 5 秒），暫停判斷才知道頻道
@@ -274,15 +320,32 @@ const handlers = {
     const policy = await capturePolicy(await handleOf(videoId, stream));
     if (!policy.allowed) return { allowed: false, reason: policy.reason };
     const r = await DB.captureStart({ videoId, source: msg.source, duration: msg.duration, stream });
+    // F-19（v30）：記下彈出視窗所在分頁，關閉時由 tabs.onRemoved 接手
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (msg.source === 'popout' && typeof tabId === 'number' && tabId >= 0) {
+      await withPopout(async () => {
+        const m = await readPopout();
+        m[tabId] = { videoId, sid: r.captureSessionId, notified: false };
+        await writePopout(m);
+      });
+    }
     return Object.assign({ allowed: true, stream: pickTimes(await DB.getStream(videoId)) }, r);
   },
 
-  async [RT.CAPTURE_END](msg) {
+  async [RT.CAPTURE_END](msg, sender) {
     const s = await DB.captureEnd({ captureSessionId: msg.captureSessionId, endedAt: msg.endedAt });
-    // F-19：彈出視窗結束 → 通知同一 videoId 的主分頁（自動接手由 T3 的 content script 處理）
+    // F-19：彈出視窗 pagehide（輔助訊號）→ 等一下再通知主分頁；期間同一分頁重新開始收錄（重新整理）就不接手
     if (s && s.source === 'popout') {
-      const st = await loadSettings();
-      if (st.popoutHandoff !== false) notifyTabs(s.videoId, { type: RT.CAPTURE_END, videoId: s.videoId, source: 'popout' });
+      const tabId = sender && sender.tab && sender.tab.id;
+      setTimeout(async () => {
+        try {
+          if (typeof tabId === 'number' && tabId >= 0) {
+            if (await markNotified(tabId, s.id)) await handoffToMainTab(s.videoId);
+          } else {
+            await handoffToMainTab(s.videoId); // 沒有分頁資訊：直接通知
+          }
+        } catch (e) { console.warn('[ytcas] 彈出視窗接手失敗', String(e && e.message)); }
+      }, C.POPOUT_RELOAD_GRACE_MS);
     }
     return { session: s || null };
   },
@@ -414,7 +477,12 @@ chrome.runtime.onInstalled.addListener((details) => {
   console.info('[ytcas] installed', details.reason, chrome.runtime.getManifest().version_name);
   autoMigrateLegacy(false).catch((e) => console.warn('[ytcas] 舊資料遷移失敗', e));
 });
+chrome.tabs.onRemoved.addListener((tabId) => {
+  onPopoutTabRemoved(tabId).catch((e) => console.warn('[ytcas] 彈出視窗關閉處理失敗', String(e && e.message)));
+});
 chrome.runtime.onStartup.addListener(() => {
+  chrome.storage.session.remove(C.POPOUT_TABS_KEY).catch(() => {}); // 瀏覽器重開：舊分頁 id 已無效
+
   autoMigrateLegacy(false).catch((e) => console.warn('[ytcas] 舊資料遷移失敗', e));
 });
 
@@ -422,4 +490,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, _inflight: inflight };
