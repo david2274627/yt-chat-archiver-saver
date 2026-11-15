@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v28**（前版：v27；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v29**（前版：v28；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -28,6 +28,7 @@
 - **v26 調整**（v24.1 PoC 補測，`docs/review-2026-11-15-2.md`）：**T1 通過並關閉**（第 8 節）；投票卡 `#chat > #action-panel` 入白名單、合理性規則調整、面板最小高度與退讓（6.2、6.3）；iframe 搬移重載後的重新初始化流程與看門狗（6.4）；**劇院模式一律退讓，但擷取與修剪持續運作**（6.2、6.4、6.5 AC 14）；退讓時的按鈕樣式（10.4）；F-02 重播以 `#timestamp` 取得 `videoOffsetSec`、略過佔位元素、新增收到贈送會員；F-12 重播同樣適用。
 - **v27 調整**（`docs/review-2026-11-15-3.md`）：**D1 選定方向 B「柔和現代感」**（10.9）；主題系統改為 `themeMode` 自動／淺色／深色，存 `chrome.storage.sync`、所有介面即時同步（10.2，取代舊版）；新增 frame 訊息 `THEME`（4.3）；新增 **F-13 YouTube 禮物（Jewels）訊息**（`gift` 類型，膠囊改為 4 個）；新增 **F-14 重複收錄與合併規則**（一場一份存檔、訊息以 id 合併、後備指紋去重、`capture_sessions` 收錄紀錄、刪除訊息標記、**待機室／結束後聊天 `phase`**）；資料模型與 `DB_VERSION` 2（4.1）；1.3 新增「沒開分頁的時段不會被收錄」；第 8 節 T2／T3 對應調整。
 - **v28 調整**（`docs/review-2026-11-15-4.md`）：**D2 通過**；F-01 修剪改為**數量觸發為主、計時器保底**（背景分頁節流），F-02 批次以筆數為主、**啟動時回溯擷取既有訊息**；3.2 新增 **Service Worker 休眠對策**（立即寫入、佇列持久化、content script 重試）；1.3 新增聊天室關閉時不收錄、VOD 只收錄播放過的部分；新增 **F-15 收錄範圍與暫停**、**F-16 儲存空間管理**、**F-17 每週自動備份**、**F-18 VOD 版本（原始收錄與剪輯版分開）**、**F-19 彈出式聊天室視窗**；F-14 合併規則依 F-18 修正（原始時間碼永不改寫），並補上別名 id 與跨來源限制；新增權限 `alarms`、`downloads`、`notifications`、`offscreen`（T7 加入 manifest）；第 8 節 T2／T3／T7 擴充，新增 T6-c、T7-b、T8.5。
+- **v29 調整**（`docs/review-2026-11-15-5.md` 第 3 節，併入 T3）：第 7 節新增**寫入效能指標**與壓力測試頁（`tools/tests/test-stress.html`）；F-11 新增後台「重新執行舊資料遷移」入口（T7）；F-14／3.2 明訂**刪除通知的先後順序**；3.1 新增擷取引擎 `src/capture.js`；4.3 新增 frame 訊息 `STREAM_INFO_REQUEST`／`STREAM_INFO`／`CAPTURE_STATUS`（top frame 提供場次資訊與影片長度給 chat frame）；F-02 直播時間戳以擷取時間補足秒數；F-19 關閉彈出視窗後的自動接手分為 T3（展開聊天室、恢復收錄）與 T5（預設開啟面板）；測試頁一律攔截 `fetch` 與 `XMLHttpRequest`（`tools/tests/README.md`）。
 
 ---
 
@@ -84,7 +85,8 @@ yt-chat-archiver-saver/
 │   ├── constants.js  # ★新增：上限數字、機器人名單、訊息類型常數
 │   ├── db.js         # IndexedDB 封裝（streams / messages / pinned_messages / channels）
 │   ├── background.js # Service Worker：唯一資料庫存取者、推播、頻道名稱/頭像解析
-│   ├── content.js    # 雙環境：chat frame（擷取/修剪/輸入區狀態回報）+ top frame（按鈕、面板、clip-path、時間軸）
+│   ├── capture.js    # v29：擷取引擎（解析、回溯擷取、修剪、批次、重試、刪除偵測）；嵌入式 chat frame 與彈出式聊天室共用，不依賴 chrome.*，測試頁可直接載入
+│   ├── content.js    # 三種環境：top watch 頁（按鈕、面板、clip-path、時間軸、場次資訊）／嵌入式 chat frame／彈出式聊天室（v28 F-19）
 │   ├── popup.html / popup.js
 │   └── viewer.html / viewer.js
 ├── docs/
@@ -101,7 +103,7 @@ yt-chat-archiver-saver/
 > - `src/theme.js`（v27）：主題系統共用模組（10.2）；viewer、popup 以 `<script src="theme.js" data-auto>` 放在 `<head>` 載入。
 > - `src/styles/components.css`（v27）：元件樣式（10.4），viewer、popup 共用；`design/mockups.html` 直接載入本檔與 `tokens.css`、`theme.js`，設計稿即實作樣式。
 > - `tools/check-contrast.js`（v27）：token 對比度檢查腳本，不打包進套件。
-> - `tools/tests/`（v28）：資料層單元測試頁（`test-db.html`，在瀏覽器以真實 IndexedDB 執行，chrome.* 以假物件替代），不打包進套件；`tools/` 不被 manifest 引用即不會進正式版。不使用 npm 相依（CLAUDE.md）。
+> - `tools/tests/`（v28）：資料層單元測試頁（`test-db.html`，在瀏覽器以真實 IndexedDB 執行，chrome.* 以假物件替代），不打包進套件；`tools/` 不被 manifest 引用即不會進正式版。不使用 npm 相依（CLAUDE.md）。（v29）另有擷取引擎測試頁 `test-capture.html`（模擬聊天室結構只依 `docs/youtube-dom-notes.md` 建構）與寫入壓力測試頁 `test-stress.html`；所有測試頁**一律攔截 `fetch` 與 `XMLHttpRequest`**，不得對外連線（`tools/tests/README.md`）。
 > - `src/icons/`：套件圖示 16/32/48/128 px（自行繪製 SVG 轉 PNG，不得使用 YouTube 標誌）。
 > - `design/`：靜態設計稿 HTML（第 10.8 節），不打包進套件。
 
@@ -127,7 +129,8 @@ yt-chat-archiver-saver/
 **Service Worker 休眠對策**（v28）：MV3 的 background 閒置時會被 Chrome 終止，記憶體內容隨之消失。因此：
 1. background 收到 `SAVE_MESSAGES`／`SAVE_PINNED`／`MESSAGE_DELETED` 後**立即寫入 IndexedDB**，回應 `{ ok: true }` 前交易已完成；不在記憶體中累積待寫資料。
 2. 頻道名稱解析（F-03）的待辦佇列存在 `chrome.storage.session`（含重試次數與下次可重試時間），被喚醒時（任何事件）自動接續。
-3. content script 端 `sendMessage` 失敗（SW 重啟中、無回應或回應 `ok: false` 以外的錯誤）時重試 3 次（間隔 0.5／1／2 秒）；仍失敗的批次留在 content script 端，下一批一起送（上限 2000 筆，超過時丟棄最舊的並記入診斷筆數）。
+3. content script 端 `sendMessage` 失敗（SW 重啟中、無回應或回應 `ok: false` 以外的錯誤）時重試 3 次（間隔 0.5／1／2 秒）；仍失敗的批次留在 content script 端，下一批一起送（上限 2000 筆，超過時丟棄最舊的並記入診斷筆數）。回應 `ok: false` 的批次不重試（`paused` 依 F-15 停止擷取；其他錯誤丟棄並記入診斷筆數）。擴充功能重新載入後，舊頁面裡的 content script 失去連線（`chrome.runtime.id` 不存在）：停止送出，但 **DOM 修剪照常**，直到頁面重新整理。
+   - **刪除通知的先後順序**（v29）：content script 偵測到訊息被刪除時，先把該訊息所在的批次送出並等待寫入完成，再送 `MESSAGE_DELETED`；回應 `found: false` 時放入待處理清單，下一批寫入完成後重送一次，仍找不到就放棄（只記筆數）。
 4. 長時間工作（F-11 遷移）分批進行，每批獨立交易，進度記在 `chrome.storage.local`，中斷後可重跑（以 id 去重）。
 
 **Origin 隔離原則**：`youtube.com` 頁面內的腳本（content.js）**禁止**直接開 IndexedDB 存聊天資料，一律經由 `background.js`。
@@ -254,6 +257,11 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | `THEME` | top → viewer iframe | `{ theme: 'light'|'dark' }`（v27：top frame 監看 `html[dark]` 的實際外觀，開啟面板時送一次、變更時再送；面板依 `themeMode` 決定是否採用，見 10.2） |
 | `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`） |
 | `SEEK_TO` | viewer iframe → top | `{ seconds }` |
+| `STREAM_INFO_REQUEST` | chat frame → top | `{}`（v29：chat frame 啟動時向 top frame 要場次資訊；收到前每秒重送，最多 30 秒） |
+| `STREAM_INFO` | top → chat frame | `{ videoId, title, channelName, channelHandle, channelUrl, startDate, endDate, isLiveBroadcast, duration }`（v29：`startDate`／`endDate` 為 ms 或 `null`；`duration` 為秒（四捨五入）或 `null`，直播中為 `null`。收到 `STREAM_INFO_REQUEST`、`yt-navigate-finish`、`durationchange` 時送出；只送給 `iframe#chatframe.contentWindow`） |
+| `CAPTURE_STATUS` | chat frame → top | `{ videoId, capturing: boolean, reason: null|'paused'|'no-items'|'no-video-id'|'disconnected' }`（v29：狀態變化時送出；top frame 用於 F-19 自動接手與之後 popup 狀態） |
+
+> （v29）嵌入式 chat frame 的網址通常只有 `continuation` 參數、沒有 `v`，所以 `videoId` 以 `STREAM_INFO` 為準；網址有 `v` 時先採用網址值。彈出式聊天室沒有 top frame，`videoId` 取自網址 `v`，場次資訊由 background 的 `FETCH_STREAM_META` 補齊（F-19）。
 
 ---
 
@@ -272,7 +280,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 保存文字、官方 Emoji、會員貼圖（`src` + `alt`）、雙時間軸、頭像、頻道直連網址。
 - 被修剪前一定先完成擷取（擷取在 MutationObserver 回呼內同步完成，修剪只動已擷取節點：以 `data-ytcas-saved="1"` 標記）。
 - 置頂訊息擷取（v25 確認）：新版面置頂列位於輸入列上方，來源仍是 `yt-live-chat-banner-manager`（`chat.bannerContainer`）＞ `yt-live-chat-banner-renderer` ＞ `#contents` 內的 `yt-live-chat-text-message-renderer#<訊息 id>`（結構同一般訊息），見 `docs/youtube-dom-notes.md` 2.4。
-- **時間戳**（v25）：直播訊息的 `span#timestamp` **有值**，`yt-live-chat-renderer[hide-timestamps]` 只是以 CSS 隱藏。擷取時直接讀 `#timestamp` 文字（當地時間字串；實機長度約 7 字元，確切格式待 T3 實作時確認，解析需容許上午／下午與 AM／PM 兩種寫法），配合擷取當下的日期還原 `timestampAbs`；還原結果比擷取時間晚超過 12 小時時視為前一天（跨日校正）；解析失敗時以擷取時間為準。`videoOffsetSec` 仍以 `startDate` 推算（4.3）。
+- **時間戳**（v25）：直播訊息的 `span#timestamp` **有值**，`yt-live-chat-renderer[hide-timestamps]` 只是以 CSS 隱藏。擷取時直接讀 `#timestamp` 文字（當地時間字串；實機長度約 7 字元，確切格式待 T3 實作時確認，解析需容許上午／下午與 AM／PM 兩種寫法），配合擷取當下的日期還原 `timestampAbs`；還原結果比擷取時間晚超過 12 小時時視為前一天（跨日校正）；解析失敗時以擷取時間為準。`videoOffsetSec` 仍以 `startDate` 推算（4.3）。（v29）`#timestamp` 只到分鐘：`timestampAbs` 取「擷取時間夾在該分鐘範圍內」的值（`clamp(擷取時間, 該分鐘起點, 起點 + 59.999 秒)`），即時訊息因此保有秒級精度，回溯擷取的舊訊息則落在該分鐘的最後一刻。
 - **身分**（v25）：以 `yt-live-chat-text-message-renderer[author-type]`（`owner`／`moderator`／`member`…）為主，`#chat-badges` 內的徽章為輔（例如 `verified`）。
 - **未知訊息元件**（v25）：`#items` 下出現不認識的元件標籤時，`console.info('[ytcas] 未知訊息元件', tagName)`（每種標籤一次），並以 `type: 'system'` 保存，不丟棄。尚未在實機出現的類型（SC 文字版、禮物購買、降落、里程碑、投票內部元件）在 `selectors.js` 標「待實機確認」。
 - **VOD 重播（`/live_chat_replay`）**（v26，實機確認）：`span#timestamp` 有值（影片時間，如 `1:23`，CSS 隱藏）→ **直接解析為 `videoOffsetSec`**（`h:mm:ss`／`m:ss`）；`timestampAbs` 以 `startedAt + videoOffsetSec` 推算，取不到 `startedAt` 時存擷取時間。
@@ -295,6 +303,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - 開啟舊資料庫時**不得**指定版本號或觸發 `onupgradeneeded`；若開啟時意外進入 `onupgradeneeded`（代表舊資料庫不存在），必須 `abort()` 該交易，不得建立空的舊資料庫。
   - **不得**升級、修改或刪除舊資料庫。
   - 以 `id` 去重，可重複執行；完成後在 `chrome.storage.local` 記錄 `legacyMigratedAt`、`legacyCounts`（舊庫各 store 筆數）與 `migratedCounts`（實際寫入／略過筆數）。
+  - （v29）自動遷移只在 `legacyMigratedAt` 不存在時執行一次，舊資料庫不存在時也會寫入（`legacyCounts: null`）。為了之後從備份還原舊資料庫、或第一次遷移時舊庫暫時讀不到的情況，T7 後台「設定 → 進階」提供 **「重新執行 v2.6.0 舊資料遷移」** 按鈕：送 `MIGRATE_LEGACY`（強制執行，以 `id` 去重），需二次確認；旁邊顯示上次遷移時間與各 store 筆數（舊庫不存在時顯示「未偵測到舊資料」）。T7 之前可在 Service Worker Console 執行 `YTCAS_BG.autoMigrateLegacy(true)`。
   - 舊資料庫保留；後台提供「刪除舊版資料」按鈕，需二次確認，且僅在遷移筆數核對一致後才可按。
 - **JSON 匯入**：後台檢視器「匯入 JSON」，支援 (1) v2.6.0 匯出格式、(2) v3 匯出格式；以 `id` 去重；匯入前顯示預覽（場次數、訊息數、重複數），完成後顯示結果。
 - **v3 JSON 匯出**含 `formatVersion` 欄位（初版 `1`），確保可匯入回來。（v28：升為 **`2`**，加入 F-18 的 `versions`、`offsets`、`linkedVideos` 與 `captureSessions`；匯入相容 `1`、`2` 與 v2.6.0 格式；F-17 備份的 `.json.gz` 由 viewer 以 `DecompressionStream` 解壓後匯入。）
@@ -427,7 +436,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - **中途開啟／關閉的收錄連續性**（收錄優先）：
   1. 開關彈出視窗不會重複、不會覆蓋（同一 `videoId`、id 去重）；但切換瞬間可能有空檔 → 以 F-02「啟動時回溯擷取」補上大部分。
   2. **交接紀錄**：每個收錄來源各自建立 `capture_sessions`（`live`／`popout`／`replay`）；後台覆蓋範圍條合併顯示同一場所有 session，**真正的空檔**（所有 session 都沒涵蓋）以醒目樣式標出（4.1 覆蓋範圍合併）。
-  3. **關掉彈出視窗後自動接手**（預設開啟，可在設定關閉：`popoutHandoff`，`chrome.storage.sync`）：background 收到 `CAPTURE_END{ source: 'popout' }` 後通知同一 `videoId` 的主分頁；主分頁的嵌入式聊天室處於收起或移除狀態 → 自動展開聊天室恢復收錄，並依 F-09 預設開啟優化面板（劇院模式依 6.2 退讓，僅收錄）。
+  3. **關掉彈出視窗後自動接手**（預設開啟，可在設定關閉：`popoutHandoff`，`chrome.storage.sync`）：background 收到 `CAPTURE_END{ source: 'popout' }` 後通知同一 `videoId` 的主分頁；主分頁的嵌入式聊天室處於收起或移除狀態 → 自動展開聊天室恢復收錄，並依 F-09 預設開啟優化面板（劇院模式依 6.2 退讓，僅收錄）。（v29：T3 實作「展開聊天室（按影片下方卡片的原生按鈕）、恢復收錄」；「預設開啟優化面板」隨 F-09 在 T5 實作。彈出視窗在 `pagehide` 時送 `CAPTURE_END`；Chrome 關閉視窗時這則訊息可能送不到，此時不會觸發接手。）
   4. **彈出視窗開啟時主分頁的行為**：待 T3 實機確認（嵌入式聊天室是否仍存在、是否仍收到訊息；只記錄結構與屬性）。仍存在 → 兩邊同時收錄、去重即可；被移除或改成提示畫面 → 主分頁不收錄，由彈出視窗負責，適用第 3 點。
 - AC：(a) 只開彈出視窗觀看直播 → 有存檔、DOM 節點 ≤ 50；(b) 主分頁與彈出視窗同開 → 不重複；(c) 主播降落後，彈出視窗持續收錄原直播的結束後聊天（`phase: post`），主分頁收錄新直播，兩份存檔各自正確；(d) 彈出視窗中 F-12 有切到「即時聊天室」；(e) 直播中開啟彈出視窗 → 關閉 → 再開啟 → 再關閉，重複 3 次，存檔無重複訊息；(f) 每次切換後回溯訊息補上切換期間的訊息（切換前後各 1 分鐘訊息數與重播比對，或時間連續性檢查）；(g) 關掉彈出視窗後主分頁 5 秒內自動恢復收錄；(h) 後台覆蓋範圍條正確顯示各來源與空檔。
 
@@ -618,6 +627,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 |---|---|
 | 記憶體 | 直播 2 小時、每分鐘 500+ 則訊息，分頁記憶體較未安裝套件時下降，chat frame DOM 訊息節點 ≤ 50 |
 | 效能 | viewer 開啟 10 萬則訊息場次 ≤ 2 秒顯示首屏（使用虛擬清單或分批渲染）；搜尋 ≤ 300ms |
+| 寫入效能（v29） | background 處理 `SAVE_MESSAGES` 一批 50 則 ≤ **100ms（P95）**；連續寫入 **10 萬則**不出錯、記憶體不持續增長。以 `tools/tests/test-stress.html` 驗證：模擬每秒 20 則、持續 30 分鐘（可用加速模式），含重複 id 與重播來源（走別名／指紋查找），記錄每批耗時分布與最終筆數。不達標時優先改為「同一批內先一次取出既有 id／別名，再在記憶體比對」 |
 | 安全 | 匯出 HTML 與 viewer 渲染時，所有使用者文字一律 `textContent` / 跳脫，禁止 `innerHTML` 拼接未跳脫文字；圖片只接受 `https://` 且網域為 `*.ggpht.com`、`*.ytimg.com`、`*.googleusercontent.com`、`yt3.ggpht.com`、`fonts.gstatic.com`、`www.gstatic.com`（v21 加入 gstatic：YouTube 標準 Unicode 表符圖片來源）；不在白名單的圖片以 `alt` 文字顯示 |
 | 隱私 | 資料只存本機；外部網路請求僅限：頻道頁抓取（`www.youtube.com`）、匯出 HTML 時抓取上列白名單網域的圖片轉 data URL（v21） |
 | 版面侵入 | 同 10.1 原則 6：所有套件 UI 只在聊天室區域內或 popup／後台分頁，影片與頁面主體上不得有任何套件元素；**每個 ⏸ 關卡都要檢查此項**（v23） |
@@ -639,7 +649,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | D1 ✅ 選定方向 B（2026-11-15） | **設計稿**：依第 10 節做 `design/mockups.html`，提出 **2 種視覺方向**，每種含淺色/深色 | 設計稿 HTML | 使用者選定方向（可要求修改）。**v27：選定方向 B「柔和現代感」**，修改意見為主題自動跟隨系統並可手動選擇（10.2） |
 | D2 ✅ 通過（2026-11-15） | 將選定方向落實為 `tokens.css`、`theme.js` 與元件 CSS；更新第 10 節「已選定方向」；設計稿只保留方向 B，頂部改為正式的「自動／淺色／深色」分段按鈕（自動實際跟隨系統），並加入禮物訊息、「👑 會員」膠囊、已刪除訊息、場次收錄來源與覆蓋範圍、待機室／結束後分隔線、主題設定 UI（v27） | commit | 設計稿與 token 一致；對比度符合 10.3；使用者視覺確認 |
 | T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03）；F-11 自動遷移（唯讀複製，不動舊資料庫）；（v27）`DB_VERSION` 2：`capture_sessions` 資料表、messages 新欄位與 `[videoId+fp]` 索引、v1→v2 遷移；F-14 合併規則（欄位合併、`sources` 累加、後備指紋去重、以 `videoId` 序列化寫入）、`CAPTURE_START/END`、`RESET_STREAM`、`RECLASSIFY_SYSTEM`、`MESSAGE_DELETED`；`phase` 事後重算；（v28）SW 休眠對策（3.2：立即寫入、頻道解析佇列存 `storage.session`）、F-15 設定讀取（`GET_CAPTURE_POLICY`、`SAVE_MESSAGES` 暫停判斷）、F-16 用量查詢（`GET_STORAGE_USAGE`、`DELETE_STREAMS`）、F-18 資料層（`versions`、`offsets`、`linkedVideos`、版本偵測、合併規則修正）、F-19 資料層（`source: 'popout'`、覆蓋範圍合併計算）、F-14 別名與跨來源限制、v3 匯出／匯入資料層（`formatVersion` 2） | commit | 單元測試（`tools/tests/test-db.html`）：F-14 情境表每列至少一個測試、v1→v2 遷移、F-11 遷移後舊庫筆數不變且新舊筆數一致、重複匯入無重複、SW 重啟後頻道解析佇列可接續；以 DevTools 呼叫訊息 API 可寫入/查詢（F-14 AC 1、3、5） |
-| T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02）；（v27）**第一步：直播／重播訊息 id 一致性驗證**（只比對 id，結果寫入 `docs/youtube-dom-notes.md`，決定後備去重的啟用條件）；`phase` 判斷來源的實機確認（`startDate`／結束訊號，只記標籤與屬性）；`gift` 擷取（標籤待實機）、`system` 保存 `rawTag`；刪除訊息偵測；（v28）數量觸發修剪與批次（F-01、F-02）、`sendMessage` 重試（3.2）、**啟動時回溯擷取**、F-15 暫停判斷、F-18 讀取 `video.duration`、**F-19 彈出式聊天室收錄**（環境判斷三種、`FETCH_STREAM_META`、彈出視窗開啟時主分頁狀態實機確認、關閉後自動接手） | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50（含背景 30 分鐘）；id 一致性驗證結果已寫入筆記；F-19 AC (a)(b)(e)(g) |
+| T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02）；（v27）**第一步：直播／重播訊息 id 一致性驗證**（只比對 id，結果寫入 `docs/youtube-dom-notes.md`，決定後備去重的啟用條件）；`phase` 判斷來源的實機確認（`startDate`／結束訊號，只記標籤與屬性）；`gift` 擷取（標籤待實機）、`system` 保存 `rawTag`；刪除訊息偵測；（v28）數量觸發修剪與批次（F-01、F-02）、`sendMessage` 重試（3.2）、**啟動時回溯擷取**、F-15 暫停判斷、F-18 讀取 `video.duration`、**F-19 彈出式聊天室收錄**（環境判斷三種、`FETCH_STREAM_META`、彈出視窗開啟時主分頁狀態實機確認、關閉後自動接手）；（v29）擷取引擎 `src/capture.js` 與測試頁 `test-capture.html`、top frame 的 `STREAM_INFO`（4.3）、刪除通知先後順序（3.2）、寫入壓力測試（第 7 節）。T3 含實機驗證，完成後 ⏸ 停下 | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50（含背景 30 分鐘）；id 一致性驗證結果已寫入筆記；F-19 AC (a)(b)(e)(g)；壓力測試達第 7 節寫入效能指標 |
 | T4 | viewer 核心：虛擬清單、訊息列、膠囊列（v27：4 個）、雙搜尋列、置頂卡片（F-04～F-07）；（v27）`pre`／`live`／`post` 分隔線、已刪除標記與隱藏切換、禮物卡片 | commit | 對既有場次資料可篩選、搜尋、高亮 |
 | T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09）；自動切換「即時聊天室」（F-12，v25）；（v27）`THEME` 傳遞、時間軸同步排除 `pre`／`post` | commit | 使用者在 VOD 與直播實測 |
 | T6 ⏸ | F-10 完整實作：輸入區/彈窗偵測、`CHAT_INPUT_STATE`、clip 狀態機、面板底部 padding、關閉還原（第 6 節） | commit | 使用者依 6.5 AC 1～7 實測 |

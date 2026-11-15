@@ -59,7 +59,7 @@
 
 > ⚠️ **絕對不要移除原本的擴充功能項目**：移除會連同 v2.6.0 的 IndexedDB 舊資料一起永久刪除。只能在該項目上按 🔄 重新載入。也**不要**對同一路徑再按「載入未封裝項目」。
 
-0. **資料備份**：已於 2026-11-14 完成（`E:\Tool\ChromeExtensions\indexeddb_bak`，repo 外）。之後若要再備份：完全關閉 Chrome → 複製 `%LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\chrome-extension_<ID>_0.indexeddb.leveldb`（與同名 `.indexeddb.blob`）到 repo 以外的位置。
+0. **資料備份**：已完成，位於 `E:\Tool\ChromeExtensions\indexeddb_bak`（repo 外；`bak_v1` 含 v2.6.0 舊資料）。備份**一律放在 repo 以外的位置**（以此路徑為例），不要放在 repo 內的 `bak/`。之後若要再備份：完全關閉 Chrome → 複製 `%LOCALAPPDATA%\Google\Chrome\User Data\Default\IndexedDB\chrome-extension_<ID>_0.indexeddb.leveldb`（與同名 `.indexeddb.blob`）到該位置的新子資料夾。還原方式見 `docs/HANDOFF.md` 第 0 步第 5 點。
 1. `chrome://extensions` → 在**原本的擴充功能項目**上按 🔄 重新載入。擴充功能 ID 已核對為 `ejdhefdjjjlajfilfijnanippgdcdeoi`，不需再測。
 2. 開一個**你能留言的直播**，重新整理頁面。
 

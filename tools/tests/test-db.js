@@ -7,8 +7,7 @@
   const M = self.__mock;
   const tests = [];
   const test = (name, fn) => tests.push({ name, fn });
-  // 測試頁不得連外：頻道解析的 fetch 一律回 404（個別測試可暫時替換）
-  self.fetch = async () => new Response('', { status: 404 });
+  // 測試頁不得連外：mock-chrome.js 已把 fetch 換成一律回 404（個別測試可暫時替換，用完還原）
 
   // ---------------------------------------------------------------- 工具
   function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }

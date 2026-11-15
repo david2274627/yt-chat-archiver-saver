@@ -1,9 +1,18 @@
 // 測試用 chrome.* 假物件（只實作 background.js 用到的部分）。必須在 background.js 之前載入。
+// 同時攔截所有對外連線（tools/tests/README.md）：fetch 一律回 404，XMLHttpRequest 直接拋錯。
 (function () {
   'use strict';
+  self.__blockedFetch = async () => new Response('', { status: 404 });
+  self.fetch = self.__blockedFetch;
+  if (self.XMLHttpRequest) {
+    const block = () => { throw new Error('測試頁禁止 XMLHttpRequest'); };
+    self.XMLHttpRequest.prototype.open = block;
+    self.XMLHttpRequest.prototype.send = block;
+  }
+
   const TEST_DB = 'test-ytcas-v3';
   const TEST_LEGACY = 'test-legacy-YTLiveChatArchiverDB_V6';
-  self.YTCAS_DB.configure({ dbName: TEST_DB, legacyDbName: TEST_LEGACY });
+  if (self.YTCAS_DB) self.YTCAS_DB.configure({ dbName: TEST_DB, legacyDbName: TEST_LEGACY });
   self.importScripts = function () { /* 已由 <script> 載入 */ };
 
   const listeners = { message: [], changed: [], installed: [], startup: [] };

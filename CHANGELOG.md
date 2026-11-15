@@ -48,7 +48,20 @@
 - v28（`docs/review-2026-11-15-4.md`）：
   - 規格 v28、HANDOFF／README 加註「不要移除擴充功能」、本審查報告（commit `d9e5ff0`）。
   - **T2** `db.js`／`background.js`（本段落所在的 commit）：`DB_VERSION` 2 與 v1→v2 遷移、`capture_sessions`、F-14 合併規則（別名、跨來源後備去重、`deleted`、`phase` 事後重算）、F-18 `versions`／`offsets`／`linkedVideos`、F-19 `popout` 與覆蓋範圍合併、F-11 唯讀遷移與 JSON 匯入（v2.6.0／v3）、v3 匯出 `formatVersion` 2、F-15 暫停判斷、F-16 用量與批次刪除、頻道名稱解析佇列（`storage.session`）、新 runtime 訊息與管理操作權限檢查；`selectors.js` 新增 `messageTypeByTag`；測試頁 `tools/tests/test-db.html`（30 項通過）（commit `a1db67c`）。
-  - 本輪報告 `docs/reports/2026-11-15-t2-data-layer.md`（本段落所在的 commit；T2 完成，下一步 T3）。
+  - 本輪報告 `docs/reports/2026-11-15-t2-data-layer.md`（commit `f358c4c`；T2 完成，下一步 T3）。
+- v29／T3（`docs/review-2026-11-15-5.md`）：
+  - 規格 v29、備份位置改為 repo 外、還原步驟、測試頁攔截對外連線、本審查報告（本段落所在的 commit）。
+
+### 規格 v29（2026-11-15，依 `docs/review-2026-11-15-5.md` 第 3 節）
+- T2 實機確認：Service Worker 無錯誤；自動遷移回報**未偵測到舊資料庫**（`legacyCounts: null`）。調查結果：Chrome 裡本擴充功能的 IndexedDB 是 v3 第一次啟動時（2026-11-15 20:45:52）才建立的，舊資料只剩 `indexeddb_bak\bak_v1` 備份；HANDOFF 新增還原步驟。4.1 補充設計 9 點使用者與審查端同意。
+- 第 7 節新增**寫入效能**：`SAVE_MESSAGES` 一批 50 則 ≤ 100ms（P95）、連續 10 萬則不出錯且記憶體不持續增長；壓力測試頁 `tools/tests/test-stress.html`。
+- F-11：後台「設定 → 進階」新增「重新執行 v2.6.0 舊資料遷移」（T7，二次確認、顯示上次時間與筆數）；T7 前可在 SW Console 執行 `YTCAS_BG.autoMigrateLegacy(true)`。
+- 3.2：`ok: false` 不重試；擴充功能重新載入後舊 content script 停止送出但照常修剪；**刪除通知先後順序**（先送出所在批次並等寫入完成，`found: false` 時下一批後重送一次）。
+- 3.1：新增擷取引擎 `src/capture.js`、測試頁 `test-capture.html`／`test-stress.html`；`tools/tests/README.md`：測試頁一律攔截 `fetch` 與 `XMLHttpRequest`。
+- 4.3：新增 frame 訊息 `STREAM_INFO_REQUEST`、`STREAM_INFO`、`CAPTURE_STATUS`；嵌入式 chat frame 的 `videoId` 以 top frame 提供者為準（網址通常只有 `continuation`）。
+- F-02：直播時間戳以擷取時間補足秒數（夾在 `#timestamp` 該分鐘範圍內）。
+- F-19：自動接手分工（T3 展開聊天室並恢復收錄；T5 預設開啟面板）；關閉視窗時 `CAPTURE_END` 可能送不到。
+- 文件：備份一律放在 repo 以外（`E:\Tool\ChromeExtensions\indexeddb_bak`），HANDOFF 第 0 步與 `poc-clip-path.md` 更新。
 
 ### 規格 v28（2026-11-15，依 `docs/review-2026-11-15-4.md`）
 - **D2 通過**（含「自動」跟隨 Windows 即時切換實機確認）；v27 的三項補充設計決定（`rawTag`、清空時保留場次基本資料、offset 為 null 不做指紋去重）使用者同意。
