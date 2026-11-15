@@ -196,6 +196,21 @@ async function autoMigrateLegacy(force) {
   return r;
 }
 
+// ---------------------------------------------------------------- T3.4 清除垃圾 system 紀錄（SW Console 手動執行）
+// rawTag 不以 yt-live-chat-／ytd-sponsorships- 開頭，或屬於子元件清單（selectors.js）→ 不是訊息元件
+function isJunkTag(tag) {
+  const t = String(tag || '').toLowerCase();
+  if (!t) return false;
+  return !SEL.messageTagPrefixes.some((p) => t.startsWith(p)) || SEL.nonMessageTags.includes(t);
+}
+// 用法：await YTCAS_BG.cleanupJunkSystem({ dryRun: true })  → 只回傳筆數；確認後 { dryRun: false } 才刪除
+async function cleanupJunkSystem(opts) {
+  const dryRun = !(opts && opts.dryRun === false);
+  const r = await DB.cleanupJunkSystem({ dryRun, isJunkTag, since: C.T3_DEPLOYED_AT });
+  console.info('[ytcas] 清除垃圾 system 紀錄' + (dryRun ? '（預覽）' : ''), { matched: r.matched, deleted: r.deleted, streams: r.streams });
+  return r;
+}
+
 // ---------------------------------------------------------------- 訊息處理
 // 只有擴充功能頁面（viewer、popup）可以執行破壞性或管理操作；content script（https 頁面）不行
 const isExtensionPage = (sender) => !!sender && sender.id === chrome.runtime.id && !String(sender.url || '').startsWith('https://');
@@ -490,4 +505,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, _inflight: inflight };

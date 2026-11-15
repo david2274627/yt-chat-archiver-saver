@@ -569,6 +569,30 @@
   });
   function C_GRACE() { return self.YTCAS_CONST.POPOUT_RELOAD_GRACE_MS; }
 
+  test('T3.4 cleanupJunkSystem：預覽只回筆數；刪除只動 T3 後收錄的子元件 system 紀錄，遷移／舊紀錄／真訊息不動，messageCount 更新', async () => {
+    await resetAll();
+    const sys = (id, tag) => ({ id, type: 'system', rawTag: tag, authorHandle: '', runs: [{ text: 'x' }], timestampAbs: Date.now(), videoOffsetSec: null });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [
+      sys('j1', 'yt-icon'), sys('j2', 'span'), sys('j3', 'yt-live-chat-author-badge-renderer'),
+      sys('k1', 'yt-live-chat-viewer-engagement-message-renderer'), sys('k2', 'yt-live-chat-something-new-renderer'),
+      msg({ id: 'k3' }),
+    ] });
+    await DB.saveMessages({ videoId: V, source: 'legacy', preserve: true, messages: [sys('k4', 'span')] });
+    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [Object.assign(sys('k5', 'span'), { firstSeenAt: Date.parse('2026-11-14T00:00:00Z') })] });
+    eq((await DB.getStream(V)).messageCount, 8);
+    eq([BG.isJunkTag('div'), BG.isJunkTag('yt-live-chat-author-chip'), BG.isJunkTag('yt-live-chat-paid-message-renderer'), BG.isJunkTag('ytd-sponsorships-live-chat-gift-redemption-announcement-renderer')],
+      [true, true, false, false]);
+    const pre = await BG.cleanupJunkSystem();
+    eq([pre.dryRun, pre.matched, pre.streams, pre.deleted], [true, 3, 1, 0], '未指定時為預覽');
+    eq(pre.byTag, { 'yt-icon': 1, span: 1, 'yt-live-chat-author-badge-renderer': 1 });
+    eq((await DB.queryMessages(V)).length, 8, '預覽不刪');
+    const r = await BG.cleanupJunkSystem({ dryRun: false });
+    eq([r.matched, r.deleted], [3, 3]);
+    eq((await DB.queryMessages(V)).map((m) => m.id).sort(), ['k1', 'k2', 'k3', 'k4', 'k5']);
+    eq((await DB.getStream(V)).messageCount, 5, 'messageCount 重算');
+    eq((await BG.cleanupJunkSystem({ dryRun: false })).deleted, 0, '可重複執行');
+  });
+
   test('F-03／3.2：頻道解析佇列存 storage.session，失敗退避、SW 重啟後接續', async () => {
     await resetAll();
     await sleep(300); // 等前面測試排入的解析工作結束（測試期間 fetch 一律被攔截，不連外）

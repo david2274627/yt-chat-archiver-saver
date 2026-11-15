@@ -177,6 +177,21 @@
     authorName: /<link[^>]*itemprop=["']name["'][^>]*content=["']([^"']*)["']/i,
   });
 
+  // T3.4 cleanupJunkSystem：yt-live-chat-* 開頭、但屬於「訊息內部或輸入區的子元件」，不會是 #items 的直接子節點。
+  // 依據：docs/youtube-dom-notes.md 2.4／2.5 確認的子元件；2026-11-16 實測 Console 出現的 author-badge-renderer。
+  // 判定規則（background 使用）：rawTag 不以 yt-live-chat-／ytd-sponsorships- 開頭，或在此清單內 → 垃圾紀錄。
+  S.nonMessageTags = Object.freeze([
+    'yt-live-chat-author-badge-renderer',
+    'yt-live-chat-author-chip',
+    'yt-live-chat-text-input-field-renderer',
+    'yt-live-chat-icon-toggle-button-renderer',
+    'yt-live-chat-button',
+    'yt-live-chat-banner-header-renderer',
+    'yt-live-chat-message-input-renderer',
+    'yt-live-chat-message-input-prompt-header-renderer',
+  ]);
+  S.messageTagPrefixes = Object.freeze(['yt-live-chat-', 'ytd-sponsorships-']);
+
   // 訊息元件標籤 → 訊息類型（F-02 擷取與 F-13 RECLASSIFY_SYSTEM 共用；background 也會載入本檔，不得在載入時存取 DOM）。
   // 不在表內的標籤存為 system（保存 rawTag）。禮物（gift）公告元件標籤尚未實機出現：取得後在此補一列，再執行重新分類。
   S.messageTypeByTag = Object.freeze({

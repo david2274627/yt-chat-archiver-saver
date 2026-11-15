@@ -719,6 +719,55 @@
     return streams.map((s) => ({ videoId: s.videoId, title: s.title, messageCount: s.messageCount || 0, approxBytes: s.approxBytes || 0 }));
   }
 
+  // ---------------------------------------------------------------- T3.4 清除垃圾 system 紀錄
+  // v31 以前的擷取把訊息內部的子元件（徽章、yt-icon、span…）當成訊息存成 system。
+  // p: { dryRun（預設 true）, isJunkTag(tag) → bool, since（firstSeenAt 下限，ms） }
+  // 只動「type 為 system、rawTag 判定為垃圾、sources 只含 live／popout／replay、firstSeenAt ≥ since」的紀錄；
+  // 遷移（legacy）與匯入（import）的紀錄一律不動。回傳只有筆數。
+  const CAPTURE_ONLY = new Set(['live', 'popout', 'replay']);
+  async function cleanupJunkSystem(p) {
+    p = p || {};
+    const dryRun = p.dryRun !== false;
+    const since = num(p.since) ?? 0;
+    const isJunk = typeof p.isJunkTag === 'function' ? p.isJunkTag : () => false;
+    const db = await open();
+    const byVideo = new Map();
+    const out = { dryRun, since, scanned: 0, matched: 0, byTag: {}, streams: 0, deleted: 0 };
+    await new Promise((res, rej) => {
+      const r = db.transaction('messages', 'readonly').objectStore('messages').openCursor();
+      r.onerror = () => rej(r.error);
+      r.onsuccess = () => {
+        const cur = r.result;
+        if (!cur) return res();
+        const v = cur.value;
+        if (v.type === T.SYSTEM) {
+          out.scanned++;
+          const src = Array.isArray(v.sources) ? v.sources : [];
+          if (v.rawTag && isJunk(v.rawTag) && src.length && src.every((s) => CAPTURE_ONLY.has(s)) && (num(v.firstSeenAt) ?? 0) >= since) {
+            out.matched++;
+            out.byTag[v.rawTag] = (out.byTag[v.rawTag] || 0) + 1;
+            if (!byVideo.has(v.videoId)) byVideo.set(v.videoId, []);
+            byVideo.get(v.videoId).push(v.id);
+          }
+        }
+        cur.continue();
+      };
+    });
+    out.streams = byVideo.size;
+    if (dryRun) return out;
+    for (const [videoId, ids] of byVideo) {
+      await withLock(videoId, async () => {
+        const t = db.transaction('messages', 'readwrite');
+        const s = t.objectStore('messages');
+        for (const id of ids) s.delete(id);
+        await done(t);
+      });
+      out.deleted += ids.length;
+      await recountStream(videoId);
+    }
+    return out;
+  }
+
   // ---------------------------------------------------------------- F-13 重新分類
   // tagMap：selectors.js 的 messageTypeByTag；只依 rawTag 判斷，不重新解析文字
   async function reclassifySystem(p) {
@@ -1074,7 +1123,7 @@
     configure, open, close,
     saveMessages, savePinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
-    recomputePhases, recountStream,
+    recomputePhases, recountStream, cleanupJunkSystem,
     getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,

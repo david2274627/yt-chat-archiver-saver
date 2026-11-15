@@ -129,6 +129,8 @@
     POPOUT_TABS_KEY: 'popoutTabs',
     // pagehide 送來的 CAPTURE_END 等這麼久再接手：期間同一分頁重新開始收錄（重新整理）就不接手
     POPOUT_RELOAD_GRACE_MS: 3000,
+    // T3.4 cleanupJunkSystem：只清除 T3 部署之後收錄產生的垃圾 system 紀錄（2026-11-15 23:00 +08:00）
+    T3_DEPLOYED_AT: Date.parse('2026-11-15T23:00:00+08:00'),
 
     // v27 主題設定（chrome.storage.sync；邏輯在 src/theme.js）
     THEME_MODE_KEY: 'themeMode',
