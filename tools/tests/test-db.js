@@ -692,6 +692,23 @@
     eq((await BG.cleanupJunkSystem({ dryRun: false })).veMerged, 0, '可重複執行');
   });
 
+  test('T3.6 fieldStats：各類型欄位完整度（含 SC 顏色、phase）只回傳筆數；遷移紀錄與 since 之前不計', async () => {
+    await resetAll();
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [
+      msg({ id: 'f1', authorAvatar: 'https://yt4.ggpht.com/a', authorBadges: ['member'], runs: [{ text: 'a' }, { emoji: { alt: ':x:', src: 'https://yt3.ggpht.com/e' } }] }),
+      msg({ id: 'f2', videoOffsetSec: null, phase: 'pre' }),
+      msg({ id: 'f3', type: 'superchat', amount: 'NT$75.00', color: 'rgba(30,136,229,1)' }),
+      msg({ id: 'f4', type: 'superchat', amount: 'NT$30.00' }),
+    ] });
+    await DB.saveMessages({ videoId: V, source: 'legacy', preserve: true, messages: [msg({ id: 'f5' })] });
+    const s = await BG.fieldStats();
+    eq(Object.keys(s).sort(), ['superchat', 'text']);
+    eq([s.text.n, s.text.author, s.text.avatar, s.text.offset, s.text.badges, s.text.emoji, s.text.pre, s.text.live], [2, 2, 1, 1, 1, 1, 1, 1]);
+    eq([s.superchat.n, s.superchat.amount, s.superchat.color], [2, 2, 1], 'SC 顏色');
+    eq(JSON.stringify(s).includes('NT$'), false, '不含內容');
+    eq(Object.keys(await BG.fieldStats({ since: Date.now() + 60000 })).length, 0, 'since 之後才計');
+  });
+
   test('F-03／3.2：頻道解析佇列存 storage.session，失敗退避、SW 重啟後接續', async () => {
     await resetAll();
     await sleep(300); // 等前面測試排入的解析工作結束（測試期間 fetch 一律被攔截，不連外）

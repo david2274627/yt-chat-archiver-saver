@@ -219,6 +219,13 @@ async function cleanupJunkSystem(opts) {
   return r;
 }
 
+// T3.6 欄位完整度（SW Console）：console.table(await YTCAS_BG.fieldStats())；預設只算 T3 部署後收錄的。
+// 可指定 { videoId, since }。只回傳筆數，不含任何訊息內容
+async function fieldStats(opts) {
+  opts = opts || {};
+  return DB.fieldStats({ since: opts.since ?? C.T3_DEPLOYED_AT, videoId: opts.videoId });
+}
+
 // SW Console 用（RECLASSIFY_SYSTEM 只接受擴充功能頁面）：await YTCAS_BG.reclassifySystem()
 async function reclassifySystem(opts) {
   return handlers[RT.RECLASSIFY_SYSTEM](opts || {});
@@ -520,4 +527,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, _inflight: inflight };

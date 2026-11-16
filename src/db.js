@@ -751,6 +751,49 @@
     return streams.map((s) => ({ videoId: s.videoId, title: s.title, messageCount: s.messageCount || 0, approxBytes: s.approxBytes || 0 }));
   }
 
+  // ---------------------------------------------------------------- T3.6 欄位完整度統計（只回傳筆數）
+  // p: { since（firstSeenAt 下限，ms）, videoId?, sources?（預設只算收錄來源 live／popout／replay） }
+  // 解析若出錯會「靜默缺欄位」（不報錯），以此檢查各類型的欄位是否有值（審查十追加四 B、追加五 B）
+  async function fieldStats(p) {
+    p = p || {};
+    const since = num(p.since) ?? 0;
+    const srcSet = new Set(p.sources || ['live', 'popout', 'replay']);
+    const db = await open();
+    const out = {};
+    const has = (v) => !isEmpty(v);
+    await new Promise((res, rej) => {
+      const store = db.transaction('messages', 'readonly').objectStore('messages');
+      const r = p.videoId ? store.index('videoId').openCursor(p.videoId) : store.openCursor();
+      r.onerror = () => rej(r.error);
+      r.onsuccess = () => {
+        const cur = r.result;
+        if (!cur) return res();
+        const m = cur.value;
+        const src = Array.isArray(m.sources) ? m.sources : [];
+        if ((num(m.firstSeenAt) ?? 0) >= since && src.some((s) => srcSet.has(s))) {
+          const t = out[m.type] || (out[m.type] = { n: 0, author: 0, avatar: 0, time: 0, offset: 0, badges: 0, emoji: 0,
+            amount: 0, color: 0, sticker: 0, giftImage: 0, deleted: 0, partial: 0, pre: 0, live: 0, post: 0 });
+          t.n++;
+          if (has(m.authorHandle) || has(m.authorName)) t.author++;
+          if (has(m.authorAvatar)) t.avatar++;
+          if (num(m.timestampAbs) !== null) t.time++;
+          if (num(m.videoOffsetSec) !== null) t.offset++;
+          if (Array.isArray(m.authorBadges) && m.authorBadges.length) t.badges++;
+          if (Array.isArray(m.runs) && m.runs.some((x) => x && x.emoji)) t.emoji++;
+          if (has(m.amount)) t.amount++;
+          if (has(m.color)) t.color++;
+          if (has(m.stickerSrc)) t.sticker++;
+          if (has(m.giftImage)) t.giftImage++;
+          if (m.deleted) t.deleted++;
+          if (m.partial) t.partial++;
+          if (PHASES.has(m.phase)) t[m.phase]++;
+        }
+        cur.continue();
+      };
+    });
+    return out;
+  }
+
   // ---------------------------------------------------------------- T3.4 清除垃圾 system 紀錄
   // v31 以前的擷取把訊息內部的子元件（徽章、yt-icon、span…）當成訊息存成 system。
   // p: { dryRun（預設 true）, isJunkTag(tag) → bool, since（firstSeenAt 下限，ms） }
@@ -1201,7 +1244,7 @@
     configure, open, close,
     saveMessages, savePinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
-    recomputePhases, recountStream, cleanupJunkSystem,
+    recomputePhases, recountStream, cleanupJunkSystem, fieldStats,
     getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
