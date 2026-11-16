@@ -199,9 +199,12 @@ async function autoMigrateLegacy(force) {
 // ---------------------------------------------------------------- T3.4 清除垃圾 system 紀錄（SW Console 手動執行）
 // rawTag 不以 yt-live-chat-／ytd-sponsorships- 開頭，或屬於子元件清單，或（T3.5）yt-live-chat-* 符合子元件規則
 //（-view-model 結尾、含 -button-、-badge-renderer 結尾、-chip 結尾；selectors.js）→ 不是訊息元件
+// T3.6（審查十追加五 A-2）白名單優先：messageTypeByTag 與已知系統訊息元件一律不是子元件
+//（例：禮物 yt-gift-message-view-model 不以 yt-live-chat- 開頭、又以 -view-model 結尾，舊規則會誤刪）
 function isJunkTag(tag) {
   const t = String(tag || '').toLowerCase();
   if (!t) return false;
+  if (Object.prototype.hasOwnProperty.call(SEL.messageTypeByTag, t) || SEL.knownMessageTags.includes(t)) return false;
   if (!SEL.messageTagPrefixes.some((p) => t.startsWith(p)) || SEL.nonMessageTags.includes(t)) return true;
   return t.startsWith('yt-live-chat-') && SEL.subComponentPatterns.some((re) => re.test(t));
 }
@@ -209,10 +212,16 @@ function isJunkTag(tag) {
 async function cleanupJunkSystem(opts) {
   const dryRun = !(opts && opts.dryRun === false);
   // T3.5：一併合併 viewer-engagement（歡迎／守則提示）的重複紀錄
-  const r = await DB.cleanupJunkSystem({ dryRun, isJunkTag, since: C.T3_DEPLOYED_AT, veTag: SEL.chat.viewerEngagement });
+  // T3.6：子元件垃圾只可能產生在 T3 部署到 T3.4 部署之間（T3.4 起只擷取 #items 直接子節點）→ 只清這段期間的
+  const r = await DB.cleanupJunkSystem({ dryRun, isJunkTag, since: C.T3_DEPLOYED_AT, until: C.T34_DEPLOYED_AT, veTag: SEL.chat.viewerEngagement });
   console.info('[ytcas] 清除垃圾 system 紀錄' + (dryRun ? '（預覽）' : ''), { matched: r.matched, deleted: r.deleted, streams: r.streams,
     veDuplicates: r.veDuplicates, veMerged: r.veMerged, keptTags: Object.keys(r.keptByTag).length });
   return r;
+}
+
+// SW Console 用（RECLASSIFY_SYSTEM 只接受擴充功能頁面）：await YTCAS_BG.reclassifySystem()
+async function reclassifySystem(opts) {
+  return handlers[RT.RECLASSIFY_SYSTEM](opts || {});
 }
 
 // ---------------------------------------------------------------- 訊息處理
@@ -511,4 +520,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, _inflight: inflight };

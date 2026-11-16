@@ -213,6 +213,26 @@
     eq([a.type, a.rawTag], ['system', 'yt-live-chat-viewer-engagement-message-renderer']);
   });
 
+  test('T3.6 parseMessage：禮物 yt-gift-message-view-model → type gift（通用解析：作者、頭像、文字、禮物圖片；保存 rawTag）；不輸出未知元件', () => {
+    // 內部結構未實機確認：只用通用欄位（#author-name、#author-photo img、其他 img、可見文字）
+    const el = h('yt-gift-message-view-model', { id: 'GIFT1' }, [
+      h('yt-img-shadow', { id: 'author-photo' }, [h('img', { id: 'img', src: 'https://yt4.ggpht.com/g=s64' })]),
+      h('span', { id: 'author-name', text: '@giver' }),
+      h('span', { text: '送出了 玫瑰 x3' }),
+      h('img', { src: 'https://www.gstatic.com/youtube/img/gifts/rose.png' }),
+    ]);
+    const infos = [];
+    const orig = console.info;
+    console.info = (...a) => { infos.push(String(a[0])); };
+    let m;
+    try { m = CAP.parseMessage(el, { source: 'live', now: NOW, startedAt: null }); } finally { console.info = orig; }
+    eq([m.id, m.type, m.rawTag, m.authorHandle, m.authorAvatar, m.giftImage],
+      ['GIFT1', 'gift', 'yt-gift-message-view-model', '@giver', 'https://yt4.ggpht.com/g=s64', 'https://www.gstatic.com/youtube/img/gifts/rose.png']);
+    assert(C.MSG_TYPE.GIFT === 'gift');
+    assert(m.runs.length === 1 && m.runs[0].text.includes('玫瑰'), '保存可見文字');
+    eq(infos.filter((s) => s.includes('未知訊息元件')).length, 0);
+  });
+
   // ---------------------------------------------------------------- 引擎
   test('回溯擷取：開始收錄時 #items 既有 60 則全部送出；DOM 修剪到 ≤ 45；第一批滿 50 則立即送出', async () => {
     const { items } = buildChat();

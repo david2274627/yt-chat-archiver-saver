@@ -357,6 +357,17 @@
     eq([viaBg.ok, viaBg.scanned], [true, 1]);
   });
 
+  test('T3.6 F-13：既有 yt-gift-message-view-model 的 system 紀錄以 SW 的 reclassifySystem() 改為 gift（partial: true），筆數不變', async () => {
+    await resetAll();
+    const g = (id) => ({ id, type: 'system', rawTag: 'yt-gift-message-view-model', authorHandle: '', runs: [{ text: '禮物' }], timestampAbs: Date.now(), videoOffsetSec: null });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [g('gf1'), g('gf2'), msg()] });
+    const r = await BG.reclassifySystem();
+    eq([r.changed, r.byType], [2, { gift: 2 }]);
+    const gifts = (await DB.queryMessages(V)).filter((m) => m.type === 'gift');
+    eq(gifts.map((m) => [m.id, m.partial]), [['gf1', true], ['gf2', true]]);
+    eq(await count(V), 3);
+  });
+
   test('F-14 phase：開播時間事後確定 → 重算 pre／live／post 與 pre 的負 offset', async () => {
     await resetAll();
     const T0 = 1_800_000_000_000;
@@ -615,15 +626,20 @@
 
   test('T3.4 cleanupJunkSystem：預覽只回筆數；刪除只動 T3 後收錄的子元件 system 紀錄，遷移／舊紀錄／真訊息不動，messageCount 更新', async () => {
     await resetAll();
-    const sys = (id, tag) => ({ id, type: 'system', rawTag: tag, authorHandle: '', runs: [{ text: 'x' }], timestampAbs: Date.now(), videoOffsetSec: null });
-    await DB.saveMessages({ videoId: V, source: 'live', messages: [
+    // T3.6：子元件垃圾只清 T3 部署～T3.4 部署之間首次收錄的（WIN）；T3.4 之後收錄的 system 都是真訊息
+    const WIN = Date.parse('2026-11-16T00:30:00+08:00');
+    const sys = (id, tag, fs) => ({ id, type: 'system', rawTag: tag, authorHandle: '', runs: [{ text: 'x' }], timestampAbs: fs || Date.now(), videoOffsetSec: null, firstSeenAt: fs || WIN });
+    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [
       sys('j1', 'yt-icon'), sys('j2', 'span'), sys('j3', 'yt-live-chat-author-badge-renderer'),
       sys('k1', 'yt-live-chat-viewer-engagement-message-renderer'), sys('k2', 'yt-live-chat-something-new-renderer'),
-      msg({ id: 'k3' }),
+      sys('k7', 'yt-gift-message-view-model'), // 禮物：白名單，不得刪除
     ] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [msg({ id: 'k3' })] });
     await DB.saveMessages({ videoId: V, source: 'legacy', preserve: true, messages: [sys('k4', 'span')] });
-    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [Object.assign(sys('k5', 'span'), { firstSeenAt: Date.parse('2026-11-14T00:00:00Z') })] });
-    eq((await DB.getStream(V)).messageCount, 8);
+    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [sys('k5', 'span', Date.parse('2026-11-14T00:00:00Z'))] });
+    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [sys('k6', 'span', Date.parse('2026-11-16T02:00:00+08:00'))] }); // T3.4 之後
+    eq((await DB.getStream(V)).messageCount, 10);
+    eq([BG.isJunkTag('yt-gift-message-view-model'), BG.isJunkTag('yt-live-chat-viewer-engagement-message-renderer')], [false, false], '白名單優先');
     eq([BG.isJunkTag('div'), BG.isJunkTag('yt-live-chat-author-chip'), BG.isJunkTag('yt-live-chat-paid-message-renderer'), BG.isJunkTag('ytd-sponsorships-live-chat-gift-redemption-announcement-renderer')],
       [true, true, false, false]);
     // T3.5 規則式：-view-model、-button-、-badge-renderer、-chip；真訊息元件（*-renderer）都不受影響
@@ -635,14 +651,14 @@
     eq([pre.dryRun, pre.matched, pre.streams, pre.deleted], [true, 3, 1, 0], '未指定時為預覽');
     eq(pre.byTag, { 'yt-icon': 1, span: 1, 'yt-live-chat-author-badge-renderer': 1 });
     // T3.5 B-2：保留的 system 也列出（含不在範圍內的遷移／舊紀錄），合計 = scanned
-    eq(pre.keptByTag, { 'yt-live-chat-viewer-engagement-message-renderer': 1, 'yt-live-chat-something-new-renderer': 1, span: 2 });
+    eq(pre.keptByTag, { 'yt-live-chat-viewer-engagement-message-renderer': 1, 'yt-live-chat-something-new-renderer': 1, span: 3, 'yt-gift-message-view-model': 1 });
     eq(pre.matched + Object.values(pre.keptByTag).reduce((a, b) => a + b, 0), pre.scanned);
-    eq((await DB.queryMessages(V)).length, 8, '預覽不刪');
+    eq((await DB.queryMessages(V)).length, 10, '預覽不刪');
     const r = await BG.cleanupJunkSystem({ dryRun: false });
     eq([r.matched, r.deleted], [3, 3]);
     const veK1 = self.YTCAS_CONST.viewerEngagementId(V, [{ text: 'x' }]); // T3.5：k1 改用內容 id
-    eq((await DB.queryMessages(V)).map((m) => m.id).sort(), [veK1, 'k2', 'k3', 'k4', 'k5'].sort());
-    eq((await DB.getStream(V)).messageCount, 5, 'messageCount 重算');
+    eq((await DB.queryMessages(V)).map((m) => m.id).sort(), [veK1, 'k2', 'k3', 'k4', 'k5', 'k6', 'k7'].sort());
+    eq((await DB.getStream(V)).messageCount, 7, 'messageCount 重算');
     eq((await BG.cleanupJunkSystem({ dryRun: false })).deleted, 0, '可重複執行');
   });
 

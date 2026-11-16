@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v33**（前版：v32；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v34**（前版：v33；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -33,6 +33,7 @@
 - **v31 調整**（`docs/review-2026-11-16.md`）：T3.3 F-01 修剪**一律從最舊節點移除**（未擷取者先擷取）、`pending` 硬上限 200、回溯擷取時機與診斷欄位；T3.2 診斷輸出分級（第 7 節「相容」、`warnOnce` 等級）。
 - **v32 調整**（`docs/review-2026-11-16.md` 追加二，T3.4）：F-02 只處理 `#items` 的直接子節點（v31 以前會把訊息內部的徽章、圖示等存成 `system`）；清除已寫入的垃圾紀錄 `cleanupJunkSystem`。
 - **v33 調整**（`docs/review-2026-11-16.md` 追加三，T3.5）：子元件標籤改為規則式判斷；`viewer-engagement` 同一場次以內容去重；沒有寫入任何訊息的收錄紀錄不計入；清除預覽列出保留的標籤。
+- **v34 調整**（`docs/review-2026-11-16.md` 追加五，T3.6）：**F-13 禮物元件 `yt-gift-message-view-model`**；清除規則白名單優先、只清 T3.4 部署前的子元件紀錄；欄位完整度統計；**開播／結束判斷改為 background 重新抓取 watch 頁 meta**，`startedAt` 依來源等級可被覆蓋（`startedAtSource`），`startPending` 期間不得以預定時間寫入；`recomputeStream` 維護函式。
 
 ---
 
@@ -287,7 +288,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 保存文字、官方 Emoji、會員貼圖（`src` + `alt`）、雙時間軸、頭像、頻道直連網址。
 - 被修剪前一定先完成擷取（擷取在 MutationObserver 回呼內同步完成，修剪只動已擷取節點：以 `data-ytcas-saved="1"` 標記）。
 - （v32，`docs/review-2026-11-16.md` 追加二 T3.4）**只有 `#items` 的直接子節點是訊息**。observer 為了刪除偵測帶 `subtree`，`childList` 也會回報訊息內部的後代（徽章、圖示、按鈕、文字 span、`dom-if` 等），必須只處理 `record.target === #items` 的新增；擷取函式開頭另加防呆（父元素不是 `#items` 就略過）。「未知訊息元件」也只對直接子節點輸出。
-  - **清除已寫入的垃圾紀錄**（一次性資料庫維護）：Service Worker Console 執行 `YTCAS_BG.cleanupJunkSystem({ dryRun })`（未指定時為預覽 `dryRun: true`，只回傳各 `rawTag` 筆數；v33：`keptByTag` 另列出保留的 `system` 紀錄各 `rawTag` 筆數，方便檢查是否還有漏網的子元件；`dryRun: false` 才刪除並重算場次 `messageCount`）。對象：`type: 'system'`，`rawTag` 不以 `yt-live-chat-`／`ytd-sponsorships-` 開頭或屬於 `selectors.js` 的 `nonMessageTags` 子元件清單（v33：另以規則判斷，`yt-live-chat-*` 中以 `-view-model`、`-badge-renderer`、`-chip` 結尾或含 `-button-` 者一律視為子元件；直接子節點的訊息元件都是 `*-renderer`），`sources` 只含 `live`／`popout`／`replay`，且 `firstSeenAt` ≥ T3 部署時間（`T3_DEPLOYED_AT`，2026-11-15 23:00 +08:00）。舊資料遷移與匯入的紀錄一律不動。
+  - **清除已寫入的垃圾紀錄**（一次性資料庫維護）：Service Worker Console 執行 `YTCAS_BG.cleanupJunkSystem({ dryRun })`（未指定時為預覽 `dryRun: true`，只回傳各 `rawTag` 筆數；v33：`keptByTag` 另列出保留的 `system` 紀錄各 `rawTag` 筆數，方便檢查是否還有漏網的子元件；`dryRun: false` 才刪除並重算場次 `messageCount`）。對象：`type: 'system'`，`rawTag` 不以 `yt-live-chat-`／`ytd-sponsorships-` 開頭或屬於 `selectors.js` 的 `nonMessageTags` 子元件清單（v33：另以規則判斷，`yt-live-chat-*` 中以 `-view-model`、`-badge-renderer`、`-chip` 結尾或含 `-button-` 者一律視為子元件；直接子節點的訊息元件都是 `*-renderer`），`sources` 只含 `live`／`popout`／`replay`，且 `firstSeenAt` ≥ T3 部署時間（`T3_DEPLOYED_AT`，2026-11-15 23:00 +08:00）。舊資料遷移與匯入的紀錄一律不動。（v34，追加五 A-2）**白名單優先**：`messageTypeByTag` 與 `knownMessageTags`（歡迎提示、佔位、跑馬燈）的標籤一律不視為子元件；子元件垃圾只清 `firstSeenAt` 在 T3 部署與 **T3.4 部署（`T34_DEPLOYED_AT`，2026-11-16 01:51 +08:00）** 之間的紀錄（T3.4 起只擷取直接子節點，之後的 `system` 都是真訊息）。
   - （v33，T3.5）**聊天室歡迎／守則提示**（`yt-live-chat-viewer-engagement-message-renderer`）每次重新整理元素 id 都不同：收錄時改以 `constants.js` 的 `viewerEngagementId(videoId, runs)`（`ytcas-ve-` ＋ 場次與正規化內容的雜湊）作為 id，同一場同內容只存一筆。`cleanupJunkSystem` 一併合併既有重複：同一場同內容保留 `firstSeenAt` 最早的一筆、改用內容 id（原 id 記入 `aliasIds`），其餘刪除；範圍限制同上（收錄來源、T3 部署後）。
 - 置頂訊息擷取（v25 確認）：新版面置頂列位於輸入列上方，來源仍是 `yt-live-chat-banner-manager`（`chat.bannerContainer`）＞ `yt-live-chat-banner-renderer` ＞ `#contents` 內的 `yt-live-chat-text-message-renderer#<訊息 id>`（結構同一般訊息），見 `docs/youtube-dom-notes.md` 2.4。
 - **時間戳**（v25）：直播訊息的 `span#timestamp` **有值**，`yt-live-chat-renderer[hide-timestamps]` 只是以 CSS 隱藏。擷取時直接讀 `#timestamp` 文字（當地時間字串；實機長度約 7 字元，確切格式待 T3 實作時確認，解析需容許上午／下午與 AM／PM 兩種寫法），配合擷取當下的日期還原 `timestampAbs`；還原結果比擷取時間晚超過 12 小時時視為前一天（跨日校正）；解析失敗時以擷取時間為準。`videoOffsetSec` 仍以 `startDate` 推算（4.3）。（v29）`#timestamp` 只到分鐘：`timestampAbs` 取「擷取時間夾在該分鐘範圍內」的值（`clamp(擷取時間, 該分鐘起點, 起點 + 59.999 秒)`），即時訊息因此保有秒級精度，回溯擷取的舊訊息則落在該分鐘的最後一刻。
@@ -328,6 +329,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - **分類**：`superchat`、`supersticker`、`gift` 歸入「💰 SC／禮物」膠囊；贈送會員（`gift-purchase`）、收到會員（`gift-redemption`）、新會員、里程碑歸入新的「👑 會員」膠囊（F-05）。
 - **元件標籤未知**：禮物公告元件尚未在實機出現，`selectors.js` 標「待實機確認」。在取得標籤前，依 F-02「未知元件」規則 `console.info` 一次並存為 `system`。使用者遇到禮物時執行 `docs/poc-clip-path.md` 附錄 D「訊息元件清單」腳本，取得標籤後補 `selectors.js`，並以 `RECLASSIFY_SYSTEM`（4.2）把既存的 `system` 紀錄重新分類：只依保存時記下的元件標籤（`system` 紀錄需保存 `rawTag`）判斷，不重新解析文字；可重複執行，結果寫入診斷（只記筆數）。
 - 視覺與 SC 卡片可區分（10.4）。
+- （v34，`docs/review-2026-11-16.md` 追加五 A）**元件標籤已取得：`yt-gift-message-view-model`**（2026-11-16 實機，`#items` 的直接子節點）。`messageTypeByTag` 對應 `gift`。內部結構未確認前以通用解析保存（作者、頭像、可見文字 runs、第一張非頭像圖片為 `giftImage`，並保存 `rawTag`）；結構以 `docs/poc-clip-path.md` 附錄 E 腳本取得後再補專用解析（送禮者、禮物名稱、數量）。既有存為 `system` 的紀錄以 `RECLASSIFY_SYSTEM`（SW Console：`YTCAS_BG.reclassifySystem()`）改為 `gift`；重新分類的紀錄一律標 `partial: true`（專屬欄位當初沒有解析）。
 - AC：禮物公告以 `gift` 保存並出現在「💰 SC／禮物」膠囊；與贈送會員不混淆；標籤補上前收錄的 `system` 紀錄在重新分類後改為 `gift`，筆數不變、無重複。
 
 **F-14 重複收錄與合併規則**（v27 新增）

@@ -119,6 +119,7 @@
       placeholderItem: 'yt-live-chat-placeholder-item-renderer', // 確認：佔位元素，擷取時略過
       tickerSponsorItem: 'yt-live-chat-ticker-sponsor-item-renderer', // 確認：跑馬燈內的會員項目，不擷取
       giftAnnouncement: 'ytd-sponsorships-live-chat-gift-purchase-announcement-renderer', // 待實機確認
+      giftMessage: 'yt-gift-message-view-model', // F-13 禮物（Jewels）：2026-11-16 確認為訊息元件；內部結構待實機確認（附錄 E 腳本）
       giftHeader: 'ytd-sponsorships-live-chat-header-renderer', // 待實機確認
       poll: 'yt-live-chat-poll-renderer',                     // 待實機確認
       actionPanel: 'yt-live-chat-action-panel-renderer',      // 待實機確認
@@ -193,6 +194,12 @@
     'yt-live-chat-like-button-view-model',  // 同上
   ]);
   S.messageTagPrefixes = Object.freeze(['yt-live-chat-', 'ytd-sponsorships-']);
+  // T3.6 白名單：已知的 #items 直接子節點中、不在 messageTypeByTag 的元件（存為 system 或不擷取）。清除規則一律不碰
+  S.knownMessageTags = Object.freeze([
+    'yt-live-chat-viewer-engagement-message-renderer',
+    'yt-live-chat-placeholder-item-renderer',
+    'yt-live-chat-ticker-sponsor-item-renderer',
+  ]);
   // T3.5 規則式判斷：#items 的直接子節點（訊息元件）都是 *-renderer；yt-live-chat-* 標籤符合下列任一規則即視為子元件
   S.subComponentPatterns = Object.freeze([/-view-model$/, /-button-/, /-badge-renderer$/, /-chip$/]);
 
@@ -206,6 +213,8 @@
     'ytd-sponsorships-live-chat-gift-redemption-announcement-renderer': 'membership',
     'ytd-sponsorships-live-chat-gift-purchase-announcement-renderer': 'membership', // 待實機確認
     'yt-live-chat-banner-redirect-renderer': 'raid',          // 待實機確認
+    // F-13 禮物（Jewels）公告：2026-11-16 實機確認為 #items 的直接子節點（審查十追加五 A）；內部結構待實機確認
+    'yt-gift-message-view-model': 'gift',
   });
 
   // 診斷輸出分級（SPEC 第 7 節「相容」v31；docs/review-2026-11-16.md）：

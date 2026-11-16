@@ -761,6 +761,7 @@
     p = p || {};
     const dryRun = p.dryRun !== false;
     const since = num(p.since) ?? 0;
+    const until = num(p.until) ?? Infinity;
     const isJunk = typeof p.isJunkTag === 'function' ? p.isJunkTag : () => false;
     const db = await open();
     const byVideo = new Map();
@@ -777,8 +778,10 @@
         if (v.type === T.SYSTEM) {
           out.scanned++;
           const src = Array.isArray(v.sources) ? v.sources : [];
-          const inScope = src.length && src.every((s) => CAPTURE_ONLY.has(s)) && (num(v.firstSeenAt) ?? 0) >= since;
-          if (v.rawTag && isJunk(v.rawTag) && inScope) {
+          const fs = num(v.firstSeenAt) ?? 0;
+          const inScope = src.length && src.every((s) => CAPTURE_ONLY.has(s)) && fs >= since;
+          // T3.6：子元件垃圾只清 until 之前（T3.4 部署前）首次收錄的；歡迎提示去重不受 until 限制
+          if (v.rawTag && isJunk(v.rawTag) && inScope && fs < until) {
             out.matched++;
             out.byTag[v.rawTag] = (out.byTag[v.rawTag] || 0) + 1;
             if (!byVideo.has(v.videoId)) byVideo.set(v.videoId, []);
@@ -861,6 +864,8 @@
         const nt = v.rawTag && tagMap[v.rawTag];
         if (nt && nt !== T.SYSTEM && TYPES.has(nt)) {
           v.type = nt;
+          // T3.6：只依 rawTag 改類型，該類型的專屬欄位（禮物名稱、金額等）當初沒有解析 → 標記為部分資料
+          v.partial = true;
           v.fp = makeFp(v);
           cur.update(v);
           out.changed++;

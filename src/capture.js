@@ -164,6 +164,14 @@
         const st = el.querySelector(S.chat.stickerImg);
         m.stickerSrc = st ? httpsOnly(st.getAttribute('src') || st.src) : '';
       }
+    } else if (tag === S.chat.giftMessage) {
+      // F-13 禮物（T3.6）：內部結構未確認 → 通用解析（作者、頭像已在上方取得；文字 runs；第一張非頭像圖片作為禮物圖片）。
+      // 結構確認後改為專用解析（送禮者、禮物名稱、數量）；在那之前保存 rawTag 供日後重新解析判斷
+      m.runs = msgEl ? runsOf(msgEl) : textRuns(clean(el.textContent).slice(0, 300));
+      const imgs = Array.from(el.querySelectorAll('img')).filter((i) => i !== photo);
+      const gi = imgs.map((i) => httpsOnly(i.getAttribute('src') || i.src)).find(Boolean);
+      if (gi) m.giftImage = gi;
+      m.rawTag = tag;
     } else if (type === T.SYSTEM || tag === S.chat.giftRedemption || tag === S.chat.giftAnnouncement) {
       // 結構未確認的元件：保存 #message，沒有時保存可見文字（上限 300 字）供日後重新分類
       m.runs = msgEl ? runsOf(msgEl) : textRuns(clean(el.textContent).slice(0, 300));
