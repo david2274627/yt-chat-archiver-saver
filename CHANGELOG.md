@@ -81,7 +81,19 @@
   - 開播／結束判斷：`startPending`、來源等級覆蓋與重算、background 重新抓取 watch 頁 meta、播放器開播訊號（commit `ab09313`）。
   - `YTCAS_BG.recomputeStream()` 維護函式（commit `eeba921`）。
   - `youtube-dom-notes.md` 第 5 節、附錄 E 禮物元件結構腳本（commit `26f6deb`）。
-  - T3 報告追加「T3.6」、測試清單（F-19 AC a／b／g、開播判斷來源 ✅；修正上一輪誤寫入的換行）（本段落所在的 commit）。
+  - T3 報告追加「T3.6」、測試清單（F-19 AC a／b／g、開播判斷來源 ✅；修正上一輪誤寫入的換行）（commit `c3b350a`）。
+- v35／T3.7（`docs/review-2026-11-16.md` 追加六）：
+  - 開播／結束 meta 重新抓取加上 `chrome.alarms` 每 1 分鐘排程；`alarms` 權限提前加入；規格 v35（commit `d440320`）。
+  - watch 頁抓取先 `credentials: 'omit'`，取不到時間 meta 才 `include` 重試（commit `f196c3b`）。
+  - **F-20 診斷記錄模式**：`diag_log`（`DB_VERSION` 3）、控制、時限、REC、消毒、P5／P6／P8；`downloads` 權限提前加入（commit `aa1dcce`）。
+  - F-20 頁面端探針 P1～P4、P6～P8（含 P7 結構探針）（commit `79cb73e`）。
+  - 控制頁 `tools/diag.html`、分析工具 `tools/diag-report.js`（commit `f61d9e8`）。
+  - T3 報告追加「T3.7」、測試清單（T3.5／T3.6 實機 ✅、T3.7 項目）（本段落所在的 commit）。
+
+### 規格 v35（2026-11-16，依 `docs/review-2026-11-16.md` 追加六）
+- F-14／3.2：meta 重新抓取加上 `chrome.alarms` 每 1 分鐘（只限有分頁開著的場次），3 小時上限以預定開播時間起算；watch 頁先 `omit`、取不到才 `include`。
+- 新增 **F-20 診斷記錄模式**（探針 P1～P8、時段與最長時限、REC 標記、隱私、`diag_log` 容量與 30 天清除、匯出與 `tools/diag-report.js`）；4.1 `diag_log`、`DB_VERSION` 3；4.2 `DIAG_LOG`／`DIAG_CONTROL`。
+- 第 7 節：`alarms`、`downloads` 提前於 T3.7 加入。
 
 ### 規格 v34（2026-11-16，依 `docs/review-2026-11-16.md` 追加五）
 - F-13：禮物元件 `yt-gift-message-view-model`（實機確認），通用解析、`RECLASSIFY_SYSTEM` 標 `partial`。

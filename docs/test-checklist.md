@@ -54,13 +54,19 @@
 | T3 實機：`phase` 判斷來源（`startDate`／`endDate`／`isLiveBroadcast` 診斷） | ✅ | 開播部分：2026-11-16 待機室與延後開播實測（`startDate` 待機室為預定、開播後不重新整理不更新、重新整理後為實際；`docs/youtube-dom-notes.md` 5.1）。結束部分仍待遇到直播結束（下一列） |
 | T3 實機：直播結束訊號 | ⬜ | v33 診斷、v34 background 每 5 分鐘重新抓取 `endDate`；待遇到直播結束 |
 | T3.5 子元件規則式判斷、`viewer-engagement` 去重、空的／重新載入的收錄紀錄、預覽列出保留標籤、結束偵測：模擬頁 | ✅ | 2026-11-16：`test-db.html` 38／38、`test-capture.html` 31／31 |
-| T3.5 實機：`cleanupJunkSystem` 重跑清掉 reply／like-button 6 筆、`viewer-engagement` 合併為每場每內容一筆 | ⬜ | 2026-11-16 17:41 使用者執行到的是 T3.4 版（預覽 4 筆禮物，已請勿刪）；T3.6 版重跑 |
+| T3.5 實機：`cleanupJunkSystem` 重跑清掉 reply／like-button 6 筆、`viewer-engagement` 合併為每場每內容一筆 | ✅ | 2026-11-16 20:24～20:29：`deleted 6`（reply／like 各 3，禮物不在內）、`veMerged 38`（7 組）（審查十追加六 C） |
 | T3.5 實機：直播結束時反覆重新載入不再增加收錄次數；結束後訊息標 `post` | ⬜ | 需遇到直播結束 |
 | T3 實機：F-19 AC (a)(b)(g) | ✅ | 2026-11-16 17:53～18:01（`3LKGU…` 待機室）：只開彈出視窗有存檔、DOM ≤ 50；同開 `idMerged 25`／`added 0`；✕ 關閉後主分頁自動展開恢復收錄（審查十追加五 D） |
 | T3 實機：F-19 AC (e) 反覆開關 3 次無重複 | ⬜ | 覆蓋範圍待 T7 後台檢視 |
 | T3.6 禮物 `gift`、清除白名單優先、欄位統計（含 SC 顏色）、開播判斷（`startPending`／來源等級／重新抓取 meta）、`recomputeStream`：模擬頁 | ✅ | 2026-11-16：`test-db.html` 44／44、`test-capture.html` 34／34（含預定 X、實際 X+10 分的模擬 AC） |
-| T3.6 實機：既有禮物 4 筆改為 `gift`；`fieldStats` 重跑（SC 顏色）；`3LKGU…` 以 `recomputeStream` 修正 | ⬜ | |
-| T3.6 實機：下一場延後開播時，等待期訊息標 `pre`、開播確認後 offset 以實際時間為零點 | ⬜ | 需遇到預定時間後才開播的直播 |
+| T3.6 實機：既有禮物 4 筆改為 `gift`；`fieldStats` 重跑（SC 顏色）；`3LKGU…` 以 `recomputeStream` 修正 | ✅ | 2026-11-16：`changed 4`（gift）；SC 顏色 23／23；`3LKGU…` 已由 background 重抓 meta **自動**修正為 11:24:38Z（`meta-actual`），`recomputeStream` 預覽 `changed 0`（審查十追加六 C） |
+| T3.6 實機：下一場延後開播時，等待期訊息標 `pre`、開播確認後 offset 以實際時間為零點 | ⬜ | 需遇到預定時間後才開播的直播（`3LKGU…` 已確認事後自動修正；即時判斷以 F-20 P1 的 `times` 驗證） |
+| T3.7 A-1／A-2：`chrome.alarms` 每 1 分鐘重新抓取、`credentials` omit → include：模擬頁 | ✅ | 2026-11-16：`test-db.html` 46／46 |
+| T3.7 F-20 診斷記錄（資料層、控制、消毒、時限、排程、環狀、30 天清除、P1～P8）：模擬頁 | ✅ | 2026-11-16：`test-db.html` 49／49、`test-capture.html` 36／36；`tools/diag-report.js` 以模擬匯出檔驗證 |
+| T3.7 F-20 實機 AC 1：10 分鐘時段，期間開直播、切分頁、開關彈出視窗 → 匯出檔含 P1～P6、時間連續、無訊息內容 | ⬜ | |
+| T3.7 F-20 實機 AC 3：超過最長時限自動停止、REC 標記消失、之後不再寫入 | ⬜ | 可用 1 小時時限驗證 |
+| T3.7 F-20 實機 AC 4：`diag-report.js` 摘要與 Console 收錄統計一致 | ⬜ | |
+| T3.7 F-20 控制頁 `tools/diag.html` 在擴充功能內開啟正常 | ⬜ | 只能在擴充功能內驗證 |
 | 影片與頁面主體上沒有任何套件元素（10.1 原則 6，每個 ⏸ 關卡必查） | ✅ | 2026-11-15 v24.1 PoC；之後每個 ⏸ 關卡仍需檢查 |
 
 ## 回歸（F-01 ～ F-09）
