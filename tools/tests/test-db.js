@@ -760,6 +760,7 @@
       stream: { scheduledStartAt: sch, startPending: true, isLive: true },
       messages: [msg({ id: 'w1', timestampAbs: sch + 5 * MIN, videoOffsetSec: null, phase: 'pre' }), msg({ id: 'w2', timestampAbs: act + 5 * MIN, videoOffsetSec: null, phase: 'pre' })] });
     eq([r.stream.startedAt, r.stream.startPending], [null, true], '不得以預定時間寫入 startedAt');
+    await sleep(100); // SAVE_MESSAGES 在背景觸發的重新抓取（測試頁攔截 → 失敗）先結束，避免下面共用同一個進行中的請求
     const urls = [];
     let html = '<meta itemprop="startDate" content="' + new Date(act).toISOString() + '"><meta itemprop="isLiveBroadcast" content="True">';
     self.fetch = async (u) => { urls.push(String(u)); return new Response(html, { status: 200 }); };
@@ -799,6 +800,30 @@
     const by = Object.fromEntries((await DB.queryMessages(V)).map((m) => [m.id, [m.phase, m.videoOffsetSec]]));
     eq([by.q1, by.q2, by.q3, by.q4], [['pre', -278], ['live', 60], ['live', 120], ['live', 180]]);
     eq((await BG.recomputeStream('vidNONE0001', { startedAt: act })).error, 'no-stream');
+  });
+
+  test('T3.7 A-2：重新抓取 watch 頁先 credentials omit；取不到時間 meta 才以 include 重試一次', async () => {
+    await resetAll();
+    const calls = [];
+    const withMeta = '<meta itemprop="startDate" content="2026-11-16T11:24:38Z"><meta name="title" content="T">';
+    let omitHtml = withMeta;
+    self.fetch = async (u, o) => {
+      if (!String(u).includes('/watch?v=')) return new Response('', { status: 404 });
+      calls.push(o && o.credentials);
+      return new Response(o && o.credentials === 'include' ? withMeta : omitHtml, { status: 200 });
+    };
+    try {
+      let m = await BG.fetchStreamMeta(V);
+      eq([calls, m.startedAtSource, m.credentialsUsed], [['omit'], 'meta-actual', undefined], '取得 meta → 不重試');
+      calls.length = 0;
+      omitHtml = '<html>未登入看不到</html>';
+      m = await BG.fetchStreamMeta(V);
+      eq([calls, m.startedAtSource, m.credentialsUsed], [['omit', 'include'], 'meta-actual', 'include'], '取不到 → include 重試一次');
+      calls.length = 0;
+      self.fetch = async (u, o) => { calls.push(o && o.credentials); return new Response('<html></html>', { status: 200 }); };
+      m = await BG.fetchStreamMeta(V);
+      eq([calls.length, Object.keys(m).length], [2, 0], '兩次都沒有 → 回傳空結果，不再重試');
+    } finally { self.fetch = self.__blockedFetch; }
   });
 
   test('T3.7 A-1：chrome.alarms 每 1 分鐘檢查「有分頁開著」的場次（沒有新訊息也能確認開播）；沒開分頁的場次不抓', async () => {

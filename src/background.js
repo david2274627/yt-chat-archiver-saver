@@ -290,12 +290,27 @@ function parseWatchHtml(html, knownScheduled) {
   return meta;
 }
 
+// T3.7（審查十追加六 A-2）：預設 credentials: 'omit'（不帶使用者登入狀態，避免影響觀看紀錄等）；
+// 取不到任何時間 meta（例如會員限定直播未登入看不到）時，才以 'include' 重試一次
+const hasTimeMeta = (m) => !!m && (m.startedAt != null || m.scheduledStartAt != null || m.endedAt != null || !!m.startPending);
 async function fetchStreamMeta(videoId, knownScheduled) {
   if (metaInflight.has(videoId)) return metaInflight.get(videoId);
-  const p = (async () => {
-    const r = await fetch('https://www.youtube.com/watch?v=' + encodeURIComponent(videoId), { credentials: 'omit' });
+  const url = 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId);
+  const get = async (credentials) => {
+    const r = await fetch(url, { credentials });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return parseWatchHtml(await r.text(), knownScheduled);
+  };
+  const p = (async () => {
+    let meta = null;
+    let err = null;
+    try { meta = await get('omit'); } catch (e) { err = e; }
+    if (hasTimeMeta(meta)) return meta;
+    try {
+      const m2 = await get('include');
+      if (hasTimeMeta(m2) || !meta) { m2.credentialsUsed = 'include'; return m2; }
+    } catch (e) { if (!meta) throw err || e; }
+    return meta;
   })().finally(() => metaInflight.delete(videoId));
   metaInflight.set(videoId, p);
   return p;

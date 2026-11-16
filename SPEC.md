@@ -137,7 +137,8 @@ yt-chat-archiver-saver/
 2. 頻道名稱解析（F-03）的待辦佇列存在 `chrome.storage.session`（含重試次數與下次可重試時間），被喚醒時（任何事件）自動接續。
 3. content script 端 `sendMessage` 失敗（SW 重啟中、無回應或回應 `ok: false` 以外的錯誤）時重試 3 次（間隔 0.5／1／2 秒）；仍失敗的批次留在 content script 端，下一批一起送（上限 2000 筆，超過時丟棄最舊的並記入診斷筆數）。回應 `ok: false` 的批次不重試（`paused` 依 F-15 停止擷取；其他錯誤丟棄並記入診斷筆數）。擴充功能重新載入後，舊頁面裡的 content script 失去連線（`chrome.runtime.id` 不存在）：停止送出，但 **DOM 修剪照常**，直到頁面重新整理。
    - **刪除通知的先後順序**（v29）：content script 偵測到訊息被刪除時，先把該訊息所在的批次送出並等待寫入完成，再送 `MESSAGE_DELETED`；回應 `found: false` 時放入待處理清單，下一批寫入完成後重送一次，仍找不到就放棄（只記筆數）。
-4. 長時間工作（F-11 遷移）分批進行，每批獨立交易，進度記在 `chrome.storage.local`，中斷後可重跑（以 id 去重）。
+4. （v35）**對 YouTube 的抓取與 Cookie**：頻道頁（F-03）一律 `credentials: 'omit'`；watch 頁（F-19 `FETCH_STREAM_META`、F-14 開播／結束重新抓取）先 `omit`，取不到時間 meta 才以 `include` 重試一次。
+5. 長時間工作（F-11 遷移）分批進行，每批獨立交易，進度記在 `chrome.storage.local`，中斷後可重跑（以 id 去重）。
 
 **Origin 隔離原則**：`youtube.com` 頁面內的腳本（content.js）**禁止**直接開 IndexedDB 存聊天資料，一律經由 `background.js`。
 **讀寫分工**（v21）：所有寫入（新增、刪除、頻道快取）只由 `background.js` 執行；`viewer.js` 屬擴充功能 origin，為了大量資料效能可直接以 `readonly` 交易查詢 IndexedDB，不經 `sendMessage` 序列化。`QUERY_MESSAGES` 保留給 popup 等輕量查詢。
@@ -454,7 +455,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - **規則**：
   1. **辨識**：`content.js` 環境判斷改為三種：top watch 頁／嵌入式 chat frame／**彈出式聊天室**（頂層頁面且路徑為 `/live_chat` 或 `/live_chat_replay`，不論有無 `is_popout`）。彈出式走與 chat frame 相同的擷取（F-02，含啟動時回溯擷取）、修剪（F-01）與 F-12。
   2. **videoId**：取自網址參數 `v`；取不到時 `warnOnce` 並不收錄。
-  3. **場次資訊**：彈出視窗沒有標題、開播時間 → background 以 `fetch('https://www.youtube.com/watch?v=<videoId>')` 只讀 `meta[itemprop="startDate"]`、`endDate`（若有）、標題、頻道（`FETCH_STREAM_META`；已有資料不重抓，選擇器寫在 `selectors.js`）。開播時間取不到時，`phase` 依 F-14 的推算與事後修正規則處理。
+  3. **場次資訊**：（v35，追加六 A-2）抓取一律先以 `credentials: 'omit'`（不帶使用者登入狀態，避免影響觀看紀錄等）；取不到任何時間 meta（例如會員限定直播）時才以 `credentials: 'include'` 重試一次。開播／結束的重新抓取（F-14）同此規則。彈出視窗沒有標題、開播時間 → background 以 `fetch('https://www.youtube.com/watch?v=<videoId>')` 只讀 `meta[itemprop="startDate"]`、`endDate`（若有）、標題、頻道（`FETCH_STREAM_META`；已有資料不重抓，選擇器寫在 `selectors.js`）。開播時間取不到時，`phase` 依 F-14 的推算與事後修正規則處理。
   4. **與主分頁同時開啟**：同一 `videoId` 兩邊同時收錄 → 依 F-14 以 id 去重。`capture_sessions.source` 為 `popout`。
   5. **降落情境**：主分頁被導向新直播 → 主分頁改收錄新直播（新 `videoId`，獨立存檔）；彈出視窗繼續收錄原直播的 `post` 段；降落橫幅若兩邊都出現，各自存入各自的場次。**待實機確認**：降落時彈出視窗是否也會被自動導向新直播的聊天室（若會，彈出視窗改收錄新直播），記錄於 `docs/youtube-dom-notes.md`。
   6. **彈出視窗內的優化面板**（使用者 2026-11-15 19:59 決定：**要做，優先順序在收錄之後**）：彈出視窗沒有 `ytd-live-chat-frame` 外框，F-10 clip-path 方式不適用；改為把面板覆蓋在原生訊息列表（`#item-list`）範圍上、底部互動區不覆蓋（以 `bottomZoneHeight` 量測）。需另做 PoC（T6-c，於 T6 完成後）。彈出視窗沒有播放器，**VOD 時間軸同步不適用**。
