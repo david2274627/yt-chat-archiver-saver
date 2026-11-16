@@ -74,7 +74,20 @@
   - 60 秒內重新載入沿用同一筆收錄紀錄、空的收錄紀錄刪除並扣回次數；F-19 接手改用 `gen`（commit `d5b165b`）。
   - 清除預覽列出保留的 `system` 標籤 `keptByTag`（commit `966b14b`）。
   - 直播結束偵測（`endDate` 每 30 秒重讀）與結束訊號診斷（commit `ca5bfa7`）。
-  - T3 報告追加「T3.5」、測試清單更新（實測 C 背景 30 分鐘、站內換頁、T3.4 實機 ✅）（本段落所在的 commit）。
+  - T3 報告追加「T3.5」、測試清單更新（實測 C 背景 30 分鐘、站內換頁、T3.4 實機 ✅）（commit `2e2a8fa`）。
+- v34／T3.6（`docs/review-2026-11-16.md` 追加四、追加五）：
+  - 禮物訊息 `yt-gift-message-view-model` → `gift`、重新分類標 `partial`、清除規則白名單優先且只清 T3～T3.4 之間；規格 v34（commit `f71a696`）。
+  - 欄位完整度統計 `YTCAS_BG.fieldStats()`（含 SC 顏色）（commit `c51c775`）。
+  - 開播／結束判斷：`startPending`、來源等級覆蓋與重算、background 重新抓取 watch 頁 meta、播放器開播訊號（commit `ab09313`）。
+  - `YTCAS_BG.recomputeStream()` 維護函式（commit `eeba921`）。
+  - `youtube-dom-notes.md` 第 5 節、附錄 E 禮物元件結構腳本（commit `26f6deb`）。
+  - T3 報告追加「T3.6」、測試清單（F-19 AC a／b／g、開播判斷來源 ✅；修正上一輪誤寫入的換行）（本段落所在的 commit）。
+
+### 規格 v34（2026-11-16，依 `docs/review-2026-11-16.md` 追加五）
+- F-13：禮物元件 `yt-gift-message-view-model`（實機確認），通用解析、`RECLASSIFY_SYSTEM` 標 `partial`。
+- F-02 清除：白名單優先（`messageTypeByTag`、`knownMessageTags`）；子元件垃圾只清 T3.4 部署前。
+- 4.1 streams：`startedAtSource`、`endedAtSource`、`startPending`。
+- F-14 開播判斷（取代「`startDate` 已過即開播」）：`deriveStartTimes`、來源等級 `scheduled < signal < meta-actual < replay` 與重算既有訊息（修正 T2 補充設計 #8）、background 重新抓取 meta（60 秒／3 小時、直播中 5 分鐘）、播放器訊號、`recomputeStream`。
 
 ### 規格 v33（2026-11-16，依 `docs/review-2026-11-16.md` 追加三）
 - F-02：子元件標籤規則式判斷；`viewer-engagement` 以 `viewerEngagementId(videoId, runs)` 為 id；`cleanupJunkSystem` 合併既有重複、預覽列出 `keptByTag`。
