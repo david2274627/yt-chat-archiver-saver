@@ -779,6 +779,24 @@
     } finally { self.fetch = self.__blockedFetch; }
   });
 
+  test('T3.6 recomputeStream：預覽只回筆數不寫入；執行後 startedAt 改為指定值（不受來源等級限制）並重算 phase／offset', async () => {
+    await resetAll();
+    const sch = baseMin() - 30 * MIN, act = sch + 9 * MIN + 38000; // 例：3LKGU…（預定 19:15、實際 19:24:38）
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: sch, startedAtSource: 'meta-actual' }, messages: [
+      msg({ id: 'q1', timestampAbs: sch + 5 * MIN }), msg({ id: 'q2', timestampAbs: act + 60000 }), msg({ id: 'q3', timestampAbs: act + 120000 }) ] });
+    await DB.saveMessages({ videoId: V, source: 'replay', messages: [msg({ id: 'q4', timestampAbs: act + 180000, videoOffsetSec: 180 })] });
+    eq((await BG.recomputeStream(V, { startedAt: act })).dryRun, true);
+    const pre = await BG.recomputeStream(V, { startedAt: act });
+    eq([pre.messages, pre.changed, pre.offsetChanged], [4, 3, 3]);
+    eq([pre.before.phases, pre.after.phases], [{ live: 4 }, { pre: 1, live: 3 }]);
+    eq((await DB.getStream(V)).startedAt, sch, '預覽不寫入');
+    const r = await BG.recomputeStream(V, { startedAt: act, dryRun: false });
+    eq([r.updated, (await DB.getStream(V)).startedAt, (await DB.getStream(V)).startedAtSource], [3, act, 'meta-actual']);
+    const by = Object.fromEntries((await DB.queryMessages(V)).map((m) => [m.id, [m.phase, m.videoOffsetSec]]));
+    eq([by.q1, by.q2, by.q3, by.q4], [['pre', -278], ['live', 60], ['live', 120], ['live', 180]]);
+    eq((await BG.recomputeStream('vidNONE0001', { startedAt: act })).error, 'no-stream');
+  });
+
   test('T3.6 等待開播確認的輪詢：每 60 秒一次、超過 3 小時停止', async () => {
     await resetAll();
     const sch = baseMin() - 30 * MIN;

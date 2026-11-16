@@ -226,6 +226,16 @@ async function fieldStats(opts) {
   return DB.fieldStats({ since: opts.since ?? C.T3_DEPLOYED_AT, videoId: opts.videoId });
 }
 
+// T3.6 維護（SW Console）：以已知的實際開播／結束時間修正既有場次並重算 phase／offset。兩段式：
+//   await YTCAS_BG.recomputeStream('videoId', { startedAt: Date.parse('…Z') })                 → 預覽（只回傳筆數）
+//   await YTCAS_BG.recomputeStream('videoId', { startedAt: Date.parse('…Z'), dryRun: false })  → 執行
+async function recomputeStream(videoId, opts) {
+  vid({ videoId });
+  const r = await DB.recomputeStream(videoId, opts || {});
+  console.info('[ytcas] 場次重算' + (r.dryRun ? '（預覽）' : ''), { videoId, changed: r.changed, offsetChanged: r.offsetChanged });
+  return r;
+}
+
 // SW Console 用（RECLASSIFY_SYSTEM 只接受擴充功能頁面）：await YTCAS_BG.reclassifySystem()
 async function reclassifySystem(opts) {
   return handlers[RT.RECLASSIFY_SYSTEM](opts || {});
@@ -573,4 +583,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, _inflight: inflight };

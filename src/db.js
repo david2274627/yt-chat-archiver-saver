@@ -624,7 +624,64 @@
   }
 
   // ---------------------------------------------------------------- phase 事後重算（F-14）
-  // 開播／結束時間確定後：非重播紀錄依 timestampAbs 重算 phase；offset 為 null 或 pre（直播收錄）者重算 offset
+  // 開播／結束時間確定後：非重播紀錄依 timestampAbs 重算 phase 與 offset。單筆規則（純函式，預覽與實際重算共用）：
+  //   重播精確值（offsetSource: replay）與只來自重播的紀錄不動；
+  //   T3.6（追加五 E-2）本套件直播收錄的推算值（sources 含 live、estimated）一律以新的零點重算；
+  //   遷移／匯入的 offset（不是由本套件的 startedAt 推算）只在為空時補上。
+  // 回傳更新後的紀錄（複本），沒有變動回傳 null
+  function recomputeRecord(rec, s) {
+    if (!s || s.startedAt == null) return null;
+    const fromLive = (rec.sources || []).some((x) => x === 'live' || x === 'legacy' || x === 'import');
+    if (rec.offsetSource === 'replay' || !fromLive) return null;
+    const v = clone(rec);
+    const ts = v.timestampAbs;
+    v.phase = ts < s.startedAt ? 'pre' : (s.endedAt != null && ts > s.endedAt ? 'post' : 'live');
+    const ownEstimate = (v.sources || []).includes('live');
+    if (num(v.videoOffsetSec) === null || ownEstimate) {
+      v.videoOffsetSec = Math.round((ts - s.startedAt) / 100) / 10;
+      v.offsets = Object.assign({}, v.offsets, { v1: v.videoOffsetSec });
+      v.offsetSource = 'estimated';
+    }
+    v.fp = makeFp(v);
+    return JSON.stringify(v) !== JSON.stringify(rec) ? v : null;
+  }
+
+  // T3.6 維護：以已知的實際開播／結束時間修正既有場次（例：延後開播、舊版以預定時間寫入 startedAt）
+  // p: { startedAt?, endedAt?, dryRun（預設 true）, source（預設 'meta-actual'） }。不受來源等級限制（使用者明確指定）。
+  // 預覽回傳前後的 phase 分布、offset 會改變的筆數；只回傳筆數
+  async function recomputeStream(videoId, p) {
+    p = p || {};
+    const dryRun = p.dryRun !== false;
+    const db = await open();
+    const s0 = await getStream(videoId);
+    if (!s0) return { ok: false, error: 'no-stream', videoId };
+    const s = Object.assign({}, s0);
+    if (num(p.startedAt) !== null) { s.startedAt = p.startedAt; s.startedAtSource = p.source || 'meta-actual'; s.startPending = false; }
+    if (num(p.endedAt) !== null) { s.endedAt = p.endedAt; s.endedAtSource = p.source || 'meta-actual'; }
+    const list = await req(db.transaction('messages').objectStore('messages').index('videoId').getAll(videoId));
+    const tally = (arr) => arr.reduce((o, m) => { o[m.phase || '(無)'] = (o[m.phase || '(無)'] || 0) + 1; return o; }, {});
+    const after = [];
+    let changed = 0, offsetChanged = 0;
+    for (const m of list) {
+      const nv = recomputeRecord(m, s);
+      if (nv) { changed++; if (nv.videoOffsetSec !== m.videoOffsetSec) offsetChanged++; }
+      after.push(nv || m);
+    }
+    const out = { dryRun, videoId, messages: list.length, changed, offsetChanged,
+      before: { startedAt: s0.startedAt ?? null, startedAtSource: s0.startedAtSource ?? null, endedAt: s0.endedAt ?? null, phases: tally(list) },
+      after: { startedAt: s.startedAt ?? null, startedAtSource: s.startedAtSource ?? null, endedAt: s.endedAt ?? null, phases: tally(after) } };
+    if (dryRun) return out;
+    await withLock(videoId, async () => {
+      const t = db.transaction(['streams'], 'readwrite');
+      const cur = await req(t.objectStore('streams').get(videoId));
+      for (const k of ['startedAt', 'startedAtSource', 'startPending', 'endedAt', 'endedAtSource']) cur[k] = s[k] ?? cur[k] ?? null;
+      t.objectStore('streams').put(cur);
+      await done(t);
+      out.updated = await recomputePhasesUnlocked(videoId);
+    });
+    return out;
+  }
+
   function recomputePhases(videoId) { return withLock(videoId, () => recomputePhasesUnlocked(videoId)); }
   async function recomputePhasesUnlocked(videoId) {
     const db = await open();
@@ -639,24 +696,8 @@
         r.onsuccess = () => {
           const cur = r.result;
           if (!cur) return res();
-          const v = cur.value;
-          const fromLive = (v.sources || []).some((x) => x === 'live' || x === 'legacy' || x === 'import');
-          if (v.offsetSource !== 'replay' && fromLive) {
-            const before = JSON.stringify(v);
-            const ts = v.timestampAbs;
-            const wasPre = v.phase === 'pre';
-            v.phase = ts < s.startedAt ? 'pre' : (s.endedAt != null && ts > s.endedAt ? 'post' : 'live');
-            // T3.6（追加五 E-2）：startedAt 被更權威的來源更正時，本套件直播收錄的推算值（estimated）一併以新的零點重算；
-            // 遷移／匯入的 offset（不是由本套件的 startedAt 推算）只在為空時補上；重播精確值（replay）永不改寫
-            const ownEstimate = (v.sources || []).includes('live') && v.offsetSource !== 'replay';
-            if (num(v.videoOffsetSec) === null || wasPre && (v.sources || []).includes('live') || ownEstimate) {
-              v.videoOffsetSec = Math.round((ts - s.startedAt) / 100) / 10;
-              v.offsets = Object.assign({}, v.offsets, { v1: v.videoOffsetSec });
-              v.offsetSource = 'estimated';
-            }
-            v.fp = makeFp(v);
-            if (JSON.stringify(v) !== before) { cur.update(v); n++; }
-          }
+          const nv = recomputeRecord(cur.value, s);
+          if (nv) { cur.update(nv); n++; }
           cur.continue();
         };
       });
@@ -1270,7 +1311,7 @@
     configure, open, close,
     saveMessages, savePinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
-    recomputePhases, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
+    recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
