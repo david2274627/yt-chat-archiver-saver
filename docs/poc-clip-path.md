@@ -240,6 +240,47 @@ F12 → Console 左上角 frame 選單選**聊天室的 iframe**（名稱含 `li
 })();
 ```
 
+## 附錄 E：禮物元件結構（遇到禮物時使用，T3.6）
+用途：取得禮物訊息 `yt-gift-message-view-model`（2026-11-16 確認為 `#items` 的直接子節點）的內部結構，補上專用解析（送禮者、頭像、禮物名稱、禮物圖片、數量）。
+F12 → Console 左上角 frame 選單選**聊天室的 iframe**（名稱含 `live_chat`）→ 看到有人送禮後**立刻**貼上並按 Enter（訊息會被修剪，最多保留 45 則）。
+- 只輸出**後代元素的標籤、id、屬性名稱**（不含屬性值），以及 `img` 的**網域**；**不輸出任何文字**。
+- 最多列出最近 3 則禮物訊息，每則最多 80 個後代元素。
+```js
+(() => {
+  const items = document.querySelector('#item-list #items');
+  if (!items) return '找不到 #items';
+  const gifts = [...items.children].filter((e) => e.tagName.toLowerCase() === 'yt-gift-message-view-model').slice(-3);
+  if (!gifts.length) return '目前畫面上沒有禮物訊息（可能已被修剪，請在送禮後立刻執行）';
+  const host = (u) => { try { return new URL(u, location.href).hostname; } catch (_) { return '(無效網址)'; } };
+  const desc = (root) => {
+    const out = [];
+    const walk = (el, depth) => {
+      for (const c of el.children) {
+        if (out.length >= 80) return;
+        const r = c.getBoundingClientRect();
+        out.push({
+          d: depth,
+          tag: c.tagName.toLowerCase() + (c.id ? '#' + c.id : ''),
+          attrs: c.getAttributeNames().filter((a) => a !== 'id' && a !== 'class' && a !== 'style'),
+          cls: c.classList.length,
+          img: c.tagName === 'IMG' ? host(c.getAttribute('src') || '') : undefined,
+          size: Math.round(r.width) + 'x' + Math.round(r.height),
+          hasText: [...c.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim()), // 只記「有沒有文字」
+        });
+        walk(c, depth + 1);
+      }
+    };
+    walk(root, 1);
+    return out;
+  };
+  const res = gifts.map((g) => ({ attrs: g.getAttributeNames().filter((a) => a !== 'id'), hasId: !!g.id, tree: desc(g) }));
+  const s = JSON.stringify(res, null, 1);
+  console.log(s);
+  try { copy(s); } catch (_) { /* copy 被覆蓋時略過 */ }
+  return '完成：結果已印在上方（可能也已複製到剪貼簿），共 ' + gifts.length + ' 則';
+})();
+```
+
 ## 歷史：第一次實測步驟（2026-11-14，v22 版 PoC）
 > 當時的左下角控制盒已移除（違反 10.1 原則 6），步驟僅保留紀錄：開啟 PoC → 確認露出 84px → 點擊／滾輪穿透（div 與擴充功能 iframe 下層）→ 輸入框可打字 → 完全不裁切時表符、`$`、付款視窗位置 → 裁切對象改為 `iframe#chatframe` 比較 → 劇院模式 → 關閉還原。
 

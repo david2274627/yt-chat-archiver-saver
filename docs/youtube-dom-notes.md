@@ -3,7 +3,7 @@
 > 本檔是 `selectors.js` 與模擬頁的**唯一依據**。只收錄在真實 YouTube 頁面上確認過的結構；每筆標註日期與 Chrome 版本。原始診斷輸出存於 `docs/diag/`。
 > 規則：模擬頁測試只能證明「程式邏輯沒錯」；依賴 DOM 的功能必須以本檔記錄的實機結構為準，未記錄的結構一律標「待確認」。
 
-最後更新：2026-11-15　Chrome 157.0.8103.51　淺色主題　台灣繁體中文介面
+最後更新：2026-11-16（第 5 節：T3 實測）　Chrome 157.0.8103.51　淺色主題　台灣繁體中文介面
 
 ---
 
@@ -102,7 +102,9 @@ yt-live-chat-renderer
 - `yt-live-chat-banner-renderer`（置頂，確認）：屬性含 `collapsed`；`#banner-container > #header（yt-live-chat-banner-header-renderer，#menu > yt-button-renderer#menu-button）+ #contents（yt-live-chat-text-message-renderer#<訊息id>，結構同一般訊息）`、`#indeterminate-bar`
 - `yt-live-chat-ticker-renderer`：`#container > #ticker-bar, #goal-ticker, #fanzone-ticker, #ticker-items, #left/right-arrow-container`
 - 重播頁另確認：`yt-live-chat-membership-item-renderer`、`ytd-sponsorships-live-chat-gift-redemption-announcement-renderer`、`yt-live-chat-placeholder-item-renderer`、`yt-live-chat-ticker-sponsor-item-renderer`（見第 3 節）。
-- **待確認（尚未出現）**：`yt-live-chat-paid-message-renderer`（SC 文字版）、`ytd-sponsorships-live-chat-gift-purchase-announcement-renderer`、`ytd-sponsorships-live-chat-header-renderer`、`yt-live-chat-banner-redirect-renderer`（降落）、`yt-live-chat-poll-renderer`、`yt-live-chat-action-panel-renderer`、里程碑。
+- `yt-live-chat-paid-message-renderer`（SC 文字版）：**確認存在**（2026-11-16 欄位統計：`superchat` 19 筆，金額 19／19 有值，即 `#purchase-amount`／`#purchase-amount-chip` 解析成功；顏色變數待 `fieldStats` 重跑確認）。
+- 禮物 `yt-gift-message-view-model`：確認（見 5.3）。
+- **待確認（尚未出現）**：`ytd-sponsorships-live-chat-gift-purchase-announcement-renderer`、`ytd-sponsorships-live-chat-header-renderer`、`yt-live-chat-banner-redirect-renderer`（降落）、`yt-live-chat-poll-renderer`、`yt-live-chat-action-panel-renderer`、里程碑。
 
 ### 2.5 輸入區 `#input-panel`（2026-11-15）
 ```
@@ -152,6 +154,39 @@ yt-live-chat-renderer
 - 仍未出現：SC 文字版、超級貼圖（重播）、gift-purchase、降落、里程碑、置頂（重播）。
 
 ---
+
+## 5. T3 收錄實測（2026-11-16，使用者以套件診斷輸出取得；只有標籤、屬性名稱、時間與筆數）
+來源：`docs/review-2026-11-16.md` 追加二～追加五。
+
+### 5.1 開播時間 `meta[itemprop="startDate"]`（直播 `3LKGU…`，預定 19:15 +08:00、實際 19:24:38 開播）
+| 時機 | `startDate` | `isLiveBroadcast` | 播放器長度 |
+|---|---|---|---|
+| 待機室（17:30） | `2026-11-16T11:15:00.000Z` = **預定時間**（整分） | `true` | `null` |
+| 開播後、**未重新整理** | **不會更新**（仍為預定時間） | — | 待確認（T3.6 起有「播放器長度出現（診斷）」） |
+| 開播後**重新整理** | `2026-11-16T11:24:38.000Z` = **實際開播時間**（有秒數） | `true` | 4537（DVR 可回放範圍，不是影片長度） |
+
+- `isLiveBroadcast` 在待機室也是 `true` → **不能**用來區分待機與直播中。
+- `ytd-watch-flexy` 屬性在實際開播前後**沒有任何變化**；觀察到的變化只有 `is-two-columns_`／`is-single-column`／`flexy-small-window_`／`full-bleed-player` 互換（視窗縮放造成的版面切換）→ 不能當作開播訊號。
+- 直播中的播放器長度（例如 3600、4537）是 DVR 可回放範圍；F-18 只在重播時使用長度。
+- **結論（T3.6 採用）**：實際開播時間只能靠「重新取得 watch 頁」的 `startDate`（background 重新抓取，見 SPEC F-14）。
+- 站內換頁（點推薦中的另一個直播）後，top frame 的 `startDate`、`videoId` 會換成新直播的值（01:47 確認）。
+
+### 5.2 直播結束（`M3na…`，02:54）
+- 結束當下，聊天室 iframe **反覆重新載入**（多組「observer 已掛上 → 聊天室環境 → 收錄統計（結束）」）；`yt-live-chat-renderer` 的 `loading` 屬性出現／移除。
+- 未重新整理時 `endDate` meta 是否出現：待確認。結束提示元件：尚未取得（附錄 C 腳本待執行）。
+
+### 5.3 訊息元件
+- **禮物（F-13）**：`yt-gift-message-view-model` 是 `#items` 的**直接子節點**（2026-11-16，同一場 4 則）。內部結構待確認（`docs/poc-clip-path.md` 附錄 E 腳本）。
+- `yt-live-chat-viewer-engagement-message-renderer`（歡迎／守則提示）：每次重新載入聊天室都會出現一則，**元素 id 每次不同**（同一場 6 次重新整理存成 28 筆）→ T3.5 起以內容去重。
+- 訊息元件**內部**的後代（徽章 `yt-live-chat-author-badge-renderer`、`yt-icon`、`yt-img-shadow`、`yt-image`、`span`、`div`、`button-view-model`、`yt-button-view-model`、`dom-if`、`yt-live-chat-reply-button-view-model`、`yt-live-chat-like-button-view-model` 等）會在訊息插入後才陸續渲染，而且很多帶有固定的 `id`（如 `message`、`author-name`、`image`）。以 `subtree` 監看時會被回報為新增節點 → 只能處理 `#items` 的直接子節點（T3.4）。
+- 頁面上有 2 個 `#items`：第 1 個是可見的訊息列表（`#item-list` 內），第 2 個不可見、3 個子節點（用途未查）。
+- 切到「即時聊天室」（F-12）時，YouTube 會以同 id 整批重新渲染列表（一次性的 `dupCaptured` 約 72～95）。
+
+### 5.4 彈出式聊天室（F-19，`3LKGU…` 待機室，17:53～18:01）
+- 網址：`https://www.youtube.com/live_chat?is_popout=1&v=<videoId>`；頂層頁面，結構與嵌入式相同，F-12 選單同樣存在（`f12: switched`）。
+- **開啟彈出視窗時，YouTube 會先收起主分頁的聊天室**；主分頁的「聊天室 iframe 狀態（診斷）」同時段有 5 筆變化（最新一筆 `present: true`、`visible: true`、`height: 594`、`path: /live_chat`）。
+- 關閉彈出視窗（✕）後，套件自動展開主分頁聊天室並恢復收錄；彈出視窗內 F5 重新整理時主分頁不會誤展開。
+- 主分頁與彈出視窗同時收錄時，id 完全一致（`idMerged 25`、`added 0`）。
 
 ## 4. 診斷腳本
 - `docs/poc-clip-path.md` 附錄：PoC 內建 `Alt+Shift+D`；chat frame 結構腳本；top frame 版面腳本；輸入區腳本。

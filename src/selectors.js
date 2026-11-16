@@ -113,7 +113,7 @@
       textMessage: 'yt-live-chat-text-message-renderer',      // 確認
       paidSticker: 'yt-live-chat-paid-sticker-renderer',      // 確認
       viewerEngagement: 'yt-live-chat-viewer-engagement-message-renderer', // 確認
-      paidMessage: 'yt-live-chat-paid-message-renderer',      // 待實機確認
+      paidMessage: 'yt-live-chat-paid-message-renderer',      // 確認存在（2026-11-16 欄位統計：金額解析成功；顏色待確認）
       membershipItem: 'yt-live-chat-membership-item-renderer', // 確認（2026-11-15 重播；筆記 3）
       giftRedemption: 'ytd-sponsorships-live-chat-gift-redemption-announcement-renderer', // 確認存在（收到贈送會員）；內部結構待實機確認
       placeholderItem: 'yt-live-chat-placeholder-item-renderer', // 確認：佔位元素，擷取時略過
@@ -207,7 +207,7 @@
   // 不在表內的標籤存為 system（保存 rawTag）。禮物（gift）公告元件標籤尚未實機出現：取得後在此補一列，再執行重新分類。
   S.messageTypeByTag = Object.freeze({
     'yt-live-chat-text-message-renderer': 'text',
-    'yt-live-chat-paid-message-renderer': 'superchat',        // 待實機確認
+    'yt-live-chat-paid-message-renderer': 'superchat',        // 確認（2026-11-16）
     'yt-live-chat-paid-sticker-renderer': 'supersticker',
     'yt-live-chat-membership-item-renderer': 'membership',
     'ytd-sponsorships-live-chat-gift-redemption-announcement-renderer': 'membership',
