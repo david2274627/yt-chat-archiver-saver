@@ -115,8 +115,9 @@
       r.onerror = () => reject(r.error);
     });
     const db = await DB.open();
-    eq(db.version, 2);
+    eq(db.version, self.YTCAS_CONST.DB_VERSION, '升到目前版本（v35 起為 3）');
     assert(db.objectStoreNames.contains('capture_sessions'), 'capture_sessions');
+    assert(db.objectStoreNames.contains('diag_log'), 'v3：diag_log（F-20）');
     const idx = Array.from(db.transaction('messages').objectStore('messages').indexNames);
     assert(idx.includes('videoId_fp') && idx.includes('aliasIds'), '新索引：' + idx.join(','));
     const [m] = await DB.queryMessages(V);
@@ -869,6 +870,83 @@
       await BG.maybeRefetchMeta(V, Object.assign({}, times, { scheduledStartAt: null }), 'live');
       eq(n, 2, '第一次檢查起超過 3 小時 → 停止');
     } finally { self.fetch = self.__blockedFetch; }
+  });
+
+  // ---------------------------------------------------------------- F-20 診斷記錄模式（T3.7）
+  test('F-20：開始 → REC 標記與排程；content 紀錄消毒後寫入（文字、handle、網址被去除）；未勾選的探針不收；停止後不再寫入；匯出與摘要', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    const st = await BG.diag.start({ probes: ['P1', 'P2', 'P8'], hours: 2 });
+    eq([st.active, st.probes, chrome.action._badge.text], [true, ['P1', 'P2', 'P8'], 'REC']);
+    assert(chrome.alarms._list.get('ytcas-diag-stop').when === st.endsAt && st.endsAt - st.startAt === 2 * 3600e3, '時限排程');
+    const r = await send({ type: 'DIAG_LOG', records: [
+      { probe: 'P1', kind: 'stats', ctx: { env: 'chatframe', videoId: V }, data: { captured: 10, mode: 'capturing', text: '這是一則聊天內容', who: '@someone', avatar: 'https://yt4.ggpht.com/abc=s64', tags: { 'yt-live-chat-text-message-renderer': 3 } } },
+      { probe: 'P3', kind: 'stream-info', data: { x: 1 } }, // 未勾選
+      { probe: 'P8', kind: 'warn', data: { message: '錯誤 at https://www.youtube.com/live_chat?continuation=SECRET @handle' } },
+    ] });
+    eq([r.ok, r.accepted], [true, 2]);
+    await BG.diag.flush();
+    let ex = await BG.diag.export();
+    const recs = ex.records.filter((x) => x.kind !== 'diag-start');
+    eq(recs.map((x) => x.probe), ['P1', 'P8']);
+    eq(recs[0].data, { captured: 10, mode: 'capturing', text: '[removed]', who: '[removed]', avatar: 'yt4.ggpht.com', tags: { 'yt-live-chat-text-message-renderer': 3 } });
+    eq([recs[0].ctx.videoId, recs[0].ctx.tab], [V, 1]);
+    assert(!JSON.stringify(recs[1]).includes('SECRET') && !JSON.stringify(recs[1]).includes('@handle'), 'P8 去除網址參數與 handle');
+    eq([ex.format, ex.formatVersion, ex.probes, typeof ex.version], ['ytcas-diag', 1, ['P1', 'P2', 'P8'], 'string']);
+    const sum = await BG.diag.summary(200);
+    assert(sum.split('\n').length >= 3 && !sum.includes('聊天內容'), '摘要');
+    const stop = await BG.diag.stop();
+    eq([stop.active, stop.reason, chrome.action._badge.text, chrome.alarms._list.has('ytcas-diag-stop')], [false, 'manual', '', false]);
+    const r2 = await send({ type: 'DIAG_LOG', records: [{ probe: 'P1', kind: 'stats', data: {} }] });
+    eq([r2.accepted, r2.active], [0, false], '停止後不再寫入');
+    const dl = await BG.diag.download();
+    assert(/^YT聊天室診斷\/ytcas-diag-\d{8}-\d{4}\.json$/.test(dl.filename) && chrome.downloads._list.length >= 1, '下載到 YT聊天室診斷 資料夾');
+    eq(chrome.downloads._list[chrome.downloads._list.length - 1].url.startsWith('data:application/json;base64,'), true);
+  });
+
+  test('F-20：最長時限自動停止；指定開始時間（排程）；停止 30 天後自動清除；控制只接受擴充功能頁面', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    let st = await BG.diag.start({ hours: 99 });
+    eq(st.endsAt - st.startAt, 24 * 3600e3, '上限 24 小時');
+    st = await BG.diag.start({ hours: 1 });
+    await BG.diag.check(st.endsAt + 1000);
+    st = await BG.diag.status();
+    eq([st.active, st.reason], [false, 'limit'], '超過時限自動停止');
+    const at = Date.now() + 3600e3;
+    st = await BG.diag.start({ startAt: at, endAt: at + 600e3 });
+    eq([st.active, st.scheduled, st.endsAt - st.startAt], [false, true, 600e3]);
+    eq((await send({ type: 'DIAG_LOG', records: [{ probe: 'P1', kind: 'x', data: {} }] })).accepted, 0, '排程開始前不收');
+    await BG.diag.check(at + 1000);
+    st = await BG.diag.status();
+    eq([st.active, st.scheduled, chrome.action._badge.text], [true, false, 'REC'], '到時間開始');
+    await BG.diag.stop();
+    await DB.diagAppend([{ ts: 1, probe: 'P1', kind: 'old', data: {} }]);
+    const s0 = await BG.diag.status();
+    await BG.diag.check(s0.stoppedAt + 31 * 86400e3);
+    eq((await BG.diag.status()).records, 0, '停止 30 天後清除');
+    eq((await send({ type: 'DIAG_CONTROL', op: 'status' })).error, 'forbidden', 'content script 不可控制');
+    eq((await send({ type: 'DIAG_CONTROL', op: 'status' }, PAGE)).ok, true);
+  });
+
+  test('F-20：環狀上限（筆數）丟最舊的；P5 記錄有分頁開著的場次摘要（只有筆數）', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    const r = await DB.diagAppend(Array.from({ length: 30 }, (_, i) => ({ ts: i, probe: 'P1', kind: 'k', data: { i } })), { maxRecords: 20 });
+    eq([r.count, r.dropped], [20, 10]);
+    eq((await DB.diagAll())[0].data.i, 10, '保留最新的 20 筆');
+    await BG.diag.clear();
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: Date.now() - 600e3, startedAtSource: 'meta-actual', isLive: true }, messages: [msg(), msg({ phase: 'pre' })] });
+    chrome.tabs._tabs = [{ id: 3, url: 'https://www.youtube.com/watch?v=' + V }];
+    try {
+      await BG.diag.start({ probes: ['P5'] });
+      await BG.diag.runP5();
+      await BG.diag.flush();
+      const rec = (await DB.diagAll()).find((x) => x.kind === 'stream');
+      eq([rec.ctx.videoId, rec.data.types, rec.data.sessions], [V, { text: 2 }, 0]);
+      assert(rec.data.phases.live + rec.data.phases.pre === 2);
+      assert((await DB.diagAll()).some((x) => x.kind === 'fieldStats'));
+    } finally { chrome.tabs._tabs = []; await BG.diag.stop(); }
   });
 
   test('F-03／3.2：頻道解析佇列存 storage.session，失敗退避、SW 重啟後接續', async () => {

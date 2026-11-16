@@ -75,6 +75,13 @@
       p.createIndex('videoId', 'videoId');
       db.createObjectStore('channels', { keyPath: 'handleOrId' });
     }
+    if (oldVersion < 3) {
+      // v35（T3.7）F-20 診斷記錄：獨立資料表，不屬於聊天存檔（可自動清除）
+      if (!db.objectStoreNames.contains('diag_log')) {
+        const d = db.createObjectStore('diag_log', { keyPath: 'seq', autoIncrement: true });
+        d.createIndex('ts', 'ts');
+      }
+    }
     if (oldVersion < 2) {
       const cs = db.createObjectStore('capture_sessions', { keyPath: 'id', autoIncrement: true });
       cs.createIndex('videoId', 'videoId');
@@ -818,6 +825,71 @@
     return streams.map((s) => ({ videoId: s.videoId, title: s.title, messageCount: s.messageCount || 0, approxBytes: s.approxBytes || 0 }));
   }
 
+  // ---------------------------------------------------------------- F-20 診斷記錄（T3.7）
+  // 環狀：超過 maxRecords 筆或 maxBytes 時丟最舊的。紀錄由 background 消毒後寫入（只有筆數、標籤、屬性名稱、時間）
+  let diagBytes = null; // 目前總大小（估計）；null = 尚未計算
+  async function diagTotals(db) {
+    let n = 0, bytes = 0;
+    await new Promise((res, rej) => {
+      const r = db.transaction('diag_log').objectStore('diag_log').openCursor();
+      r.onerror = () => rej(r.error);
+      r.onsuccess = () => { const c = r.result; if (!c) return res(); n++; bytes += c.value.sz || 0; c.continue(); };
+    });
+    return { n, bytes };
+  }
+  async function diagAppend(records, limits) {
+    if (!Array.isArray(records) || !records.length) return { added: 0 };
+    const db = await open();
+    const maxN = (limits && limits.maxRecords) || 50000;
+    const maxB = (limits && limits.maxBytes) || 20 * 1024 * 1024;
+    if (diagBytes === null) diagBytes = (await diagTotals(db)).bytes;
+    const t = db.transaction('diag_log', 'readwrite');
+    const s = t.objectStore('diag_log');
+    for (const r of records) {
+      const rec = Object.assign({}, r);
+      delete rec.seq;
+      rec.sz = approxSize(rec);
+      diagBytes += rec.sz;
+      s.add(rec);
+    }
+    await done(t);
+    // 環狀上限
+    let count = await req(db.transaction('diag_log').objectStore('diag_log').count());
+    let dropped = 0;
+    if (count > maxN || diagBytes > maxB) {
+      const t2 = db.transaction('diag_log', 'readwrite');
+      await new Promise((res, rej) => {
+        const r = t2.objectStore('diag_log').openCursor();
+        r.onerror = () => rej(r.error);
+        r.onsuccess = () => {
+          const c = r.result;
+          if (!c || (count <= maxN && diagBytes <= maxB)) return res();
+          diagBytes -= c.value.sz || 0;
+          c.delete();
+          count--; dropped++;
+          c.continue();
+        };
+      });
+      await done(t2);
+    }
+    return { added: records.length, dropped, count };
+  }
+  async function diagAll() {
+    const db = await open();
+    return req(db.transaction('diag_log').objectStore('diag_log').getAll());
+  }
+  async function diagCount() {
+    const db = await open();
+    return req(db.transaction('diag_log').objectStore('diag_log').count());
+  }
+  async function diagClear() {
+    const db = await open();
+    const t = db.transaction('diag_log', 'readwrite');
+    t.objectStore('diag_log').clear();
+    await done(t);
+    diagBytes = 0;
+  }
+
   // ---------------------------------------------------------------- T3.6 欄位完整度統計（只回傳筆數）
   // p: { since（firstSeenAt 下限，ms）, videoId?, sources?（預設只算收錄來源 live／popout／replay） }
   // 解析若出錯會「靜默缺欄位」（不報錯），以此檢查各類型的欄位是否有值（審查十追加四 B、追加五 B）
@@ -1312,6 +1384,7 @@
     saveMessages, savePinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
+    diagAppend, diagAll, diagCount, diagClear,
     getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,

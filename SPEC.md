@@ -214,6 +214,11 @@ yt-chat-archiver-saver/
 - 超過 2 分鐘沒有寫入且未結束的 session，在 SW 啟動、`CAPTURE_START`、`LIST_STREAMS` 時以 `lastWriteAt`（無則 `startedAt`）補上 `endedAt`。
 - （v33，`docs/review-2026-11-16.md` 追加三 B-1、F-1）**重新載入不算新的一次收錄**：`CAPTURE_START` 時，同一 `videoId`、同一 `source`、同一 `versionId` 的上一筆在 60 秒內結束（或 60 秒內仍有寫入）→ 沿用同一筆（清除 `endedAt`、`reloads` +1、回傳 `resumed: true`），不增加 `liveCaptureCount` 等（`CAPTURE_MERGE_GAP_MS`）。**空的收錄紀錄不計入**：結束時（`CAPTURE_END` 或逾時補結束）`added + merged === 0` 的 session 直接刪除，並扣回場次的收錄次數。F-19 自動接手改以每次 `CAPTURE_START` 換新的 `gen` 判斷「期間是否重新開始收錄」（重新整理會沿用同一個 session id）。
 
+**diag_log**（v35，`DB_VERSION` 3；keyPath `seq` 自動遞增；索引 `ts`）— F-20 診斷記錄，不屬於聊天存檔
+```js
+{ seq, ts, probe: 'P1'…'P8', kind, ctx: { env, source?, videoId?, tab? }, data /* 已消毒：只有筆數、標籤、屬性名稱、時間 */, sz /* 估計大小 */ }
+```
+
 **channels**（keyPath `handleOrId`）
 ```js
 { handleOrId, displayName, avatar, fetchedAt /* 7 天過期 */ }
@@ -251,6 +256,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | `SET_VERSION_LABEL` | viewer → bg | `{ videoId, versionId, label }`（F-18） |
 | `LINK_VIDEO` / `UNLINK_VIDEO` | viewer → bg | `{ videoId, linkedVideoId, label?, offsetShift? }`（F-18 第 6 點；同一 `linkedVideoId` 再次 LINK 為更新） |
 | `FETCH_STREAM_META` | bg 內部 | `{ videoId }`（F-19：彈出視窗缺場次資訊時抓 watch 頁 meta，T3 實作） |
+| `DIAG_LOG` | content → bg | `{ records: [{ probe, kind, ctx, data }] }` → `{ accepted, active }`（v35，F-20；記錄中才送） |
+| `DIAG_CONTROL` | 擴充功能頁面 → bg | `{ op: 'start'|'stop'|'status'|'export'|'summary'|'clear', opts? }`（v35，F-20；管理操作） |
 
 ### 4.3 frame 間訊息（`window.postMessage`）
 
@@ -466,6 +473,29 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   3. **關掉彈出視窗後自動接手**（預設開啟，可在設定關閉：`popoutHandoff`，`chrome.storage.sync`）：background 收到 `CAPTURE_END{ source: 'popout' }` 後通知同一 `videoId` 的主分頁；主分頁的嵌入式聊天室處於收起或移除狀態 → 自動展開聊天室恢復收錄，並依 F-09 預設開啟優化面板（劇院模式依 6.2 退讓，僅收錄）。（v29：T3 實作「展開聊天室（按影片下方卡片的原生按鈕）、恢復收錄」；「預設開啟優化面板」隨 F-09 在 T5 實作。彈出視窗在 `pagehide` 時送 `CAPTURE_END`；Chrome 關閉視窗時這則訊息可能送不到。）（v30，`docs/review-2026-11-15-6.md` 3.2）**關閉偵測以 `chrome.tabs.onRemoved` 為主**：background 收到 `source: 'popout'` 的 `CAPTURE_START` 時，把 `sender.tab.id` → `{ videoId, captureSessionId, notified }` 記在 `chrome.storage.session`（`popoutTabs`，SW 重啟可接續；瀏覽器重開時清除）；該分頁關閉 → 補上 session 的 `endedAt` 並通知同一 `videoId` 的 watch 分頁（`tabs.query` 後比對 `v` 參數）。`pagehide` 的 `CAPTURE_END` 為輔助：等 3 秒（`POPOUT_RELOAD_GRACE_MS`），期間同一分頁重新開始收錄（重新整理）就不接手；同一 session 只通知一次。使用既有的 `tabs` 權限。
   4. **彈出視窗開啟時主分頁的行為**：待 T3 實機確認（嵌入式聊天室是否仍存在、是否仍收到訊息；只記錄結構與屬性）。仍存在 → 兩邊同時收錄、去重即可；被移除或改成提示畫面 → 主分頁不收錄，由彈出視窗負責，適用第 3 點。
 - AC：(a) 只開彈出視窗觀看直播 → 有存檔、DOM 節點 ≤ 50；(b) 主分頁與彈出視窗同開 → 不重複；(c) 主播降落後，彈出視窗持續收錄原直播的結束後聊天（`phase: post`），主分頁收錄新直播，兩份存檔各自正確；(d) 彈出視窗中 F-12 有切到「即時聊天室」；(e) 直播中開啟彈出視窗 → 關閉 → 再開啟 → 再關閉，重複 3 次，存檔無重複訊息；(f) 每次切換後回溯訊息補上切換期間的訊息（切換前後各 1 分鐘訊息數與重播比對，或時間連續性檢查）；(g) 關掉彈出視窗後主分頁 5 秒內自動恢復收錄；(h) 後台覆蓋範圍條正確顯示各來源與空檔。
+
+**F-20 診斷記錄模式**（v35 新增，`docs/review-2026-11-16.md` 追加六 B，使用者同意；正式版保留，預設關閉）
+- **目的**：使用者只決定開始與結束時間，套件在期間自動執行內建的「診斷探針」並寫入資料庫；結束後一鍵匯出單一檔案交給 Claude Code 分析，取代每輪手動切 frame、貼指令、截圖。剩下的事件型測試（直播結束、重播 id 比對、禮物結構、延後開播）以此收集。
+- **限制**：MV3 禁止執行動態程式碼（也不應該），**不能執行任意貼上的指令**；目前手動執行的每段診斷改寫為內建探針，新增探針 = 更新程式碼。抓不到 YouTube 自己的 Console 訊息（如 `[Violation]`），只收本套件的輸出與錯誤。
+- **控制**：T4／T7 之前以 Service Worker Console（`YTCAS_BG.diag.start({ probes, hours, startAt, endAt })`、`.stop()`、`.status()`、`.download()`、`.summary()`、`.clear()`）與擴充功能內頁面 `tools/diag.html`（不在 YouTube 頁面上）控制；T7 移到後台「設定 → 進階 → 診斷記錄」，popup 顯示狀態。runtime 訊息 `DIAG_CONTROL`（只接受擴充功能頁面）、`DIAG_LOG`（content script → bg，記錄中才送，bg 再檢查一次）。
+- **時段**：(a) 立即開始、手動停止；(b) 指定開始與結束時間（`chrome.alarms`）。**一律有最長時限**：預設 6 小時，可設 1～24 小時；Service Worker 被喚醒時也會檢查時限。開始新的一段記錄時清除上一段（請先匯出）。
+- **指示**：記錄中套件圖示顯示紅色「REC」標記；**不在 YouTube 頁面或影片上顯示任何東西**（10.1 原則 6）。
+- **探針**（可勾選，預設全部）：
+  | 探針 | 內容 | 時機 |
+  |---|---|---|
+  | P1 | 收錄統計（各聊天室） | 每分鐘 |
+  | P2 | `#items` 節點分類（標籤 × 已存／未存） | 每分鐘 |
+  | P3 | 場次資訊（`startDate`／`endDate`／`isLiveBroadcast`）＋播放器長度 | 變化時＋每 5 分鐘 |
+  | P4 | 聊天室 iframe 狀態、`ytd-watch-flexy`／聊天室屬性變化 | 事件 |
+  | P5 | background：`fieldStats`、有分頁開著的場次的 phase 分布與 `capture_sessions` 摘要 | 每 10 分鐘 |
+  | P6 | 彈出視窗開啟／關閉／接手 | 事件 |
+  | P7 | 結構探針：遇到未知元件、禮物元件、降落橫幅、直播結束時，自動記錄該元件（或聊天室）的結構（同附錄 C／E：標籤、id、屬性名稱、`img` 網域、有無文字），同一標籤每場最多 3 次 | 事件 |
+  | P8 | 本套件的 `warn`／`error` 與未捕捉的例外（含堆疊，去除網址參數與 handle） | 事件 |
+- **隱私**：只記筆數、元件標籤、id、屬性名稱、時間、`videoId`、圖片**網域**。**不記**訊息文字、使用者名稱或 handle、頻道名稱、影片標題、頭像網址。content script 端只組這些欄位；background 寫入前再消毒一次（字串只允許標籤／id／時間類字元，含 `@` 或中日韓文字的字串一律換成 `[removed]`，網址只留網域）。
+- **容量**：獨立資料表 `diag_log`（4.1），環狀：最多 5 萬筆或 20 MB，超過丟最舊；停止 30 天後自動清除（診斷資料不屬於聊天存檔，可自動刪除）。
+- **匯出**：單一 `ytcas-diag-YYYYMMDD-HHmm.json`（`{ format: 'ytcas-diag', formatVersion: 1, version, chrome, exportedAt, period, probes, records[] }`），下載到「下載\YT聊天室診斷\」（`downloads`）；也提供「複製摘要」（前 200 行人類可讀文字）。使用者把檔案放進 `docs/diag/`。
+- **分析工具**：`tools/diag-report.js`（Node，無相依）讀取匯出檔，產生 Markdown 摘要（時間軸、各探針統計、異常列表），作為每輪報告的附件。
+- AC：(1) 設定 10 分鐘時段後離開，期間開直播、切換分頁、開關彈出視窗；結束後匯出檔包含 P1～P6 紀錄，時間連續、無訊息內容。(2) 遇到未知元件時 P7 自動留下結構紀錄（模擬頁注入未知元件驗證）。(3) 超過最長時限自動停止，停止後不再寫入。(4) 匯出檔以 `tools/diag-report.js` 產生摘要，數字與 Console 中的收錄統計一致。
 
 ### B. 檢視器 UI（`viewer.html` / `viewer.js`）
 

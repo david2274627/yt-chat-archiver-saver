@@ -236,6 +236,201 @@ async function recomputeStream(videoId, opts) {
   return r;
 }
 
+// ---------------------------------------------------------------- F-20 診斷記錄模式（T3.7，審查十追加六 B）
+// 使用者只決定開始與結束時間；期間由內建探針（P1～P8）自動記錄到 diag_log，結束後匯出單一 JSON。
+// 只記筆數、元件標籤、id、屬性名稱、時間、videoId、圖片網域；不記訊息文字、使用者名稱／handle、頻道名稱、標題、頭像網址。
+// 不執行任何動態程式碼（MV3 禁止，也不應該）：新增探針 = 更新程式碼。
+const D = C.DIAG;
+let diagState = { active: false };
+let diagLoaded = null;
+function loadDiag() {
+  if (!diagLoaded) {
+    diagLoaded = chrome.storage.local.get(D.STATE_KEY).then((o) => { diagState = o[D.STATE_KEY] || { active: false }; return diagState; })
+      .catch(() => diagState);
+  }
+  return diagLoaded;
+}
+chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch[D.STATE_KEY]) diagState = ch[D.STATE_KEY].newValue || { active: false }; });
+const saveDiag = (s) => { diagState = s; return chrome.storage.local.set({ [D.STATE_KEY]: s }); };
+const diagOn = (probe) => diagState.active && Array.isArray(diagState.probes) && diagState.probes.includes(probe);
+
+// 消毒（background 端的最後防線；content script 端本來就只送筆數與標籤）
+const SAFE_STR = /^[A-Za-z0-9_\-#.:/ ,=+()[\]|]{0,160}$/; // 不含 @（handle）、不含中日韓文字（訊息內容）
+function scrubText(s) {
+  return String(s).replace(/https?:\/\/[^\s)'"]+/g, (u) => { try { return new URL(u).host + new URL(u).pathname.replace(/\/[^/]*$/, '/…'); } catch (_) { return '(url)'; } })
+    .replace(/@[^\s]+/g, '@…').slice(0, 800);
+}
+function sanitizeDiag(v, key, depth) {
+  depth = depth || 0;
+  if (v === null || typeof v === 'boolean') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'string') {
+    if (key === 'message' || key === 'stack') return scrubText(v); // P8：錯誤訊息與堆疊（去除網址參數與 handle）
+    if (/^https?:\/\//.test(v)) { try { return new URL(v).host; } catch (_) { return '(url)'; } }
+    return SAFE_STR.test(v) ? v : '[removed]';
+  }
+  if (depth > 6) return '[depth]';
+  if (Array.isArray(v)) return v.slice(0, 200).map((x) => sanitizeDiag(x, key, depth + 1));
+  if (typeof v === 'object') {
+    const o = {};
+    let n = 0;
+    for (const [k, x] of Object.entries(v)) {
+      if (n++ >= 100) break;
+      if (k.includes('@') || !SAFE_STR.test(k)) continue;
+      o[k] = sanitizeDiag(x, k, depth + 1);
+    }
+    return o;
+  }
+  return null;
+}
+
+let diagBuf = [];
+let diagTimer = 0;
+function diagLog(probe, kind, data, ctx) {
+  if (!diagOn(probe)) return;
+  diagBuf.push({ ts: Date.now(), probe, kind: String(kind).slice(0, 60), ctx: sanitizeDiag(ctx || { env: 'bg' }), data: sanitizeDiag(data || {}) });
+  if (diagBuf.length >= D.FLUSH_MAX) flushDiag();
+  else if (!diagTimer) diagTimer = setTimeout(flushDiag, 1000);
+}
+function flushDiag() {
+  clearTimeout(diagTimer); diagTimer = 0;
+  const list = diagBuf.splice(0);
+  if (!list.length) return Promise.resolve();
+  return DB.diagAppend(list, { maxRecords: D.MAX_RECORDS, maxBytes: D.MAX_BYTES }).catch((e) => console.info('[ytcas] 診斷記錄寫入失敗', String(e && e.message)));
+}
+
+function setRecBadge(on) {
+  try {
+    chrome.action.setBadgeText({ text: on ? 'REC' : '' });
+    if (on) chrome.action.setBadgeBackgroundColor({ color: '#c9362f' });
+    chrome.action.setTitle({ title: on ? 'YT 加強版聊天室（診斷記錄中）' : 'YT 加強版聊天室' });
+  } catch (_) { /* ignore */ }
+}
+
+// opts: { probes?: ['P1',…]（預設全部）, hours?（預設 6，1～24）, startAt?（ms，未來時間 = 排程開始）, endAt?（ms） }
+async function diagStart(opts) {
+  opts = opts || {};
+  const now = Date.now();
+  const probes = Array.isArray(opts.probes) && opts.probes.length ? opts.probes.filter((p) => D.PROBES.includes(p)) : D.PROBES.slice();
+  const hours = Math.min(D.MAX_HOURS, Math.max(D.MIN_HOURS, Number(opts.hours) || D.DEFAULT_HOURS));
+  const startAt = typeof opts.startAt === 'number' && opts.startAt > now ? opts.startAt : now;
+  const maxEnd = startAt + hours * 3600e3;
+  const endsAt = typeof opts.endAt === 'number' && opts.endAt > startAt ? Math.min(opts.endAt, maxEnd) : maxEnd;
+  const scheduled = startAt > now;
+  const st = { active: !scheduled, scheduled, startAt, endsAt, probes, hours, createdAt: now, stoppedAt: null, reason: null,
+    version: chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version };
+  if (!scheduled) await DB.diagClear(); // 新的一段記錄：清掉上一段（匯出後才開始新的）
+  await saveDiag(st);
+  try {
+    if (scheduled) chrome.alarms.create('ytcas-diag-start', { when: startAt });
+    chrome.alarms.create('ytcas-diag-stop', { when: endsAt });
+    chrome.alarms.create('ytcas-diag-p5', { periodInMinutes: D.P5_MINUTES });
+  } catch (_) { /* ignore */ }
+  setRecBadge(st.active);
+  if (st.active) { diagLog('P1', 'diag-start', { probes, hours, endsAt }); runP5().catch(() => {}); }
+  return diagStatus();
+}
+async function diagStop(reason) {
+  await loadDiag();
+  if (!diagState.active && !diagState.scheduled) return diagStatus();
+  if (diagState.active) diagLog(diagState.probes[0] || 'P1', 'diag-stop', { reason: reason || 'manual' });
+  await flushDiag();
+  await saveDiag(Object.assign({}, diagState, { active: false, scheduled: false, stoppedAt: Date.now(), reason: reason || 'manual' }));
+  try { for (const n of ['ytcas-diag-start', 'ytcas-diag-stop', 'ytcas-diag-p5']) chrome.alarms.clear(n); } catch (_) { /* ignore */ }
+  setRecBadge(false);
+  return diagStatus();
+}
+// 被喚醒或排程觸發時檢查：排程開始、超過時限自動停止、停止 30 天後自動清除
+async function diagCheck(now) {
+  now = now || Date.now();
+  await loadDiag();
+  if (diagState.scheduled && now >= diagState.startAt) {
+    await DB.diagClear();
+    await saveDiag(Object.assign({}, diagState, { active: true, scheduled: false }));
+    setRecBadge(true);
+    diagLog('P1', 'diag-start', { probes: diagState.probes, scheduled: true, endsAt: diagState.endsAt });
+  }
+  if (diagState.active && now >= diagState.endsAt) await diagStop('limit');
+  else setRecBadge(!!diagState.active);
+  if (!diagState.active && !diagState.scheduled && diagState.stoppedAt && now - diagState.stoppedAt > D.RETAIN_DAYS * 86400e3 && !diagState.cleared) {
+    await DB.diagClear();
+    await saveDiag(Object.assign({}, diagState, { cleared: true }));
+  }
+}
+async function diagStatus() {
+  await loadDiag();
+  return Object.assign({}, diagState, { records: await DB.diagCount() });
+}
+
+// P5（每 10 分鐘）：欄位統計、有分頁開著的場次的 phase 分布與收錄紀錄摘要（只有筆數）
+async function runP5() {
+  if (!diagOn('P5')) return;
+  diagLog('P5', 'fieldStats', await DB.fieldStats({ since: diagState.startAt || 0 }));
+  for (const videoId of await openVideoIds()) {
+    const s = await DB.getStream(videoId);
+    if (!s) continue;
+    const fs = await DB.fieldStats({ videoId, since: 0 });
+    const types = {}, phases = { pre: 0, live: 0, post: 0 };
+    for (const [t, x] of Object.entries(fs)) { types[t] = x.n; for (const p of Object.keys(phases)) phases[p] += x[p] || 0; }
+    const { sessions } = await DB.listCaptureSessions(videoId);
+    const bySource = {};
+    for (const x of sessions) bySource[x.source] = (bySource[x.source] || 0) + 1;
+    diagLog('P5', 'stream', { types, phases, sessions: sessions.length, bySource, open: sessions.filter((x) => x.endedAt == null).length,
+      reloads: sessions.reduce((a, x) => a + (x.reloads || 0), 0), times: DB.pickStreamTimes(s) }, { env: 'bg', videoId });
+  }
+}
+
+async function diagExport() {
+  await flushDiag();
+  const st = await diagStatus();
+  const ua = (self.navigator && navigator.userAgent) || '';
+  return { format: 'ytcas-diag', formatVersion: 1, app: C.EXPORT_APP, version: chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version,
+    chrome: (/Chrome\/([\d.]+)/.exec(ua) || [])[1] || null, exportedAt: Date.now(),
+    period: { startAt: st.startAt || null, endsAt: st.endsAt || null, stoppedAt: st.stoppedAt || null, reason: st.reason || null, active: !!st.active },
+    probes: st.probes || [], records: await DB.diagAll() };
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+function diagFilename(t) {
+  const d = new Date(t);
+  return D.DOWNLOAD_DIR + '/ytcas-diag-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.json';
+}
+// SW Console 用：直接下載（data URL；擴充功能頁面 tools/diag.html 以 Blob 下載）
+async function diagDownload() {
+  const data = await diagExport();
+  const json = JSON.stringify(data);
+  const bytes = new TextEncoder().encode(json);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  const id = await chrome.downloads.download({ url: 'data:application/json;base64,' + btoa(bin), filename: diagFilename(data.exportedAt), saveAs: false, conflictAction: 'uniquify' });
+  return { downloadId: id, filename: diagFilename(data.exportedAt), records: data.records.length, bytes: bytes.length };
+}
+// 人類可讀摘要（前 maxLines 行）
+async function diagSummary(maxLines) {
+  const data = await diagExport();
+  const t = (ms) => { const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+  const lines = ['ytcas 診斷記錄 ' + data.version + '／Chrome ' + data.chrome + '／' + data.records.length + ' 筆／探針 ' + data.probes.join(',')];
+  for (const r of data.records) {
+    if (lines.length >= (maxLines || 200)) break;
+    const c = r.ctx || {};
+    lines.push(t(r.ts) + ' ' + r.probe + ' ' + r.kind + ' [' + [c.env, c.source, c.videoId].filter(Boolean).join(' ') + '] ' + JSON.stringify(r.data).slice(0, 300));
+  }
+  return lines.join('\n');
+}
+
+// P8（background）：本套件的 warn／error 與未捕捉的例外
+for (const lv of ['warn', 'error']) {
+  const orig = console[lv].bind(console);
+  console[lv] = (...a) => {
+    orig(...a);
+    try { if (diagOn('P8')) diagLog('P8', lv, { message: a.map((x) => (x && x.stack) || (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ') }); } catch (_) { /* ignore */ }
+  };
+}
+self.addEventListener('error', (e) => { if (diagOn('P8')) diagLog('P8', 'exception', { message: String(e.message || ''), stack: String((e.error && e.error.stack) || '') }); });
+self.addEventListener('unhandledrejection', (e) => { if (diagOn('P8')) diagLog('P8', 'rejection', { message: String((e.reason && e.reason.message) || e.reason || ''), stack: String((e.reason && e.reason.stack) || '') }); });
+
+const diag = { start: diagStart, stop: diagStop, status: diagStatus, export: diagExport, download: diagDownload, summary: diagSummary,
+  clear: async () => { await DB.diagClear(); return diagStatus(); }, check: diagCheck, runP5, log: diagLog, flush: flushDiag, sanitize: sanitizeDiag };
+
 // SW Console 用（RECLASSIFY_SYSTEM 只接受擴充功能頁面）：await YTCAS_BG.reclassifySystem()
 async function reclassifySystem(opts) {
   return handlers[RT.RECLASSIFY_SYSTEM](opts || {});
@@ -245,7 +440,7 @@ async function reclassifySystem(opts) {
 // 只有擴充功能頁面（viewer、popup）可以執行破壞性或管理操作；content script（https 頁面）不行
 const isExtensionPage = (sender) => !!sender && sender.id === chrome.runtime.id && !String(sender.url || '').startsWith('https://');
 const ADMIN = new Set([RT.DELETE_STREAM, RT.DELETE_STREAMS, RT.RESET_STREAM, RT.RECLASSIFY_SYSTEM, RT.MIGRATE_LEGACY,
-  RT.IMPORT_DATA, RT.EXPORT_STREAM, RT.SET_VERSION_LABEL, RT.LINK_VIDEO, RT.UNLINK_VIDEO, RT.GET_STORAGE_USAGE]);
+  RT.IMPORT_DATA, RT.EXPORT_STREAM, RT.SET_VERSION_LABEL, RT.LINK_VIDEO, RT.UNLINK_VIDEO, RT.GET_STORAGE_USAGE, RT.DIAG_CONTROL]);
 
 function vid(msg) {
   if (typeof msg.videoId !== 'string' || !/^[\w-]{6,20}$/.test(msg.videoId)) throw new Error('invalid videoId');
@@ -411,10 +606,11 @@ async function readPopout() {
 }
 const writePopout = (m) => chrome.storage.session.set({ [C.POPOUT_TABS_KEY]: m });
 
-async function handoffToMainTab(videoId) {
+async function handoffToMainTab(videoId, via) {
   const st = await loadSettings();
-  if (st.popoutHandoff === false) return false;
+  if (st.popoutHandoff === false) { diagLog('P6', 'handoff-disabled', { via: via || null }, { env: 'bg', videoId }); return false; }
   await notifyTabs(videoId, { type: RT.CAPTURE_END, videoId, source: 'popout' });
+  diagLog('P6', 'handoff', { via: via || null }, { env: 'bg', videoId });
   return true;
 }
 
@@ -440,7 +636,8 @@ async function onPopoutTabRemoved(tabId) {
   });
   if (!e) return;
   await DB.captureEnd({ captureSessionId: e.sid }); // 已結束的 session 不會被改寫
-  if (!e.notified) await handoffToMainTab(e.videoId);
+  diagLog('P6', 'popout-tab-removed', { notified: !!e.notified }, { env: 'bg', videoId: e.videoId, tab: tabId });
+  if (!e.notified) await handoffToMainTab(e.videoId, 'tab-removed');
 }
 
 const handlers = {
@@ -465,6 +662,7 @@ const handlers = {
       await withPopout(async () => {
         const m = await readPopout();
         m[tabId] = { videoId, sid: r.captureSessionId, gen: Date.now() + '-' + Math.random().toString(36).slice(2, 8), notified: false };
+        diagLog('P6', 'popout-start', { resumed: !!r.resumed }, { env: 'bg', videoId, tab: tabId });
         await writePopout(m);
       });
     }
@@ -476,13 +674,14 @@ const handlers = {
     // F-19：彈出視窗 pagehide（輔助訊號）→ 等一下再通知主分頁；期間同一分頁重新開始收錄（重新整理）就不接手
     if (s && s.source === 'popout') {
       const tabId = sender && sender.tab && sender.tab.id;
+      diagLog('P6', 'popout-end', { empty: !!s.empty }, { env: 'bg', videoId: s.videoId, tab: tabId });
       const gen = typeof tabId === 'number' && tabId >= 0 ? (((await readPopout())[tabId]) || {}).gen : undefined;
       setTimeout(async () => {
         try {
           if (typeof tabId === 'number' && tabId >= 0) {
-            if (await markNotified(tabId, s.id, gen)) await handoffToMainTab(s.videoId);
+            if (await markNotified(tabId, s.id, gen)) await handoffToMainTab(s.videoId, 'pagehide');
           } else {
-            await handoffToMainTab(s.videoId); // 沒有分頁資訊：直接通知
+            await handoffToMainTab(s.videoId, 'pagehide-notab'); // 沒有分頁資訊：直接通知
           }
         } catch (e) { console.warn('[ytcas] 彈出視窗接手失敗', String(e && e.message)); }
       }, C.POPOUT_RELOAD_GRACE_MS);
@@ -582,6 +781,31 @@ const handlers = {
   async [RT.LINK_VIDEO](msg) {
     return { stream: await DB.linkVideo({ videoId: vid(msg), linkedVideoId: msg.linkedVideoId, label: msg.label, offsetShift: msg.offsetShift }) };
   },
+  // F-20：content script 的探針紀錄（記錄中才會送；這裡再檢查一次並消毒）
+  async [RT.DIAG_LOG](msg, sender) {
+    await loadDiag();
+    if (!diagState.active) return { accepted: 0, active: false };
+    const tab = sender && sender.tab ? sender.tab.id : null;
+    let n = 0;
+    for (const r of Array.isArray(msg.records) ? msg.records.slice(0, 500) : []) {
+      if (!r || !D.PROBES.includes(r.probe) || !diagOn(r.probe)) continue;
+      diagLog(r.probe, r.kind, r.data, Object.assign({}, r.ctx || {}, { tab }));
+      n++;
+    }
+    return { accepted: n, active: true };
+  },
+  // F-20：擴充功能頁面（tools/diag.html、之後的後台）控制
+  async [RT.DIAG_CONTROL](msg) {
+    const op = msg.op;
+    if (op === 'start') return { status: await diagStart(msg.opts || {}) };
+    if (op === 'stop') return { status: await diagStop('manual') };
+    if (op === 'status') return { status: await diagStatus() };
+    if (op === 'export') return { data: await diagExport() };
+    if (op === 'summary') return { text: await diagSummary(msg.maxLines || 200) };
+    if (op === 'clear') { await DB.diagClear(); return { status: await diagStatus() }; }
+    throw new Error('unknown op');
+  },
+
   async [RT.UNLINK_VIDEO](msg) {
     return { stream: await DB.unlinkVideo({ videoId: vid(msg), linkedVideoId: msg.linkedVideoId }) };
   },
@@ -616,11 +840,17 @@ function onWake() {
   DB.closeStaleSessions().catch((e) => console.warn('[ytcas] closeStaleSessions', e));
   kickQueue(); // SW 被喚醒時接續頻道解析佇列
   ensureMetaAlarm();
+  diagCheck().catch(() => {}); // F-20：排程開始、超過時限停止、30 天後清除、REC 標記
 }
 
 // chrome.alarms 分派（T3.7）：各功能以 alarmHandlers[name] 登記
 const alarmHandlers = {
   [META_ALARM]: () => pollOpenStreams(),
+  'ytcas-diag': async (a) => {
+    await diagCheck();
+    if (a.name === 'ytcas-diag-p5') await runP5();
+    await flushDiag();
+  },
 };
 try {
   chrome.alarms.onAlarm.addListener((a) => {
@@ -646,4 +876,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

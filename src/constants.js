@@ -34,7 +34,7 @@
 
     // IndexedDB
     DB_NAME: 'ytcas-v3',
-    DB_VERSION: 2, // v27/v28：capture_sessions、fp／aliasIds 索引、offsets、versions（SPEC 4.1）
+    DB_VERSION: 3, // v27/v28：capture_sessions、fp／aliasIds 索引、offsets、versions；v35：diag_log（F-20）（SPEC 4.1）
     // v3 匯出格式（F-11；v28 升為 2：versions／offsets／linkedVideos／captureSessions）
     EXPORT_FORMAT_VERSION: 2,
     EXPORT_APP: 'ytcas',
@@ -105,6 +105,9 @@
       SET_VERSION_LABEL: 'SET_VERSION_LABEL',
       LINK_VIDEO: 'LINK_VIDEO',
       UNLINK_VIDEO: 'UNLINK_VIDEO',
+      // v35 F-20：DIAG_LOG（content → bg，記錄中才送）、DIAG_CONTROL（擴充功能頁面 → bg：start／stop／status／export／summary／clear）
+      DIAG_LOG: 'DIAG_LOG',
+      DIAG_CONTROL: 'DIAG_CONTROL',
     }),
 
     // capture_sessions.source（v28 加 popout，F-19）
@@ -139,6 +142,18 @@
     META_POLL_PENDING_MS: 60 * 1000,
     META_POLL_PENDING_MAX_MS: 3 * 60 * 60 * 1000,
     META_POLL_LIVE_MS: 5 * 60 * 1000,
+    // F-20 診斷記錄模式（T3.7，審查十追加六 B）
+    DIAG: Object.freeze({
+      STATE_KEY: 'diagState',                       // chrome.storage.local：{ active, scheduled, startAt, endsAt, probes, … }
+      PROBES: Object.freeze(['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8']),
+      DEFAULT_HOURS: 6, MIN_HOURS: 1, MAX_HOURS: 24, // 一律有最長時限
+      MAX_RECORDS: 50000, MAX_BYTES: 20 * 1024 * 1024,
+      RETAIN_DAYS: 30,                               // 停止 30 天後自動清除
+      P5_MINUTES: 10,
+      P7_MAX_PER_TAG: 3,                             // 結構探針：同一標籤每場最多 3 次
+      FLUSH_MS: 5000, FLUSH_MAX: 50,                 // content script 端批次送出
+      DOWNLOAD_DIR: 'YT聊天室診斷',
+    }),
     // 播放器長度由無變有視為開播訊號：頁面載入後至少這麼久才採信（避免把「載入已在直播的頁面」誤認為剛開播）
     LIVE_SIGNAL_MIN_PAGE_AGE_MS: 60 * 1000,
 
