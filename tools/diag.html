@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>診斷記錄</title>
+<script src="../src/theme.js" data-auto></script>
+<link rel="stylesheet" href="../src/styles/tokens.css">
+<style>
+  body { background: var(--ytcas-bg); color: var(--ytcas-text); font: var(--ytcas-fs-md)/1.5 var(--ytcas-font); margin: 0; }
+  main { max-width: 720px; margin: 0 auto; padding: var(--ytcas-space-5) var(--ytcas-space-4); }
+  h1 { font-size: var(--ytcas-fs-xl); margin: 0 0 var(--ytcas-space-2); }
+  p.note { color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); margin: 0 0 var(--ytcas-space-4); }
+  section { background: var(--ytcas-surface); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md);
+    padding: var(--ytcas-space-4); margin-bottom: var(--ytcas-space-4); }
+  h2 { font-size: var(--ytcas-fs-lg); margin: 0 0 var(--ytcas-space-3); }
+  .probes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--ytcas-space-2); }
+  label { display: flex; gap: var(--ytcas-space-2); align-items: flex-start; font-size: var(--ytcas-fs-sm); }
+  .row { display: flex; flex-wrap: wrap; gap: var(--ytcas-space-3); align-items: center; margin-top: var(--ytcas-space-3); }
+  input[type="number"], input[type="datetime-local"] { background: var(--ytcas-surface-2); color: var(--ytcas-text);
+    border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-sm); padding: var(--ytcas-space-1) var(--ytcas-space-2); font: inherit; }
+  button { font: inherit; border-radius: var(--ytcas-radius-pill); padding: var(--ytcas-space-2) var(--ytcas-space-4); cursor: pointer;
+    border: 1px solid var(--ytcas-border); background: var(--ytcas-surface-2); color: var(--ytcas-text); }
+  button.primary { background: var(--ytcas-accent); color: var(--ytcas-on-accent); border-color: transparent; }
+  button.danger { background: var(--ytcas-danger); color: var(--ytcas-on-danger); border-color: transparent; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--ytcas-focus-ring); outline-offset: 2px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #status { font-size: var(--ytcas-fs-sm); white-space: pre-wrap; margin: 0; }
+  .rec { color: var(--ytcas-danger); font-weight: 600; }
+  #msg { min-height: 1.5em; color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
+</style>
+</head>
+<body>
+<main>
+  <h1>診斷記錄（F-20）</h1>
+  <p class="note">記錄期間，套件會自動執行內建的診斷探針並存在本機。只記筆數、元件標籤、屬性名稱、時間與 videoId；不記訊息文字、使用者名稱、頻道名稱、標題或頭像網址。記錄中套件圖示會顯示紅色「REC」，YouTube 頁面上不會出現任何東西。開始新的一段記錄會清除上一段，請先匯出。</p>
+
+  <section aria-labelledby="h-state">
+    <h2 id="h-state">目前狀態</h2>
+    <p id="status">讀取中…</p>
+  </section>
+
+  <section aria-labelledby="h-probes">
+    <h2 id="h-probes">探針</h2>
+    <div class="probes" id="probes"></div>
+  </section>
+
+  <section aria-labelledby="h-time">
+    <h2 id="h-time">時段</h2>
+    <div class="row">
+      <label>最長時限（小時，1～24）<input type="number" id="hours" min="1" max="24" value="6"></label>
+    </div>
+    <div class="row">
+      <label>指定開始（留空 = 立即）<input type="datetime-local" id="startAt"></label>
+      <label>指定結束（留空 = 依時限）<input type="datetime-local" id="endAt"></label>
+    </div>
+    <div class="row">
+      <button class="primary" id="btn-start">開始記錄</button>
+      <button class="danger" id="btn-stop">停止記錄</button>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-export">
+    <h2 id="h-export">匯出</h2>
+    <div class="row">
+      <button class="primary" id="btn-export">匯出診斷記錄（.json）</button>
+      <button id="btn-summary">複製摘要（前 200 行）</button>
+      <button id="btn-clear">清除記錄</button>
+    </div>
+    <p class="note">檔案下載到「下載\YT聊天室診斷\」。請把檔案放進 repo 的 <code>docs/diag/</code>，交給 Claude Code 分析。</p>
+  </section>
+  <p id="msg" role="status" aria-live="polite"></p>
+</main>
+<script src="../src/constants.js"></script>
+<script src="diag.js"></script>
+</body>
+</html>
