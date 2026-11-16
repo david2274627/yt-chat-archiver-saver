@@ -17,6 +17,10 @@
   }
   const req = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function until(fn, ms, msg) {
+    const t0 = performance.now();
+    while (!(await fn())) { if (performance.now() - t0 > (ms || 3000)) throw new Error('逾時：' + (msg || '')); await sleep(20); }
+  }
   const CONTENT = { id: 'testextid', url: 'https://www.youtube.com/live_chat?v=x', tab: { id: 1 } };
   const PAGE = { id: 'testextid', url: 'chrome-extension://testextid/src/viewer.html' };
   function send(msg, sender) {
@@ -797,6 +801,25 @@
     eq((await BG.recomputeStream('vidNONE0001', { startedAt: act })).error, 'no-stream');
   });
 
+  test('T3.7 A-1：chrome.alarms 每 1 分鐘檢查「有分頁開著」的場次（沒有新訊息也能確認開播）；沒開分頁的場次不抓', async () => {
+    await resetAll();
+    const sch = baseMin() - 30 * MIN, act = sch + 7 * MIN;
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: sch, startPending: true, isLive: true }, messages: [] });
+    await DB.saveMessages({ videoId: V2, source: 'live', stream: { scheduledStartAt: sch, startPending: true, isLive: true }, messages: [] });
+    eq(!!chrome.alarms._list.get('ytcas-meta-poll'), true, '啟動時建立排程');
+    const urls = [];
+    self.fetch = async (u) => { urls.push(String(u)); return new Response('<meta itemprop="startDate" content="' + new Date(act).toISOString() + '">', { status: 200 }); };
+    chrome.tabs._tabs = [{ id: 3, url: 'https://www.youtube.com/watch?v=' + V }, { id: 4, url: 'https://www.youtube.com/live_chat?is_popout=1&v=vidCCCCCCC3' }];
+    try {
+      BG._metaPoll.clear();
+      M.fireAlarm('ytcas-meta-poll');
+      await until(async () => (await DB.getStream(V)).startedAt === act, 2000);
+      eq((await DB.getStream(V)).startedAtSource, 'meta-actual');
+      eq((await DB.getStream(V2)).startedAt, null, '沒有分頁開著 → 不抓');
+      eq(urls.filter((u) => u.includes('/watch?v=')).map((u) => u.split('v=')[1]), [V]);
+    } finally { self.fetch = self.__blockedFetch; chrome.tabs._tabs = []; }
+  });
+
   test('T3.6 等待開播確認的輪詢：每 60 秒一次、超過 3 小時停止', async () => {
     await resetAll();
     const sch = baseMin() - 30 * MIN;
@@ -812,10 +835,14 @@
       await BG.maybeRefetchMeta(V, times, 'popout');
       eq(n, 2, '彈出視窗也適用');
       eq((await DB.getStream(V)).startedAt, null, 'startDate 仍是預定時間 → 維持 startPending');
-      BG._metaPoll.get(V).firstAt -= 3 * 3600e3 + 1000;
+      // T3.7：3 小時上限以預定開播時間起算（SW 重新啟動也不會重新計算）
       BG._metaPoll.get(V).lastAt -= 61000;
-      await BG.maybeRefetchMeta(V, times, 'live');
-      eq(n, 2, '超過 3 小時停止');
+      await BG.maybeRefetchMeta(V, Object.assign({}, times, { scheduledStartAt: Date.now() - 3 * 3600e3 - MIN }), 'live');
+      eq(n, 2, '預定開播已超過 3 小時 → 停止');
+      // 不知道預定時間時，以第一次檢查起算
+      BG._metaPoll.get(V).firstAt -= 3 * 3600e3 + 1000;
+      await BG.maybeRefetchMeta(V, Object.assign({}, times, { scheduledStartAt: null }), 'live');
+      eq(n, 2, '第一次檢查起超過 3 小時 → 停止');
     } finally { self.fetch = self.__blockedFetch; }
   });
 

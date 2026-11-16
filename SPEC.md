@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v34**（前版：v33；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v35**（前版：v34；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -34,6 +34,7 @@
 - **v32 調整**（`docs/review-2026-11-16.md` 追加二，T3.4）：F-02 只處理 `#items` 的直接子節點（v31 以前會把訊息內部的徽章、圖示等存成 `system`）；清除已寫入的垃圾紀錄 `cleanupJunkSystem`。
 - **v33 調整**（`docs/review-2026-11-16.md` 追加三，T3.5）：子元件標籤改為規則式判斷；`viewer-engagement` 同一場次以內容去重；沒有寫入任何訊息的收錄紀錄不計入；清除預覽列出保留的標籤。
 - **v34 調整**（`docs/review-2026-11-16.md` 追加五，T3.6）：**F-13 禮物元件 `yt-gift-message-view-model`**；清除規則白名單優先、只清 T3.4 部署前的子元件紀錄；欄位完整度統計；**開播／結束判斷改為 background 重新抓取 watch 頁 meta**，`startedAt` 依來源等級可被覆蓋（`startedAtSource`），`startPending` 期間不得以預定時間寫入；`recomputeStream` 維護函式。
+- **v35 調整**（`docs/review-2026-11-16.md` 追加六，T3.7）：開播／結束的 meta 重新抓取加上 `chrome.alarms` 每 1 分鐘排程；重新抓取先 `credentials: 'omit'`、取不到 meta 時以 `include` 重試一次；新增 **F-20 診斷記錄模式**；`alarms`、`downloads` 權限提前加入。
 
 ---
 
@@ -374,7 +375,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - 實機（2026-11-16）：`meta[itemprop="startDate"]` 在待機室是**預定時間**（整分），開播後**不重新整理不會更新**；重新取得頁面後為**實際開播時間**（有秒數）。`isLiveBroadcast` 在待機室也是 `true`，`ytd-watch-flexy` 屬性在開播前後沒有變化，兩者都不能當作開播訊號。
     - 判斷（`constants.js` 的 `deriveStartTimes`，擷取端與 background 共用）：有 `endDate` → 已結束（`startDate` 為實際）；`startDate` 未到 → 預定（`scheduledStartAt`）；已過且秒數不為 0、或與已知預定時間不同 → 實際開播（`meta-actual`）；否則 **`startPending`**：不寫入 `startedAt`，訊息標 `pre`、offset 留空。
     - **來源等級**（`START_SOURCE_RANK`）：`scheduled`（不得寫入 `startedAt`）< `signal` < `meta-actual` < `replay`；來源不明的既有值視同 `signal`。等級高者覆蓋低者（`streams.startedAtSource`），並觸發本節的事後重算：本套件直播收錄的推算 offset（`estimated`）**一併以新的零點重算**（v34 修正 T2 補充設計 #8「不改既有 offset」：startedAt 錯誤時推算值本身就是錯的）；遷移／匯入的 offset 只在為空時補上；重播精確值永不改寫。
-    - **主要方式：background 重新抓取 watch 頁 meta**（沿用 `FETCH_STREAM_META`，`credentials: 'omit'`）：`startPending` 期間每 60 秒一次（上限 3 小時，超過則停止並維持 `startPending`）；直播中每 5 分鐘一次，等 `endDate`。不用計時器，搭在收錄中持續送來的 `SAVE_MESSAGES` 上檢查是否到期（SW 休眠不影響）。`SAVE_MESSAGES` 的回應帶回目前的開播／結束時間與來源，擷取端依等級採用。
+    - **主要方式：background 重新抓取 watch 頁 meta**（沿用 `FETCH_STREAM_META`，`credentials: 'omit'`）：`startPending` 期間每 60 秒一次（上限 3 小時，超過則停止並維持 `startPending`）；直播中每 5 分鐘一次，等 `endDate`。不用計時器，搭在收錄中持續送來的 `SAVE_MESSAGES` 上檢查是否到期（SW 休眠不影響）。（v35，`docs/review-2026-11-16.md` 追加六 A-1）另以 **`chrome.alarms` 每 1 分鐘**檢查一次，只檢查目前有分頁開著的 `videoId`（watch 頁或彈出式聊天室），待機室與冷清時段沒有新訊息也能確認；3 小時上限改以預定開播時間起算（SW 重新啟動不會重新計算）。`SAVE_MESSAGES` 的回應帶回目前的開播／結束時間與來源，擷取端依等級採用。
     - **輔助方式：播放器狀態**：top frame 每 30 秒讀 `video.html5-main-video` 的長度，由無變有且頁面已載入 60 秒以上 → `liveSignalAt`（`signal`，誤差 ≤ 30 秒），只在 `startPending` 時採用，之後由 `meta-actual` 覆蓋。開播後不重新整理時長度是否會變為數值：待實機確認（「播放器長度出現（診斷）」）。
     - 既有錯誤資料以 `YTCAS_BG.recomputeStream(videoId, { startedAt })` 修正（預覽／執行兩段式）。
     - AC（追加五 E 第 4 點）：預定 19:15、實際 19:25 開播 → 19:15～19:25 的訊息為 `pre`；`startedAt` 為 19:25；開播後 offset 以 19:25 為零點。
@@ -658,7 +659,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | 隱私 | 資料只存本機；外部網路請求僅限：頻道頁抓取（`www.youtube.com`）、匯出 HTML 時抓取上列白名單網域的圖片轉 data URL（v21） |
 | 版面侵入 | 同 10.1 原則 6：所有套件 UI 只在聊天室區域內或 popup／後台分頁，影片與頁面主體上不得有任何套件元素；**每個 ⏸ 關卡都要檢查此項**（v23） |
 | 網頁可存取資源 | `web_accessible_resources` 只開放 `src/viewer.html`（PoC 期間另加 `src/poc/poc-panel.html`），並設 `use_dynamic_url: true`，降低網頁偵測擴充功能的可能；viewer 的 js/css 由擴充功能頁面自行載入，不需開放（v22） |
-| 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions：`https://www.youtube.com/*`，以及匯出內嵌圖片用的 `https://*.ggpht.com/*`、`https://*.ytimg.com/*`、`https://*.googleusercontent.com/*`、`https://fonts.gstatic.com/*`、`https://www.gstatic.com/*`（v21 經使用者同意）。（v28）F-17 自動備份需 `alarms`、`downloads`、`notifications`、`offscreen`（使用者 2026-11-15 要求此功能，視為同意；T7 加入 manifest，之前不加）。再新增權限需先徵得使用者同意 |
+| 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions：`https://www.youtube.com/*`，以及匯出內嵌圖片用的 `https://*.ggpht.com/*`、`https://*.ytimg.com/*`、`https://*.googleusercontent.com/*`、`https://fonts.gstatic.com/*`、`https://www.gstatic.com/*`（v21 經使用者同意）。（v28）F-17 自動備份需 `alarms`、`downloads`、`notifications`、`offscreen`（使用者 2026-11-15 要求此功能，視為同意；T7 加入 manifest，之前不加）。（v35）`alarms`、`downloads` 依 `docs/review-2026-11-16.md` 追加六 B.4 **提前於 T3.7 加入**（開播輪詢、F-20 診斷記錄的排程與匯出）；`notifications`、`offscreen` 仍於 T7 加入。再新增權限需先徵得使用者同意 |
 | 打包範圍 | （v28）`tools/`、`design/`、`docs/` 不被 manifest 引用，不進正式版；T9 移除 `src/poc/` |
 | 相容 | YouTube 改版時只需修改 `selectors.js`；所有選擇器找不到時須 graceful degrade（`warnOnce` 記一次，不拋錯）。（v31，`docs/review-2026-11-16.md`）**診斷輸出分級**：Chrome 會把 content script 的 `console.warn`／`console.error` 收進擴充功能「錯誤」頁，跨頁面累積、不會自動清除，因此 `console.warn` **只用於預期應該存在卻找不到、且會影響功能**的情況（該頁確定有聊天室，例如 `ytd-watch-flexy[live-chat-present-and-expanded]`、chat frame 已載入，但錨點或選擇器仍找不到）；沒有聊天室的頁面、可退回的情況、PoC 一般提示用 `console.info`；診斷細節與舊版相容錨點用 `console.debug`。`warnOnce(key, detail, level)` 的 `level` 預設 `info`。沒有聊天室的頁面不嘗試掛載錨點、不輸出任何東西 |
 

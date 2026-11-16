@@ -315,7 +315,9 @@ function metaPollDue(videoId, s, now) {
   const st = metaPoll.get(videoId) || { firstAt: now, lastAt: 0 };
   const pending = s.startedAt == null && (s.startPending || (s.scheduledStartAt != null && s.scheduledStartAt <= now));
   if (pending) {
-    if (now - st.firstAt > C.META_POLL_PENDING_MAX_MS) return null;
+    // 3 小時上限：以預定開播時間起算（SW 重新啟動也不會重新計算）；不知道預定時間時以第一次檢查起算
+    const since = s.scheduledStartAt != null ? s.scheduledStartAt : st.firstAt;
+    if (now - since > C.META_POLL_PENDING_MAX_MS) return null;
     return now - st.lastAt >= C.META_POLL_PENDING_MS ? { st, kind: 'pending' } : null;
   }
   if (s.startedAt != null && s.isLive) return now - st.lastAt >= C.META_POLL_LIVE_MS ? { st, kind: 'live' } : null;
@@ -343,6 +345,40 @@ async function maybeRefetchMeta(videoId, times, source) {
     metaPoll.delete(videoId);
   }
   return got;
+}
+
+// T3.7（審查十追加六 A-1）：除了搭在 SAVE_MESSAGES 上，另以 chrome.alarms 每 1 分鐘檢查一次，
+// 待機室或冷清時段（沒有新訊息）也能確認開播／結束。只檢查「目前有分頁開著」的 videoId（watch 頁或彈出式聊天室），
+// 是否到期與上限由 metaPollDue 判斷。
+const META_ALARM = 'ytcas-meta-poll';
+async function openVideoIds() {
+  const out = new Set();
+  try {
+    const tabs = await chrome.tabs.query({ url: ['https://www.youtube.com/watch*', 'https://www.youtube.com/live_chat*', 'https://www.youtube.com/live/*'] });
+    for (const t of tabs) {
+      try {
+        const u = new URL(t.url);
+        const v = u.searchParams.get('v') || (/^\/live\/([\w-]{6,20})/.exec(u.pathname) || [])[1];
+        if (v && /^[\w-]{6,20}$/.test(v)) out.add(v);
+      } catch (_) { /* ignore */ }
+    }
+  } catch (_) { /* ignore */ }
+  return out;
+}
+async function pollOpenStreams() {
+  const done = [];
+  for (const videoId of await openVideoIds()) {
+    const s = await DB.getStream(videoId);
+    if (!s) continue;
+    const r = await maybeRefetchMeta(videoId, DB.pickStreamTimes(s), 'live').catch(() => null);
+    if (r) done.push(videoId);
+  }
+  return done;
+}
+function ensureMetaAlarm() {
+  try {
+    chrome.alarms.get(META_ALARM, (a) => { if (!a) chrome.alarms.create(META_ALARM, { periodInMinutes: 1 }); });
+  } catch (_) { /* alarms 不可用 */ }
 }
 
 // ---------------------------------------------------------------- F-19 彈出視窗關閉 → 主分頁接手（v30）
@@ -564,7 +600,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 function onWake() {
   DB.closeStaleSessions().catch((e) => console.warn('[ytcas] closeStaleSessions', e));
   kickQueue(); // SW 被喚醒時接續頻道解析佇列
+  ensureMetaAlarm();
 }
+
+// chrome.alarms 分派（T3.7）：各功能以 alarmHandlers[name] 登記
+const alarmHandlers = {
+  [META_ALARM]: () => pollOpenStreams(),
+};
+try {
+  chrome.alarms.onAlarm.addListener((a) => {
+    const h = alarmHandlers[a.name] || (a.name.startsWith('ytcas-diag') && alarmHandlers['ytcas-diag']);
+    if (h) Promise.resolve().then(() => h(a)).catch((e) => console.info('[ytcas] 排程工作失敗', a.name, String(e && e.message)));
+  });
+} catch (_) { /* alarms 不可用（測試頁以外不會發生） */ }
 
 chrome.runtime.onInstalled.addListener((details) => {
   console.info('[ytcas] installed', details.reason, chrome.runtime.getManifest().version_name);
@@ -583,4 +631,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, _inflight: inflight };

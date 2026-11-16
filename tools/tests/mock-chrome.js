@@ -15,7 +15,7 @@
   if (self.YTCAS_DB) self.YTCAS_DB.configure({ dbName: TEST_DB, legacyDbName: TEST_LEGACY });
   self.importScripts = function () { /* 已由 <script> 載入 */ };
 
-  const listeners = { message: [], changed: [], installed: [], startup: [], removed: [] };
+  const listeners = { message: [], changed: [], installed: [], startup: [], removed: [], alarm: [] };
   function area(name) {
     let data = {};
     return {
@@ -68,6 +68,25 @@
       sendMessage: async (tabId, m) => { self.chrome.tabs.sent.push({ tabId, msg: JSON.parse(JSON.stringify(m)) }); },
       onRemoved: { addListener: (f) => listeners.removed.push(f) },
     },
+    // T3.7：alarms（只記錄，不會自動觸發；測試以 __mock.fireAlarm 觸發）、action（徽章）、downloads（只記錄）
+    alarms: {
+      _list: new Map(),
+      create: (name, info) => { self.chrome.alarms._list.set(name, Object.assign({ name }, info)); },
+      get: (name, cb) => { const a = self.chrome.alarms._list.get(name); if (cb) cb(a); return Promise.resolve(a); },
+      clear: (name, cb) => { const ok = self.chrome.alarms._list.delete(name); if (cb) cb(ok); return Promise.resolve(ok); },
+      onAlarm: { addListener: (f) => listeners.alarm.push(f) },
+    },
+    action: {
+      _badge: { text: '', color: null, title: '' },
+      setBadgeText: (o) => { self.chrome.action._badge.text = o.text; return Promise.resolve(); },
+      setBadgeBackgroundColor: (o) => { self.chrome.action._badge.color = o.color; return Promise.resolve(); },
+      setTitle: (o) => { self.chrome.action._badge.title = o.title; return Promise.resolve(); },
+    },
+    downloads: {
+      _list: [],
+      download: (o) => { self.chrome.downloads._list.push(o); return Promise.resolve(self.chrome.downloads._list.length); },
+    },
   };
-  self.__mock = { listeners, broadcasts, TEST_DB, TEST_LEGACY };
+  self.__mock = { listeners, broadcasts, TEST_DB, TEST_LEGACY,
+    fireAlarm: (name) => { for (const f of listeners.alarm) f({ name, scheduledTime: Date.now() }); } };
 })();
