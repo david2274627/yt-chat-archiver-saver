@@ -286,9 +286,12 @@ function sanitizeDiag(v, key, depth) {
 
 let diagBuf = [];
 let diagTimer = 0;
-function diagLog(probe, kind, data, ctx) {
+// ts：content script 端記錄的時間（批次送出會延遲數秒）；不合理（偏差超過 1 天）時以收到時間為準
+function diagLog(probe, kind, data, ctx, ts) {
   if (!diagOn(probe)) return;
-  diagBuf.push({ ts: Date.now(), probe, kind: String(kind).slice(0, 60), ctx: sanitizeDiag(ctx || { env: 'bg' }), data: sanitizeDiag(data || {}) });
+  const now = Date.now();
+  const t = typeof ts === 'number' && Math.abs(ts - now) < 86400e3 ? ts : now;
+  diagBuf.push({ ts: t, probe, kind: String(kind).slice(0, 60), ctx: sanitizeDiag(ctx || { env: 'bg' }), data: sanitizeDiag(data || {}) });
   if (diagBuf.length >= D.FLUSH_MAX) flushDiag();
   else if (!diagTimer) diagTimer = setTimeout(flushDiag, 1000);
 }
@@ -789,7 +792,7 @@ const handlers = {
     let n = 0;
     for (const r of Array.isArray(msg.records) ? msg.records.slice(0, 500) : []) {
       if (!r || !D.PROBES.includes(r.probe) || !diagOn(r.probe)) continue;
-      diagLog(r.probe, r.kind, r.data, Object.assign({}, r.ctx || {}, { tab }));
+      diagLog(r.probe, r.kind, r.data, Object.assign({}, r.ctx || {}, { tab }), r.ts);
       n++;
     }
     return { accepted: n, active: true };

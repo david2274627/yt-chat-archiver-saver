@@ -777,6 +777,51 @@
     e2.stop();
   });
 
+  // ---------------------------------------------------------------- F-20 診斷探針（T3.7）
+  test('F-20 P7（AC 2）：注入未知元件與禮物元件 → 自動留下結構紀錄（只有標籤、id、屬性名稱、img 網域，沒有文字）；同一標籤每場最多 3 次', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const recs = [];
+    const e = engine({ send, onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidDG01' });
+    await until(() => e.state().mode === 'capturing');
+    const unk = () => h('yt-live-chat-mystery-renderer', { id: 'U' + (++seq), 'some-flag': '' }, [
+      h('div', { id: 'card' }, [h('span', { id: 'message', text: '神秘的聊天內容' }), h('img', { src: 'https://www.gstatic.com/x/y.png' })])]);
+    for (let i = 0; i < 5; i++) items.append(unk());
+    items.append(h('yt-gift-message-view-model', { id: 'GF1' }, [h('span', { text: '送出玫瑰' })]));
+    await tick();
+    const p7 = recs.filter((r) => r.p === 'P7');
+    eq(p7.map((r) => [r.d.reason, r.d.tag]), [['unknown', 'yt-live-chat-mystery-renderer'], ['unknown', 'yt-live-chat-mystery-renderer'],
+      ['unknown', 'yt-live-chat-mystery-renderer'], ['gift', 'yt-gift-message-view-model']], '同一標籤最多 3 次');
+    const s = p7[0].d;
+    eq([s.attrs, s.hasId, s.tree.map((n) => n.tag)], [['some-flag'], true, ['div#card', 'span#message', 'img']]);
+    eq([s.tree[1].hasText, s.tree[2].img], [true, 'www.gstatic.com']);
+    assert(!JSON.stringify(p7).includes('神秘') && !JSON.stringify(p7).includes('玫瑰'), '不含文字');
+    e.stop();
+  });
+
+  test('F-20 P1／P2：每分鐘的收錄統計與 #items 節點分類（標籤 × 已存／略過／未存），沒有收錄時也記錄', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const recs = [];
+    const e = engine({ send, onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e._logStats(false);
+    eq(recs.filter((r) => r.p === 'P2').length, 1, '尚未收錄也記錄');
+    e.setInfo({ videoId: 'testVidDG02' });
+    await until(() => e.state().mode === 'capturing');
+    for (let i = 0; i < 3; i++) items.append(textMsg({}));
+    items.append(h('yt-live-chat-placeholder-item-renderer'));
+    await tick();
+    e._logStats(false);
+    const p1 = recs.filter((r) => r.p === 'P1').pop().d;
+    const p2 = recs.filter((r) => r.p === 'P2').pop().d;
+    eq([p1.videoId, p1.captured, p1.times.hasStartedAt], ['testVidDG02', 3, false]);
+    eq(p2, { total: 4, byTag: { 'yt-live-chat-text-message-renderer': { saved: 3, skip: 0, unsaved: 0 }, 'yt-live-chat-placeholder-item-renderer': { saved: 0, skip: 1, unsaved: 0 } } });
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];

@@ -25,6 +25,44 @@
   };
   const isVideoId = (v) => typeof v === 'string' && /^[\w-]{6,20}$/.test(v);
 
+  // ================================================================ F-20 診斷記錄（T3.7）
+  // 記錄中（chrome.storage.local 的 diagState）才收集並批次送給 background；只送筆數、標籤、屬性名稱、時間、videoId。
+  // 不在 YouTube 頁面上顯示任何東西（10.1 原則 6）。
+  const DG = C.DIAG;
+  let diagSt = { active: false };
+  try {
+    chrome.storage.local.get(DG.STATE_KEY).then((o) => { diagSt = o[DG.STATE_KEY] || { active: false }; }).catch(() => {});
+    chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch[DG.STATE_KEY]) diagSt = ch[DG.STATE_KEY].newValue || { active: false }; });
+  } catch (_) { /* ignore */ }
+  const diagOn = (p) => !!diagSt.active && Array.isArray(diagSt.probes) && diagSt.probes.includes(p) && connected();
+  let dbuf = [];
+  let dtimer = 0;
+  function dlog(probe, kind, data, ctx) {
+    if (!diagOn(probe)) return;
+    dbuf.push({ ts: Date.now(), probe, kind, ctx: Object.assign({ env }, ctx || {}), data: data || {} });
+    if (dbuf.length >= DG.FLUSH_MAX) dflush();
+    else if (!dtimer) dtimer = setTimeout(dflush, DG.FLUSH_MS);
+  }
+  function dflush() {
+    clearTimeout(dtimer); dtimer = 0;
+    const records = dbuf.splice(0);
+    if (!records.length || !connected()) return;
+    try { const p = chrome.runtime.sendMessage({ type: RT.DIAG_LOG, records }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* ignore */ }
+  }
+  window.addEventListener('pagehide', dflush);
+  // P8：本套件（content script）的 warn／error 與例外。console 物件是 content script 世界自己的，不影響 YouTube
+  for (const lv of ['warn', 'error']) {
+    const orig = console[lv].bind(console);
+    console[lv] = (...a) => {
+      orig(...a);
+      try { if (diagOn('P8')) dlog('P8', lv, { message: a.map((x) => (x && x.stack) || (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ').slice(0, 800) }); } catch (_) { /* ignore */ }
+    };
+  }
+  window.addEventListener('error', (e) => {
+    if (!diagOn('P8') || !String(e.filename || '').startsWith('chrome-extension://')) return; // 只收本套件的例外
+    dlog('P8', 'exception', { message: String(e.message || ''), stack: String((e.error && e.error.stack) || ''), line: e.lineno || null });
+  });
+
   if (env === 'chatframe' || env === 'popout') runChat();
   else if (env === 'top') runTop();
 
@@ -48,15 +86,20 @@
       diagDone = true;
       const r = document.querySelector(S.chat.renderer);
       const s = engine.state();
-      console.info('[ytcas] 聊天室環境（診斷）', { env, source, rendererAttrs: r ? r.getAttributeNames() : null,
+      const envInfo = { env, source, rendererAttrs: r ? r.getAttributeNames() : null,
         hasItems: !!document.querySelector(S.chat.items), urlHasV: !!urlVid, mode: s.mode,
-        viewMode: (f12 && f12.viewMode) || s.viewMode, f12: (f12 && f12.f12) || s.f12 || 'not-run' });
+        viewMode: (f12 && f12.viewMode) || s.viewMode, f12: (f12 && f12.f12) || s.f12 || 'not-run' };
+      console.info('[ytcas] 聊天室環境（診斷）', envInfo);
+      dlog('P4', 'chat-env', envInfo, { source, videoId: s.videoId }); // F-20
     };
     const engine = CAP.createEngine({
       doc: document, source, send, isConnected: connected,
       onStatus: (s) => post(FM.CAPTURE_STATUS, s),
       onF12: (r) => diag(r),
+      // F-20 P1／P2／P7：引擎的統計、節點分類、結構探針（記錄中才轉送）
+      onDiag: (probe, kind, data) => { if (diagOn(probe)) dlog(probe, kind, data, { source, videoId: engine.state().videoId }); },
     });
+    if (env === 'popout') dlog('P6', 'popout-open', { urlHasV: !!urlVid }, { source, videoId: isVideoId(urlVid) ? urlVid : null });
     setTimeout(() => diag(null), 10000);
     engine.start();
 
@@ -116,6 +159,8 @@
           rLogs++;
           console.info('[ytcas] 聊天室屬性變化（診斷）', { added, removed, at: new Date().toISOString() });
         }
+        // F-20 P4（不受上面 30 次的限制，診斷記錄本身有容量上限）
+        if (added.length || removed.length) dlog('P4', 'renderer-attrs', { added, removed }, { source, videoId: engine.state().videoId });
       }).observe(r, { attributes: true });
     };
     watchRenderer();
@@ -236,7 +281,21 @@
       if (info.isLiveBroadcast !== lastEnd.isLive) console.info('[ytcas] isLiveBroadcast 變化（診斷）', { from: lastEnd.isLive, to: info.isLiveBroadcast });
       lastEnd.endDate = info.endDate; lastEnd.isLive = info.isLiveBroadcast;
       sendInfo();
+      p3(info);
     }, 30000);
+    // F-20 P3：場次資訊＋播放器長度（變化時＋每 5 分鐘；不記標題與頻道）
+    let p3Key = '';
+    let p3At = 0;
+    function p3(info) {
+      if (!diagOn('P3') || !info) return;
+      const iso = (t) => (t == null ? null : new Date(t).toISOString());
+      const d = { startDate: iso(info.startDate), endDate: iso(info.endDate), isLiveBroadcast: info.isLiveBroadcast, duration: info.duration,
+        liveSignalAt: iso(info.liveSignalAt), pageAgeSec: Math.round((Date.now() - pageAt) / 1000), hasChatFrame: !!chatIframe() };
+      const key = JSON.stringify([d.startDate, d.endDate, d.isLiveBroadcast, d.duration, d.liveSignalAt]);
+      if (key === p3Key && Date.now() - p3At < 5 * 60000) return;
+      p3Key = key; p3At = Date.now();
+      dlog('P3', 'stream-info', d, { videoId: info.videoId });
+    }
     // ytd-watch-flexy 屬性變化（診斷，只記屬性名稱，每頁最多 30 次）：找出直播結束時是否有可用的屬性訊號
     let flexyLogs = 0;
     let flexyObs = null;
@@ -254,6 +313,7 @@
           flexyLogs++;
           console.info('[ytcas] ytd-watch-flexy 屬性變化（診斷）', { added, removed, at: new Date().toISOString() });
         }
+        if ((added.length || removed.length) && currentVideoId()) dlog('P4', 'flexy-attrs', { added, removed }, { videoId: currentVideoId() }); // F-20
       });
       flexyObs.observe(fx, { attributes: true });
       flexyObs.__t = fx;
@@ -271,7 +331,10 @@
       const key = JSON.stringify([st.present, st.visible, st.path]);
       if (key !== lastFrameKey) {
         lastFrameKey = key;
-        if (currentVideoId()) console.info('[ytcas] 聊天室 iframe 狀態（診斷）', st);
+        if (currentVideoId()) {
+          console.info('[ytcas] 聊天室 iframe 狀態（診斷）', st);
+          dlog('P4', 'chat-iframe', st, { videoId: currentVideoId() }); // F-20
+        }
       }
     }, 1000);
 
@@ -286,6 +349,7 @@
     function handoff() {
       const f = chatIframe();
       const visible = !!(f && f.offsetHeight > 0);
+      dlog('P6', 'handoff-received', { chatVisible: visible, capturing: !!(lastStatus && lastStatus.capturing) }, { videoId: currentVideoId() }); // F-20
       if (visible && lastStatus && lastStatus.capturing && lastStatus.videoId === currentVideoId()) {
         console.info('[ytcas] 彈出視窗已關閉；主分頁聊天室已在收錄中');
         return;

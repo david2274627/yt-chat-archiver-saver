@@ -215,6 +215,28 @@
       phase: ctx.source === 'replay' ? 'live' : (ctx.startedAt != null && ctx.endedAt != null && ctx.now > ctx.endedAt ? 'post' : 'live') };
   }
 
+  // ---------------------------------------------------------------- F-20 結構探針（P7，同 docs/poc-clip-path.md 附錄 C／E）
+  // 只輸出後代的標籤、id、屬性名稱（不含值）、img 網域、尺寸、「有沒有文字」；不輸出任何文字
+  function structureOf(root, max) {
+    max = max || 80;
+    const out = [];
+    const host = (u) => { try { return new URL(u, location.href).hostname; } catch (_) { return '(invalid)'; } };
+    const walk = (el, depth) => {
+      for (const c of el.children) {
+        if (out.length >= max) return;
+        let size = '';
+        try { const r = c.getBoundingClientRect(); size = Math.round(r.width) + 'x' + Math.round(r.height); } catch (_) { /* ignore */ }
+        out.push({ d: depth, tag: c.tagName.toLowerCase() + (c.id ? '#' + c.id : ''),
+          attrs: c.getAttributeNames().filter((a) => a !== 'id' && a !== 'class' && a !== 'style' && !a.startsWith('data-ytcas')),
+          img: c.tagName === 'IMG' ? host(c.getAttribute('src') || '') : undefined, size,
+          hasText: Array.from(c.childNodes).some((n) => n.nodeType === 3 && n.nodeValue.trim()) });
+        if (depth < 8) walk(c, depth + 1);
+      }
+    };
+    walk(root, 1);
+    return { tag: root.tagName.toLowerCase(), hasId: !!root.id, attrs: root.getAttributeNames().filter((a) => a !== 'id' && !a.startsWith('data-ytcas')), tree: out };
+  }
+
   // ---------------------------------------------------------------- 引擎
   // opts: { doc, source: 'live'|'replay'|'popout', send(msg) → Promise<response>, isConnected() → bool,
   //         now?() → ms, onStatus?(status), log?: boolean }
@@ -236,8 +258,34 @@
       seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
+      p7: new Map(), // F-20 P7：reason:tag → 次數
       f12: null, viewMode: null, // F-12 結果：null（未執行）／running／switched／already／failed:<原因>
     };
+
+    // F-20：診斷探針回呼（content.js 只在記錄中轉送；這裡只組筆數、標籤、屬性名稱）
+    const diag = (probe, kind, data) => { if (opts.onDiag) try { opts.onDiag(probe, kind, data); } catch (_) { /* ignore */ } };
+    function probeStructure(reason, el) {
+      if (!opts.onDiag || !el) return;
+      const tag = el.tagName.toLowerCase();
+      const k = reason + ':' + tag;
+      const n = st.p7.get(k) || 0;
+      if (n >= C.DIAG.P7_MAX_PER_TAG) return;
+      st.p7.set(k, n + 1);
+      diag('P7', 'structure', Object.assign({ reason }, structureOf(el)));
+    }
+    // P2：#items 節點分類（標籤 × 已存／略過／未存）
+    function itemsBreakdown() {
+      const box = st.items;
+      if (!box) return { total: null };
+      const byTag = {};
+      for (const el of box.children) {
+        const t = el.tagName.toLowerCase();
+        const b = byTag[t] || (byTag[t] = { saved: 0, skip: 0, unsaved: 0 });
+        const v = el.dataset[SAVED];
+        if (v === '1') b.saved++; else if (v === 'skip') b.skip++; else b.unsaved++;
+      }
+      return { total: box.children.length, byTag };
+    }
 
     const setStatus = (mode, extra) => {
       st.mode = mode;
@@ -318,7 +366,10 @@
             // T3.6：background 重新抓取 meta 確認的開播／結束時間 → 之後的訊息以此計算 phase 與 offset
             const ch = adoptTimes(r.stream);
             if (ch.start) console.info('[ytcas] 採用 background 確認的開播時間', { videoId: st.videoId, source: st.stream.startedAtSource });
-            if (ch.end) console.info('[ytcas] 採用 background 確認的結束時間，之後的訊息標為結束後（post）', { videoId: st.videoId });
+            if (ch.end) {
+              console.info('[ytcas] 採用 background 確認的結束時間，之後的訊息標為結束後（post）', { videoId: st.videoId });
+              probeStructure('stream-end', doc.querySelector(S.chat.renderer)); // F-20 P7：直播結束時的聊天室結構
+            }
           }
           for (const m of batch) if (m.id) st.unflushed.delete(m.id);
           resolveWaiters();
@@ -378,6 +429,10 @@
       try { m = parseMessage(el, ctxNow()); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
       if (!m) { el.dataset[SAVED] = 'skip'; return; }
       el.dataset[SAVED] = '1';
+      // F-20 P7：未知元件、禮物元件 → 結構紀錄（同一標籤每場最多 3 次）
+      if (opts.onDiag && ((m.type === T.SYSTEM && m.rawTag && !KNOWN_SYSTEM_TAGS.has(m.rawTag)) || m.type === T.GIFT)) {
+        probeStructure(m.type === T.GIFT ? 'gift' : 'unknown', el);
+      }
       if (m.deleted && m.id) st.deletedReported.add(m.id);
       st.stats.captured++;
       if (how && how !== 'observer') st.stats[how === 'backfill' ? 'backfillCaptured' : 'lateCaptured']++;
@@ -404,6 +459,7 @@
       });
       st.banner.querySelectorAll(S.chat.bannerRedirect).forEach((el) => {
         if (el.dataset[SAVED]) return;
+        probeStructure('raid', el); // F-20 P7：降落橫幅結構（待實機確認的元件）
         const m = parseRaid(el, ctxNow(), st.videoId);
         el.dataset[SAVED] = m ? '1' : 'skip';
         if (m) { st.stats.captured++; enqueue(m); }
@@ -617,14 +673,14 @@
 
     function logStats(final) {
       const s = st.stats;
-      if (!s.captured && !final) return;
+      if (!s.captured && !final && !opts.onDiag) return; // 沒有收錄時不輸出 Console；診斷記錄中仍記錄（暫停、等待等狀態也要看得到）
       // 只記筆數（id 一致性驗證：重播時 idMerged ≫ fpMerged 代表直播與重播的訊息 id 相同）
       // T3.3 診斷：itemsIsCurrent（st.items 是否為目前的 #items 且仍在頁面上）、unmarkedNodes（#items 內未擷取數）、
       // observedAdded（這一分鐘 observer 看到的新增節點）、backfillRuns、backfillCaptured（回溯擷取到的）、
       // lateCaptured（定時補掃或修剪前才擷取到的 = observer 漏掉的）、dupCaptured（同頁同 id 再次出現 = YouTube 重新插入）
       const box = st.items;
       const cur = doc.querySelector(S.chat.items);
-      console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), { videoId: st.videoId, source, mode: st.mode, captured: s.captured,
+      const obj = { videoId: st.videoId, source, mode: st.mode, captured: s.captured,
         added: s.added, idMerged: s.merged + s.unchanged - s.fpMerged, fpMerged: s.fpMerged, dropped: s.dropped, rejected: s.rejected,
         trimmed: s.trimmed, pinned: s.pinned, deleted: s.deleted, deletedMissing: s.deletedMissing,
         domNodes: box ? box.children.length : null,
@@ -632,7 +688,13 @@
         itemsCount: doc.querySelectorAll(S.chat.anyItems).length,
         unmarkedNodes: box ? Array.from(box.children).filter((el) => !el.dataset[SAVED]).length : null,
         observedAdded: s.observedAdded, backfillRuns: s.backfillRuns, backfillCaptured: s.backfillCaptured,
-        lateCaptured: s.lateCaptured, dupCaptured: s.dupCaptured, f12: st.f12 });
+        lateCaptured: s.lateCaptured, dupCaptured: s.dupCaptured, f12: st.f12 };
+      if (s.captured || final) console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), obj);
+      // F-20 P1／P2：同一份統計寫入診斷記錄（只有筆數）；時間來源一併記錄，供開播判斷驗證
+      diag('P1', final ? 'stats-final' : 'stats', Object.assign({}, obj, { times: {
+        startedAtSource: st.stream.startedAtSource || null, startPending: !!st.stream.startPending,
+        hasStartedAt: st.stream.startedAt != null, hasEndedAt: st.stream.endedAt != null } }));
+      diag('P2', 'items', itemsBreakdown());
       s.observedAdded = 0; // 每分鐘歸零
     }
 
@@ -671,11 +733,12 @@
         // T3.5 F-2：收錄中得知結束時間 → 之後的訊息標 post；送出時帶 endedAt，background 依 F-14 重算 phase
         if (!changed && ch.end) {
           console.info('[ytcas] 已得知直播結束時間，之後的訊息標為結束後（post）', { videoId: st.videoId });
+          probeStructure('stream-end', doc.querySelector(S.chat.renderer));
         }
         if (changed) {
           if (st.videoId) { flush(); endSession(); logStats(true); }
           st.videoId = vid;
-          st.pinnedSent.clear(); st.deletedReported.clear(); st.pendingDeleted.length = 0; st.seenIds.clear();
+          st.pinnedSent.clear(); st.deletedReported.clear(); st.pendingDeleted.length = 0; st.seenIds.clear(); st.p7.clear();
           for (const k of Object.keys(st.stats)) st.stats[k] = 0;
           // 新影片：先前標記過的節點屬於舊影片，不再擷取（iframe 通常會重新載入，這裡只是保險）
           setStatus('pending');
@@ -712,10 +775,11 @@
       state: () => ({ mode: st.mode, videoId: st.videoId, queue: st.queue.length, session: st.session, stream: Object.assign({}, st.stream),
         stats: Object.assign({}, st.stats), observers: liveObservers, f12: st.f12, viewMode: st.viewMode || viewMode() }),
       _trim: trim,
+      _logStats: (final) => logStats(final),
       _tick: tick,
     };
     return api;
   }
 
-  root.YTCAS_CAPTURE = { createEngine, parseMessage, parseClock, parseOffset, runsOf, hash, observers: () => liveObservers };
+  root.YTCAS_CAPTURE = { createEngine, parseMessage, parseClock, parseOffset, runsOf, hash, structureOf, observers: () => liveObservers };
 })(typeof globalThis !== 'undefined' ? globalThis : self);
