@@ -135,6 +135,12 @@
     T3_DEPLOYED_AT: Date.parse('2026-11-15T23:00:00+08:00'),
     // T3.6：T3.4（只擷取 #items 直接子節點）部署時間。之後收錄的 system 紀錄都是真訊息，清除函式不再處理（歡迎提示去重除外）
     T34_DEPLOYED_AT: Date.parse('2026-11-16T01:51:00+08:00'),
+    // T3.6（審查十追加五 E-3）background 重新抓取 watch 頁 meta 的間隔：等待開播確認 60 秒（上限 3 小時）、直播中等結束 5 分鐘
+    META_POLL_PENDING_MS: 60 * 1000,
+    META_POLL_PENDING_MAX_MS: 3 * 60 * 60 * 1000,
+    META_POLL_LIVE_MS: 5 * 60 * 1000,
+    // 播放器長度由無變有視為開播訊號：頁面載入後至少這麼久才採信（避免把「載入已在直播的頁面」誤認為剛開播）
+    LIVE_SIGNAL_MIN_PAGE_AGE_MS: 60 * 1000,
 
     // v27 主題設定（chrome.storage.sync；邏輯在 src/theme.js）
     THEME_MODE_KEY: 'themeMode',
@@ -178,6 +184,35 @@
   };
   C.viewerEngagementId = function (videoId, runs) {
     return 'ytcas-ve-' + fnv(String(videoId || '') + '\u0001' + C.runsKeyText(runs));
+  };
+
+  // T3.6（審查十追加五 E、E-3）開播／結束時間的來源等級：等級高者覆蓋低者
+  //   scheduled（預定，不得寫入 startedAt）< signal（頁面訊號，誤差 ≤ 30 秒）< meta-actual（重新取得 watch 頁的實際時間）< replay
+  //   沒有來源的既有值（T3.5 以前、遷移、匯入）視同 signal：meta-actual 以上可以覆蓋
+  C.START_SOURCE_RANK = Object.freeze({ scheduled: 0, signal: 1, 'meta-actual': 2, replay: 3 });
+  C.startRank = function (src) {
+    return Object.prototype.hasOwnProperty.call(C.START_SOURCE_RANK, src) ? C.START_SOURCE_RANK[src] : 1;
+  };
+  // watch 頁 meta 的 startDate／endDate（ms）→ 時間與來源。實機（2026-11-16）：待機室時 startDate 是預定時間（整分），
+  // 開播後不重新整理不會更新；重新取得頁面後為實際開播時間（有秒數）。
+  // 規則：有 endDate → 已結束（startDate 為實際）；startDate 未到 → 預定；startDate 已過且「秒數不為 0」或
+  // 「與已知的預定時間不同」→ 實際開播；否則 startPending（預定時間已過、尚未確認開播），不寫入 startedAt。
+  C.deriveStartTimes = function (o) {
+    const sd = typeof o.startDate === 'number' && Number.isFinite(o.startDate) ? o.startDate : null;
+    const ed = typeof o.endDate === 'number' && Number.isFinite(o.endDate) ? o.endDate : null;
+    const sch = typeof o.knownScheduled === 'number' ? o.knownScheduled : null;
+    const now = typeof o.now === 'number' ? o.now : Date.now();
+    const t = { startedAt: null, startedAtSource: null, endedAt: null, endedAtSource: null, scheduledStartAt: null, startPending: false };
+    if (ed != null) {
+      t.endedAt = ed; t.endedAtSource = 'meta-actual';
+      if (sd != null) { t.startedAt = sd; t.startedAtSource = 'meta-actual'; }
+      return t;
+    }
+    if (sd == null) return t;
+    if (sd > now) { t.scheduledStartAt = sd; return t; }
+    if (sd % 60000 !== 0 || (sch != null && sd !== sch)) { t.startedAt = sd; t.startedAtSource = 'meta-actual'; return t; }
+    t.scheduledStartAt = sd; t.startPending = true;
+    return t;
   };
 
   C.isAllowedImageUrl = function (url) {

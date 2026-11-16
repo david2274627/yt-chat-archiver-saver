@@ -76,6 +76,7 @@
           videoId: d.videoId, title: str(d.title), channelName: str(d.channelName), channelHandle: str(d.channelHandle),
           channelUrl: str(d.channelUrl), startDate: num(d.startDate), endDate: num(d.endDate),
           isLiveBroadcast: typeof d.isLiveBroadcast === 'boolean' ? d.isLiveBroadcast : null, duration: num(d.duration),
+          liveSignalAt: num(d.liveSignalAt), // T3.6 開播訊號
         });
       });
       const t0 = Date.now();
@@ -132,6 +133,8 @@
     const T = S.top;
     let lastStatus = null; // 嵌入式聊天室回報的 CAPTURE_STATUS
     let diagFor = '';
+    let pageAt = Date.now(); // 頁面（或站內換頁）開始時間：開播訊號的採信門檻
+    let liveSignal = null;   // { videoId, at }
 
     const currentVideoId = () => {
       if (location.pathname === '/watch') return new URLSearchParams(location.search).get('v');
@@ -163,6 +166,8 @@
         endDate: parseDate(metaContent(T.endDateMeta)),
         isLiveBroadcast: live == null ? null : /^true$/i.test(live),
         duration: d,
+        // T3.6：播放器開播訊號（偵測時間）；chat frame 只在等待開播確認時採用
+        liveSignalAt: liveSignal && liveSignal.videoId === videoId ? liveSignal.at : null,
       };
     }
 
@@ -203,6 +208,8 @@
 
     document.addEventListener('yt-navigate-finish', () => {
       lastStatus = null;
+      pageAt = Date.now();
+      liveSignal = null;
       bindVideo();
       setTimeout(sendInfo, 800); // microdata 隨導航更新的時機待實機確認；chat frame 也會主動要求
     });
@@ -210,11 +217,19 @@
     // T3.5（審查十追加三 F-2）直播結束偵測：
     //   可行動的訊號：每 30 秒重讀場次資訊並送給 chat frame；endDate meta 出現 → chat frame 之後的訊息標 post，
     //   background 依 F-14 重算 phase。其他候選訊號（ytd-watch-flexy 屬性變化）尚未實機確認，只記屬性名稱供診斷。
-    let lastEnd = { videoId: null, endDate: null, isLive: null };
+    let lastEnd = { videoId: null, endDate: null, isLive: null, duration: undefined };
     setInterval(() => {
       const info = streamInfo();
       if (!info) return;
-      if (info.videoId !== lastEnd.videoId) lastEnd = { videoId: info.videoId, endDate: info.endDate, isLive: info.isLiveBroadcast };
+      if (info.videoId !== lastEnd.videoId) lastEnd = { videoId: info.videoId, endDate: info.endDate, isLive: info.isLiveBroadcast, duration: undefined };
+      // T3.6（審查十追加五 E-3 第 2 點）播放器長度由無變有 → 開播訊號。頁面載入 60 秒後才採信
+      //（載入已在直播的頁面時，長度會在數秒內出現，不是開播）；是否在不重新整理時發生，以此診斷確認
+      if (lastEnd.duration !== undefined && lastEnd.duration == null && info.duration != null) {
+        const age = Date.now() - pageAt;
+        console.info('[ytcas] 播放器長度出現（診斷）', { videoId: info.videoId, duration: info.duration, pageAgeSec: Math.round(age / 1000) });
+        if (age >= C.LIVE_SIGNAL_MIN_PAGE_AGE_MS) liveSignal = { videoId: info.videoId, at: Date.now() };
+      }
+      lastEnd.duration = info.duration;
       if (info.endDate != null && lastEnd.endDate == null) {
         console.info('[ytcas] 偵測到直播結束（endDate meta 出現）', { videoId: info.videoId, endDate: new Date(info.endDate).toISOString() });
       }

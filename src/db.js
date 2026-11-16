@@ -166,6 +166,7 @@
     return {
       videoId, title: '', channelName: '', channelHandle: '', channelUrl: '', isLive: false,
       startedAt: null, scheduledStartAt: null, endedAt: null, lastMessageAt: null, messageCount: 0,
+      startedAtSource: null, endedAtSource: null, startPending: false, // T3.6
       liveCaptureCount: 0, replayCaptureCount: 0, popoutCaptureCount: 0, approxBytes: 0,
       versions: [], linkedVideos: [], createdAt: now,
     };
@@ -178,12 +179,24 @@
     for (const k of ['title', 'channelName', 'channelHandle', 'channelUrl']) {
       if (isEmpty(s[k]) && typeof meta[k] === 'string' && meta[k]) s[k] = meta[k];
     }
-    for (const k of ['startedAt', 'endedAt', 'scheduledStartAt']) {
-      if (s[k] == null && num(meta[k]) !== null) {
-        s[k] = meta[k];
-        if (k !== 'scheduledStartAt') timesChanged = true;
+    // T3.6：startedAt／endedAt 依來源等級覆蓋（C.START_SOURCE_RANK）；預定時間（scheduled）不得寫入 startedAt
+    for (const k of ['startedAt', 'endedAt']) {
+      const v = num(meta[k]);
+      const srcKey = k + 'Source';
+      const inc = typeof meta[srcKey] === 'string' ? meta[srcKey] : null;
+      if (v === null || inc === 'scheduled') continue;
+      const curRank = s[k] == null ? -1 : C.startRank(s[srcKey]);
+      if (C.startRank(inc) > curRank && s[k] !== v) {
+        s[k] = v;
+        s[srcKey] = inc;
+        timesChanged = true;
+      } else if (s[k] === v && inc && C.startRank(inc) > C.startRank(s[srcKey])) {
+        s[srcKey] = inc;
       }
     }
+    if (s.scheduledStartAt == null && num(meta.scheduledStartAt) !== null) s.scheduledStartAt = meta.scheduledStartAt;
+    if (s.startedAt != null) s.startPending = false;
+    else if (typeof meta.startPending === 'boolean') s.startPending = meta.startPending;
     if (typeof meta.isLive === 'boolean') s.isLive = meta.isLive;
     if (Array.isArray(meta.versions)) {
       for (const v of meta.versions) if (v && v.id && !s.versions.some((x) => x.id === v.id)) s.versions.push(clone(v));
@@ -192,6 +205,14 @@
       for (const l of meta.linkedVideos) if (l && l.videoId && !s.linkedVideos.some((x) => x.videoId === l.videoId)) s.linkedVideos.push(clone(l));
     }
     return timesChanged;
+  }
+
+  // T3.6：場次的時間與來源（回傳給 content script，讓擷取端採用 background 確認的開播／結束時間）
+  function pickStreamTimes(s) {
+    if (!s) return null;
+    return { startedAt: s.startedAt ?? null, startedAtSource: s.startedAtSource ?? null, endedAt: s.endedAt ?? null,
+      endedAtSource: s.endedAtSource ?? null, scheduledStartAt: s.scheduledStartAt ?? null, startPending: !!s.startPending,
+      channelHandle: s.channelHandle || '', isLive: !!s.isLive };
   }
 
   // F-18 版本偵測（會修改 versions）
@@ -335,6 +356,7 @@
       const changed = [];
       let recalc = false;
       let session = null;
+      let streamTimes = null;
       const work = (async () => {
         const sStore = t.objectStore('streams');
         const stream = (await req(sStore.get(videoId))) || newStream(videoId, now);
@@ -385,11 +407,12 @@
         }
         sStore.put(stream);
         recalc = recalc && stream.messageCount > 0;
+        streamTimes = pickStreamTimes(stream);
       })();
       work.catch(() => { try { t.abort(); } catch (_) { /* already finished */ } });
       await Promise.all([work, done(t)]);
       if (recalc) await recomputePhasesUnlocked(videoId);
-      return Object.assign(stats, { changed });
+      return Object.assign(stats, { changed, stream: streamTimes });
     });
   }
 
@@ -623,7 +646,10 @@
             const ts = v.timestampAbs;
             const wasPre = v.phase === 'pre';
             v.phase = ts < s.startedAt ? 'pre' : (s.endedAt != null && ts > s.endedAt ? 'post' : 'live');
-            if (num(v.videoOffsetSec) === null || (wasPre && (v.sources || []).includes('live'))) {
+            // T3.6（追加五 E-2）：startedAt 被更權威的來源更正時，本套件直播收錄的推算值（estimated）一併以新的零點重算；
+            // 遷移／匯入的 offset（不是由本套件的 startedAt 推算）只在為空時補上；重播精確值（replay）永不改寫
+            const ownEstimate = (v.sources || []).includes('live') && v.offsetSource !== 'replay';
+            if (num(v.videoOffsetSec) === null || wasPre && (v.sources || []).includes('live') || ownEstimate) {
               v.videoOffsetSec = Math.round((ts - s.startedAt) / 100) / 10;
               v.offsets = Object.assign({}, v.offsets, { v1: v.videoOffsetSec });
               v.offsetSource = 'estimated';
@@ -1244,7 +1270,7 @@
     configure, open, close,
     saveMessages, savePinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
-    recomputePhases, recountStream, cleanupJunkSystem, fieldStats,
+    recomputePhases, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,

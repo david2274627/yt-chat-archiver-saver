@@ -195,7 +195,8 @@
         m.phase = m.timestampAbs < ctx.startedAt ? 'pre' : (ctx.endedAt != null && m.timestampAbs > ctx.endedAt ? 'post' : 'live');
       } else {
         m.videoOffsetSec = null; // 開播時間未定：先存 null，開播後由 background 回填（F-14）
-        m.phase = ctx.scheduledStartAt != null && ctx.now < ctx.scheduledStartAt ? 'pre' : 'live';
+        // T3.6：預定時間未到，或預定時間已過但尚未確認開播（startPending）→ pre、offset 留空（開播時間確認後 background 重算）
+        m.phase = ctx.startPending || (ctx.scheduledStartAt != null && ctx.now < ctx.scheduledStartAt) ? 'pre' : 'live';
       }
     }
     if (isDeletedEl(el)) { m.deleted = true; m.deletedAt = ctx.now; }
@@ -248,7 +249,7 @@
     };
 
     const ctxNow = () => ({ source, videoId: st.videoId, now: now(), startedAt: st.stream.startedAt ?? null, endedAt: st.stream.endedAt ?? null,
-      scheduledStartAt: st.stream.scheduledStartAt ?? null });
+      scheduledStartAt: st.stream.scheduledStartAt ?? null, startPending: !!st.stream.startPending });
 
     // ------------------------------------------------ 送出（3.2：重試 0.5／1／2 秒；失敗留待下一批）
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -314,6 +315,10 @@
             st.stats.rejected += batch.length; // ok:false 不重試（3.2）
           } else {
             for (const k of ['added', 'merged', 'unchanged', 'fpMerged']) st.stats[k] += r[k] || 0;
+            // T3.6：background 重新抓取 meta 確認的開播／結束時間 → 之後的訊息以此計算 phase 與 offset
+            const ch = adoptTimes(r.stream);
+            if (ch.start) console.info('[ytcas] 採用 background 確認的開播時間', { videoId: st.videoId, source: st.stream.startedAtSource });
+            if (ch.end) console.info('[ytcas] 採用 background 確認的結束時間，之後的訊息標為結束後（post）', { videoId: st.videoId });
           }
           for (const m of batch) if (m.id) st.unflushed.delete(m.id);
           resolveWaiters();
@@ -496,21 +501,31 @@
       const i = st.info || {};
       const m = { isLive: source !== 'replay' };
       for (const k of ['title', 'channelName', 'channelHandle', 'channelUrl']) if (i[k]) m[k] = i[k];
-      if (st.stream.startedAt != null) m.startedAt = st.stream.startedAt;
-      if (st.stream.endedAt != null) m.endedAt = st.stream.endedAt;
-      if (st.stream.scheduledStartAt != null) m.scheduledStartAt = st.stream.scheduledStartAt;
+      for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt']) if (st.stream[k] != null) m[k] = st.stream[k];
+      if (st.stream.startPending) m.startPending = true;
       return m;
     }
 
-    // 場次資訊 → 開播／結束時間（F-14 phase；判斷來源待實機確認，見 docs/youtube-dom-notes.md）
+    // 場次資訊 → 開播／結束時間與來源（T3.6：C.deriveStartTimes 與 background 共用；預定時間已過但未確認開播 = startPending）
     function deriveTimes(info) {
-      const t = { startedAt: null, endedAt: null, scheduledStartAt: null };
-      const sd = typeof info.startDate === 'number' ? info.startDate : null;
-      const ed = typeof info.endDate === 'number' ? info.endDate : null;
-      if (ed != null) { t.endedAt = ed; t.startedAt = sd; }
-      else if (sd != null && sd <= now()) t.startedAt = sd;
-      else if (sd != null) t.scheduledStartAt = sd;
-      return t;
+      return C.deriveStartTimes({ startDate: info.startDate, endDate: info.endDate, knownScheduled: st.stream.scheduledStartAt ?? null, now: now() });
+    }
+
+    // T3.6：依來源等級採用開播／結束時間（C.START_SOURCE_RANK）。來源：STREAM_INFO、CAPTURE_START／SAVE_MESSAGES 的回應、
+    // 播放器訊號。等級較高者覆蓋較低者；預定時間（scheduled）不得寫入 startedAt。回傳是否有變動
+    function adoptTimes(t) {
+      if (!t) return { start: false, end: false };
+      const out = { start: false, end: false };
+      for (const [k, flag] of [['startedAt', 'start'], ['endedAt', 'end']]) {
+        const v = typeof t[k] === 'number' ? t[k] : null;
+        const src = t[k + 'Source'] || null;
+        if (v == null || src === 'scheduled') continue;
+        const cur = st.stream[k] == null ? -1 : C.startRank(st.stream[k + 'Source']);
+        if (C.startRank(src) > cur && st.stream[k] !== v) { st.stream[k] = v; st.stream[k + 'Source'] = src; out[flag] = true; }
+      }
+      if (st.stream.scheduledStartAt == null && typeof t.scheduledStartAt === 'number') st.stream.scheduledStartAt = t.scheduledStartAt;
+      st.stream.startPending = st.stream.startedAt == null && !!(t.startPending || st.stream.startPending);
+      return out;
     }
 
     async function beginCapture() {
@@ -531,7 +546,7 @@
       if (!r.allowed) { pauseCapture(r.reason || 'paused'); return; }
       st.session = { captureSessionId: r.captureSessionId, versionId: r.versionId };
       // background 已知的開播／結束時間（彈出視窗由 FETCH_STREAM_META 補齊）
-      if (r.stream) for (const k of ['startedAt', 'endedAt', 'scheduledStartAt']) if (st.stream[k] == null && typeof r.stream[k] === 'number') st.stream[k] = r.stream[k];
+      if (r.stream) adoptTimes(r.stream);
       setStatus('capturing');
       backfill('backfill');
       if (!st.f12) autoLiveMode(); // F-12（v30）：開始收錄時切到「即時聊天室」，同一頁只做一次
@@ -643,17 +658,23 @@
         const vid = typeof info.videoId === 'string' && /^[\w-]{6,20}$/.test(info.videoId) ? info.videoId : null;
         const changed = vid && vid !== st.videoId;
         st.info = Object.assign({}, st.info || {}, info);
-        const times = deriveTimes(st.info);
-        const hadEnd = st.stream.endedAt != null;
-        for (const k of Object.keys(times)) if (times[k] != null) st.stream[k] = times[k];
+        if (changed) st.stream = {}; // 新影片：先清掉舊場次的時間，再依新資訊判斷
+        const ch = adoptTimes(deriveTimes(st.info));
+        // T3.6 E-3 第 2 點：播放器長度由無變有（top frame 偵測，頁面載入 60 秒後才送）→ 開播訊號（signal，誤差 ≤ 30 秒），
+        // 只在等待開播確認時採用；之後由 background 重新抓取的實際時間（meta-actual）覆蓋
+        if (typeof info.liveSignalAt === 'number' && source !== 'replay' && st.stream.startedAt == null
+          && (st.stream.startPending || (st.stream.scheduledStartAt != null && st.stream.scheduledStartAt <= now()))) {
+          if (adoptTimes({ startedAt: info.liveSignalAt, startedAtSource: 'signal' }).start) {
+            console.info('[ytcas] 偵測到開播訊號（播放器），暫以偵測時間為開播時間，待 background 確認', { videoId: st.videoId });
+          }
+        }
         // T3.5 F-2：收錄中得知結束時間 → 之後的訊息標 post；送出時帶 endedAt，background 依 F-14 重算 phase
-        if (!changed && !hadEnd && st.stream.endedAt != null) {
+        if (!changed && ch.end) {
           console.info('[ytcas] 已得知直播結束時間，之後的訊息標為結束後（post）', { videoId: st.videoId });
         }
         if (changed) {
           if (st.videoId) { flush(); endSession(); logStats(true); }
           st.videoId = vid;
-          st.stream = deriveTimes(st.info);
           st.pinnedSent.clear(); st.deletedReported.clear(); st.pendingDeleted.length = 0; st.seenIds.clear();
           for (const k of Object.keys(st.stats)) st.stats[k] = 0;
           // 新影片：先前標記過的節點屬於舊影片，不再擷取（iframe 通常會重新載入，這裡只是保險）

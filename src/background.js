@@ -245,7 +245,8 @@ function vid(msg) {
 // ---------------------------------------------------------------- F-19 FETCH_STREAM_META
 // 彈出視窗沒有 top frame：抓 watch 頁 HTML 只讀開播／結束時間、標題、頻道（已有資料不重抓；同一 videoId 同時只抓一次）
 const metaInflight = new Map();
-function parseWatchHtml(html) {
+// knownScheduled：已知的預定開播時間（判斷 startDate 是否已更新為實際開播時間，C.deriveStartTimes）
+function parseWatchHtml(html, knownScheduled) {
   const W = SEL.watchHtml;
   const out = {};
   for (const tag of html.match(/<meta\b[^>]*>/gi) || []) {
@@ -260,9 +261,9 @@ function parseWatchHtml(html) {
   const meta = {};
   const t = (s) => { const v = s ? Date.parse(s) : NaN; return Number.isFinite(v) ? v : null; };
   const sd = t(out.startDate), ed = t(out.endDate);
-  if (ed != null) { meta.endedAt = ed; if (sd != null) meta.startedAt = sd; }
-  else if (sd != null && sd <= Date.now()) meta.startedAt = sd;
-  else if (sd != null) meta.scheduledStartAt = sd;
+  const d = C.deriveStartTimes({ startDate: sd, endDate: ed, knownScheduled });
+  for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt']) if (d[k] != null) meta[k] = d[k];
+  if (d.startPending) meta.startPending = true;
   if (out.title) meta.title = out.title.slice(0, 500);
   if (out.isLiveBroadcast != null) meta.isLive = /^true$/i.test(out.isLiveBroadcast) && ed == null;
   const block = W.authorBlock.exec(html);
@@ -279,19 +280,60 @@ function parseWatchHtml(html) {
   return meta;
 }
 
-async function fetchStreamMeta(videoId) {
+async function fetchStreamMeta(videoId, knownScheduled) {
   if (metaInflight.has(videoId)) return metaInflight.get(videoId);
   const p = (async () => {
     const r = await fetch('https://www.youtube.com/watch?v=' + encodeURIComponent(videoId), { credentials: 'omit' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-    return parseWatchHtml(await r.text());
+    return parseWatchHtml(await r.text(), knownScheduled);
   })().finally(() => metaInflight.delete(videoId));
   metaInflight.set(videoId, p);
   return p;
 }
 
 const withTimeout = (p, ms) => Promise.race([p, new Promise((res) => setTimeout(() => res(null), ms))]);
-const pickTimes = (s) => (s ? { startedAt: s.startedAt ?? null, endedAt: s.endedAt ?? null, scheduledStartAt: s.scheduledStartAt ?? null, channelHandle: s.channelHandle || '' } : null);
+const pickTimes = (s) => DB.pickStreamTimes(s);
+
+// ---------------------------------------------------------------- T3.6 開播／結束：重新抓取 watch 頁 meta（審查十追加五 E-3）
+// 頁面的 startDate meta 開播後不重新整理不會更新 → background 重新抓取：
+//   等待開播確認（startPending）：每 60 秒一次，上限 3 小時；直播中（已開播、未結束）：每 5 分鐘一次，等 endDate。
+// 不用計時器：搭在收錄中持續送來的 SAVE_MESSAGES 上檢查是否到期（SW 休眠不影響；沒有收錄就不需要抓）。
+// 只讀 startDate／endDate／isLiveBroadcast 等 meta；credentials: 'omit'，不帶 Cookie。
+const metaPoll = new Map(); // videoId → { firstAt, lastAt }
+function metaPollDue(videoId, s, now) {
+  if (!s || s.endedAt != null) return null;
+  const st = metaPoll.get(videoId) || { firstAt: now, lastAt: 0 };
+  const pending = s.startedAt == null && (s.startPending || (s.scheduledStartAt != null && s.scheduledStartAt <= now));
+  if (pending) {
+    if (now - st.firstAt > C.META_POLL_PENDING_MAX_MS) return null;
+    return now - st.lastAt >= C.META_POLL_PENDING_MS ? { st, kind: 'pending' } : null;
+  }
+  if (s.startedAt != null && s.isLive) return now - st.lastAt >= C.META_POLL_LIVE_MS ? { st, kind: 'live' } : null;
+  return null;
+}
+async function maybeRefetchMeta(videoId, times, source) {
+  if (source !== 'live' && source !== 'popout') return null;
+  const now = Date.now();
+  const due = metaPollDue(videoId, times, now);
+  if (!due) return null;
+  due.st.lastAt = now;
+  metaPoll.set(videoId, due.st);
+  let meta;
+  try { meta = await fetchStreamMeta(videoId, times.scheduledStartAt); } catch (e) { console.info('[ytcas] 重新抓取場次資訊失敗', String(e && e.message)); return null; }
+  const upd = {};
+  for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt', 'startPending']) if (meta[k] != null) upd[k] = meta[k];
+  if (!Object.keys(upd).length) return null;
+  const r = await DB.saveMessages({ videoId, stream: upd, messages: [], source }); // 依來源等級合併並重算 phase／offset
+  const got = r.stream || {};
+  if (meta.startedAt != null && got.startedAt === meta.startedAt && times.startedAt !== meta.startedAt) {
+    console.info('[ytcas] 已確認實際開播時間（watch 頁 meta）', { videoId, startedAt: new Date(meta.startedAt).toISOString() });
+  }
+  if (meta.endedAt != null && got.endedAt === meta.endedAt && times.endedAt !== meta.endedAt) {
+    console.info('[ytcas] 已確認直播結束時間（watch 頁 meta）', { videoId, endedAt: new Date(meta.endedAt).toISOString() });
+    metaPoll.delete(videoId);
+  }
+  return got;
+}
 
 // ---------------------------------------------------------------- F-19 彈出視窗關閉 → 主分頁接手（v30）
 // 主要訊號：chrome.tabs.onRemoved（直接關閉視窗時 pagehide 的 CAPTURE_END 可能送不到）；pagehide 為輔助。
@@ -349,7 +391,7 @@ const handlers = {
       const known = await DB.getStream(videoId);
       const need = !(known && known.title && known.channelHandle && (known.startedAt != null || known.scheduledStartAt != null));
       if (need && !stream.channelHandle) {
-        const meta = await withTimeout(fetchStreamMeta(videoId).catch((e) => { console.info('[ytcas] 場次資訊抓取失敗', String(e && e.message)); return null; }), C.STREAM_META_TIMEOUT_MS);
+        const meta = await withTimeout(fetchStreamMeta(videoId, known && known.scheduledStartAt).catch((e) => { console.info('[ytcas] 場次資訊抓取失敗', String(e && e.message)); return null; }), C.STREAM_META_TIMEOUT_MS);
         if (meta) stream = Object.assign(meta, stream);
       }
     }
@@ -397,7 +439,11 @@ const handlers = {
       broadcast({ type: RT.NEW_MESSAGES, videoId, messages: r.changed });
       enqueueHandles(r.changed.map((m) => m.authorHandle)).catch(() => {});
     }
-    return { added: r.added, merged: r.merged, unchanged: r.unchanged, fpMerged: r.fpMerged };
+    // T3.6：到期時在背景重新抓取 meta（不阻塞回應；結果在下一批的回應中帶給擷取端）
+    const src = C.CAPTURE_SOURCES.includes(msg.source) ? msg.source : 'live';
+    maybeRefetchMeta(videoId, r.stream, src).catch((e) => console.info('[ytcas] 場次資訊更新失敗', String(e && e.message)));
+    // stream：background 目前認定的開播／結束時間與來源，擷取端以來源等級決定是否採用
+    return { added: r.added, merged: r.merged, unchanged: r.unchanged, fpMerged: r.fpMerged, stream: r.stream };
   },
 
   async [RT.SAVE_PINNED](msg) {
@@ -527,4 +573,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, _inflight: inflight };

@@ -542,12 +542,22 @@
       '<span itemprop="publication" itemscope><meta itemprop="isLiveBroadcast" content="True">' +
       '<meta itemprop="startDate" content="2026-11-15T12:00:00+00:00"><meta itemprop="endDate" content="2026-11-15T14:00:00+00:00"></span>';
     const m = BG.parseWatchHtml(html);
-    eq(m, { endedAt: Date.parse('2026-11-15T14:00:00Z'), startedAt: Date.parse('2026-11-15T12:00:00Z'), title: '測試 & 直播', isLive: false,
-      channelHandle: '@Host台', channelUrl: 'https://www.youtube.com/@Host%E5%8F%B0', channelName: '主播台' });
-    const future = new Date(Date.now() + 3600e3).toISOString();
+    eq(m, { startedAt: Date.parse('2026-11-15T12:00:00Z'), startedAtSource: 'meta-actual', endedAt: Date.parse('2026-11-15T14:00:00Z'),
+      endedAtSource: 'meta-actual', title: '測試 & 直播', isLive: false,
+      channelHandle: '@Host台', channelUrl: 'https://www.youtube.com/@Host%E5%8F%B0', channelName: '主播台' }, '已結束：startDate 為實際開播時間');
+    const future = new Date(Math.ceil((Date.now() + 3600e3) / 60000) * 60000).toISOString();
     eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + future + '"><meta itemprop="isLiveBroadcast" content="True">'),
       { scheduledStartAt: Date.parse(future), isLive: true }, '待機室：預定時間');
     eq(BG.parseWatchHtml('<html></html>'), {});
+    // T3.6（追加五 E-2）：預定時間已過、整分、與已知預定相同 → startPending（不得寫入 startedAt）
+    const sch = '2026-11-16T11:15:00Z';
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + sch + '">', Date.parse(sch)), { scheduledStartAt: Date.parse(sch), startPending: true });
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + sch + '">'), { scheduledStartAt: Date.parse(sch), startPending: true }, '不知道預定時間時，整分也視為未確認');
+    // 重新取得頁面後為實際開播時間（有秒數）
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="2026-11-16T11:24:38Z">', Date.parse(sch)),
+      { startedAt: Date.parse('2026-11-16T11:24:38Z'), startedAtSource: 'meta-actual' });
+    // 剛好整分開播但與已知預定不同 → 實際
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="2026-11-16T11:25:00Z">', Date.parse(sch)).startedAtSource, 'meta-actual');
   });
 
   test('F-19 CAPTURE_START（popout）：缺場次資訊時先抓 watch 頁，再依頻道判斷暫停；回傳開播時間', async () => {
@@ -556,11 +566,11 @@
     self.fetch = async (url) => {
       urls.push(String(url));
       return new Response('<meta name="title" content="T"><span itemprop="author"><link itemprop="url" href="http://www.youtube.com/@popHost"><link itemprop="name" content="P"></span>' +
-        '<meta itemprop="startDate" content="2026-11-15T12:00:00+00:00"><meta itemprop="isLiveBroadcast" content="True">', { status: 200 });
+        '<meta itemprop="startDate" content="2026-11-15T12:00:07+00:00"><meta itemprop="isLiveBroadcast" content="True">', { status: 200 });
     };
     try {
       const r = await send({ type: 'CAPTURE_START', videoId: V, source: 'popout' });
-      eq([r.ok, r.allowed, r.stream.startedAt, r.stream.channelHandle], [true, true, Date.parse('2026-11-15T12:00:00Z'), '@popHost']);
+      eq([r.ok, r.allowed, r.stream.startedAt, r.stream.channelHandle], [true, true, Date.parse('2026-11-15T12:00:07Z'), '@popHost'], '實際開播時間（有秒數）');
       eq(urls, ['https://www.youtube.com/watch?v=' + V]);
       const s = await DB.getStream(V);
       eq([s.title, s.channelName, s.popoutCaptureCount], ['T', 'P', 1]);
@@ -707,6 +717,88 @@
     eq([s.superchat.n, s.superchat.amount, s.superchat.color], [2, 2, 1], 'SC 顏色');
     eq(JSON.stringify(s).includes('NT$'), false, '不含內容');
     eq(Object.keys(await BG.fieldStats({ since: Date.now() + 60000 })).length, 0, 'since 之後才計');
+  });
+
+  // ---------------------------------------------------------------- T3.6 開播／結束判斷（審查十追加五 E、E-3）
+  const MIN = 60000;
+  const baseMin = () => Math.floor(Date.now() / MIN) * MIN;
+
+  test('T3.6 startedAt 來源等級：高者覆蓋低者並重算既有訊息的 phase／offset；scheduled 不得寫入；低者不覆蓋；重播精確值不動', async () => {
+    await resetAll();
+    const sch = baseMin() - 30 * MIN, act = sch + 10 * MIN;
+    // 舊版行為：以預定時間寫入 startedAt（來源不明 = signal 等級）
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: sch, scheduledStartAt: sch }, messages: [
+      msg({ id: 'p1', timestampAbs: sch + 5 * MIN, videoOffsetSec: 300, phase: 'live' }),
+      msg({ id: 'p2', timestampAbs: act + 5 * MIN, videoOffsetSec: 900, phase: 'live' }),
+    ] });
+    await DB.saveMessages({ videoId: V, source: 'replay', messages: [msg({ id: 'p3', timestampAbs: act + 6 * MIN, videoOffsetSec: 361 })] });
+    let s = await DB.getStream(V);
+    eq([s.startedAt, s.startedAtSource ?? null], [sch, null]);
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: act - MIN, startedAtSource: 'scheduled' }, messages: [] });
+    eq((await DB.getStream(V)).startedAt, sch, 'scheduled 不得寫入');
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: act - MIN, startedAtSource: 'signal' }, messages: [] });
+    eq((await DB.getStream(V)).startedAt, sch, '同等級不覆蓋');
+    const r = await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: act, startedAtSource: 'meta-actual' }, messages: [] });
+    eq([r.stream.startedAt, r.stream.startedAtSource, r.stream.startPending], [act, 'meta-actual', false], '回應帶回確認的時間');
+    const by = Object.fromEntries((await DB.queryMessages(V)).map((m) => [m.id, [m.phase, m.videoOffsetSec, m.offsetSource]]));
+    eq(by.p1, ['pre', -300, 'estimated'], '延後開播：預定～實際之間為 pre、負 offset');
+    eq(by.p2, ['live', 300, 'estimated'], '開播後以實際時間為零點');
+    eq(by.p3, ['live', 361, 'replay'], '重播精確值不動');
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: act + MIN, startedAtSource: 'signal' }, messages: [] });
+    eq((await DB.getStream(V)).startedAt, act, '低等級不覆蓋 meta-actual');
+  });
+
+  test('T3.6 AC（追加五 E 第 4 點）：預定 X、實際 X+10 分（模擬）→ 等待期訊息 pre／offset 空；重新抓取 meta 確認後重算；輪詢間隔與結束偵測', async () => {
+    await resetAll();
+    const sch = baseMin() - 30 * MIN, act = sch + 10 * MIN;
+    const cs = await send({ type: 'CAPTURE_START', videoId: V, source: 'live', stream: { channelHandle: '@h', isLive: true, scheduledStartAt: sch, startPending: true } });
+    let r = await send({ type: 'SAVE_MESSAGES', videoId: V, source: 'live', captureSessionId: cs.captureSessionId,
+      stream: { scheduledStartAt: sch, startPending: true, isLive: true },
+      messages: [msg({ id: 'w1', timestampAbs: sch + 5 * MIN, videoOffsetSec: null, phase: 'pre' }), msg({ id: 'w2', timestampAbs: act + 5 * MIN, videoOffsetSec: null, phase: 'pre' })] });
+    eq([r.stream.startedAt, r.stream.startPending], [null, true], '不得以預定時間寫入 startedAt');
+    const urls = [];
+    let html = '<meta itemprop="startDate" content="' + new Date(act).toISOString() + '"><meta itemprop="isLiveBroadcast" content="True">';
+    self.fetch = async (u) => { urls.push(String(u)); return new Response(html, { status: 200 }); };
+    try {
+      BG._metaPoll.clear();
+      const got = await BG.maybeRefetchMeta(V, r.stream, 'live');
+      eq([got.startedAt, got.startedAtSource], [act, 'meta-actual'], '實際開播時間（整分但與預定不同）');
+      const by = Object.fromEntries((await DB.queryMessages(V)).map((m) => [m.id, [m.phase, m.videoOffsetSec]]));
+      eq([by.w1, by.w2], [['pre', -300], ['live', 300]], '已存訊息重算');
+      eq(await BG.maybeRefetchMeta(V, got, 'live'), null, '直播中每 5 分鐘一次：剛抓過不抓');
+      eq(await BG.maybeRefetchMeta(V, Object.assign({}, got, { startedAt: null, startPending: true }), 'replay'), null, '重播不抓');
+      // 5 分鐘後：endDate 出現 → 結束時間
+      BG._metaPoll.get(V).lastAt -= 5 * MIN + 1000;
+      const end = act + 60 * MIN;
+      html = '<meta itemprop="startDate" content="' + new Date(act).toISOString() + '"><meta itemprop="endDate" content="' + new Date(end).toISOString() + '">';
+      const got2 = await BG.maybeRefetchMeta(V, got, 'live');
+      eq([got2.endedAt, got2.endedAtSource], [end, 'meta-actual']);
+      // 只看 watch 頁（同期間的頻道名稱解析也會呼叫 fetch，這裡不計）
+      eq(urls.filter((u) => u.includes('/watch?v=')).map((u) => u.replace('https://www.youtube.com/watch?v=', '')), [V, V]);
+      eq(BG._metaPoll.has(V), false, '確認結束後停止');
+    } finally { self.fetch = self.__blockedFetch; }
+  });
+
+  test('T3.6 等待開播確認的輪詢：每 60 秒一次、超過 3 小時停止', async () => {
+    await resetAll();
+    const sch = baseMin() - 30 * MIN;
+    const times = { startedAt: null, scheduledStartAt: sch, startPending: true, endedAt: null, isLive: true };
+    let n = 0;
+    self.fetch = async (u) => { if (String(u).includes('/watch?v=')) n++; return new Response('<meta itemprop="startDate" content="' + new Date(sch).toISOString() + '">', { status: 200 }); };
+    try {
+      BG._metaPoll.clear();
+      await BG.maybeRefetchMeta(V, times, 'live');
+      await BG.maybeRefetchMeta(V, times, 'live');
+      eq(n, 1, '60 秒內只抓一次');
+      BG._metaPoll.get(V).lastAt -= 61000;
+      await BG.maybeRefetchMeta(V, times, 'popout');
+      eq(n, 2, '彈出視窗也適用');
+      eq((await DB.getStream(V)).startedAt, null, 'startDate 仍是預定時間 → 維持 startPending');
+      BG._metaPoll.get(V).firstAt -= 3 * 3600e3 + 1000;
+      BG._metaPoll.get(V).lastAt -= 61000;
+      await BG.maybeRefetchMeta(V, times, 'live');
+      eq(n, 2, '超過 3 小時停止');
+    } finally { self.fetch = self.__blockedFetch; }
   });
 
   test('F-03／3.2：頻道解析佇列存 storage.session，失敗退避、SW 重啟後接續', async () => {

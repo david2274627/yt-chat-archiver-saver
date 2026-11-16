@@ -162,7 +162,11 @@ yt-chat-archiver-saver/
   channelHandle: string /* '@xxx' 或空；F-15 依此判斷暫停收錄 */, popoutCaptureCount: number /* F-19 */,
   approxBytes: number /* F-16 估計大小（寫入時累加，重新計數時重算） */,
   versions: Array<{ id: 'v1'|'v2'|…, duration: number|null /*秒*/, firstSeenAt: number, label: string }> /* F-18 */,
-  linkedVideos: Array<{ videoId, label, offsetShift: number /*秒*/ }> /* F-18 第 6 點 */ }
+  linkedVideos: Array<{ videoId, label, offsetShift: number /*秒*/ }> /* F-18 第 6 點 */,
+  // v34（T3.6，F-14 開播判斷）
+  startedAtSource: 'signal'|'meta-actual'|'replay'|null /* startedAt 的來源；null = T3.5 以前、遷移或匯入（視同 signal 等級） */,
+  endedAtSource: 'signal'|'meta-actual'|null,
+  startPending: boolean /* 預定時間已過、尚未確認實際開播；期間 startedAt 為 null */ }
 ```
 
 **messages**（keyPath `id`；索引 `videoId`, `[videoId+videoOffsetSec]`, `[videoId+type]`, `[videoId+fp]`（v27）, `aliasIds`（multiEntry，v28））
@@ -366,6 +370,14 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   1. **照常收錄**：只要 `live_chat` 聊天室 iframe 存在、分頁開著，就擷取與修剪，不論直播是否已開始或已結束。
   2. **`phase`**：`pre`（開播前）／`live`（直播中）／`post`（結束後）。`pre` 的 `videoOffsetSec` 存**負值**（距開播的秒數），開播時間未確定時先存 `null`，開播後回填；`post` 依開播時間照算（會超過 VOD 長度）。
   3. **判斷方式（待 T3 實機確認）**：開播時間來源 `meta[itemprop="startDate"]` 在待機室是「預定時間」還是不存在、開播後如何變化；結束訊號（頁面是否出現「直播已結束」、`isLiveBroadcast`／`endDate` meta、聊天室系統訊息等）。只記錄標籤與屬性，寫入 `docs/youtube-dom-notes.md`。判斷不確定時依 `timestampAbs` 與已知開播／結束時間推算，並允許事後修正（開播或結束時間確定後，由 bg 重算該場次的 `phase` 與 `pre` 的 offset）。
+  - （v34，`docs/review-2026-11-16.md` 追加五 E、E-2、E-3，**取代 v33 以前「`startDate` 已過即視為已開播」**）**開播判斷**：
+    - 實機（2026-11-16）：`meta[itemprop="startDate"]` 在待機室是**預定時間**（整分），開播後**不重新整理不會更新**；重新取得頁面後為**實際開播時間**（有秒數）。`isLiveBroadcast` 在待機室也是 `true`，`ytd-watch-flexy` 屬性在開播前後沒有變化，兩者都不能當作開播訊號。
+    - 判斷（`constants.js` 的 `deriveStartTimes`，擷取端與 background 共用）：有 `endDate` → 已結束（`startDate` 為實際）；`startDate` 未到 → 預定（`scheduledStartAt`）；已過且秒數不為 0、或與已知預定時間不同 → 實際開播（`meta-actual`）；否則 **`startPending`**：不寫入 `startedAt`，訊息標 `pre`、offset 留空。
+    - **來源等級**（`START_SOURCE_RANK`）：`scheduled`（不得寫入 `startedAt`）< `signal` < `meta-actual` < `replay`；來源不明的既有值視同 `signal`。等級高者覆蓋低者（`streams.startedAtSource`），並觸發本節的事後重算：本套件直播收錄的推算 offset（`estimated`）**一併以新的零點重算**（v34 修正 T2 補充設計 #8「不改既有 offset」：startedAt 錯誤時推算值本身就是錯的）；遷移／匯入的 offset 只在為空時補上；重播精確值永不改寫。
+    - **主要方式：background 重新抓取 watch 頁 meta**（沿用 `FETCH_STREAM_META`，`credentials: 'omit'`）：`startPending` 期間每 60 秒一次（上限 3 小時，超過則停止並維持 `startPending`）；直播中每 5 分鐘一次，等 `endDate`。不用計時器，搭在收錄中持續送來的 `SAVE_MESSAGES` 上檢查是否到期（SW 休眠不影響）。`SAVE_MESSAGES` 的回應帶回目前的開播／結束時間與來源，擷取端依等級採用。
+    - **輔助方式：播放器狀態**：top frame 每 30 秒讀 `video.html5-main-video` 的長度，由無變有且頁面已載入 60 秒以上 → `liveSignalAt`（`signal`，誤差 ≤ 30 秒），只在 `startPending` 時採用，之後由 `meta-actual` 覆蓋。開播後不重新整理時長度是否會變為數值：待實機確認（「播放器長度出現（診斷）」）。
+    - 既有錯誤資料以 `YTCAS_BG.recomputeStream(videoId, { startedAt })` 修正（預覽／執行兩段式）。
+    - AC（追加五 E 第 4 點）：預定 19:15、實際 19:25 開播 → 19:15～19:25 的訊息為 `pre`；`startedAt` 為 19:25；開播後 offset 以 19:25 為零點。
   - （v33，`docs/review-2026-11-16.md` 追加三 F-2）**直播結束偵測**：頁面沒有重新整理時，`endDate` meta 不一定會出現。目前做法：top frame 每 30 秒重讀場次資訊並送 `STREAM_INFO`；`endDate` 出現時 chat frame 之後的訊息標 `post`，並在送出時帶 `endedAt`，background 依本節重算（結束時間取 meta 的值）。其他候選訊號只記屬性名稱作為診斷（`ytd-watch-flexy`、`yt-live-chat-renderer` 屬性變化，各頁最多 30 筆；結束提示若是新的訊息元件，以「未知訊息元件」記錄標籤）。**尚無實機確認的結束訊號**：取得結構前，沒有重新整理就結束的直播，結束後的訊息可能仍標 `live`，之後看重播或重新整理取得 `endDate` 時由 background 重算更正。
   4. **檢視器**：訊息清單以分隔線區隔「直播開始前（待機室）」「直播中」「直播結束後」；VOD 時間軸同步（F-08）只作用於 `live` 段，`pre`／`post` 不參與跟隨與跳轉，時間碼顯示為「開播前 12:34」「結束後 3:05」，不可點擊。
   5. **合併**：重播不會帶入 `pre`／`post` 訊息，這兩段只來自直播收錄，合併與去重規則不變。

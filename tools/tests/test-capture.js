@@ -715,6 +715,68 @@
     e.stop();
   });
 
+  // ---------------------------------------------------------------- T3.6 開播判斷（審查十追加五 E、E-3）
+  test('T3.6：預定時間已過但尚未確認開播（startPending）→ 訊息 pre、offset 空，不以預定時間寫入；background 確認後之後的訊息以實際時間計算', async () => {
+    const { items } = buildChat();
+    const sch = new Date(2026, 10, 16, 19, 15, 0).getTime();
+    const act = new Date(2026, 10, 16, 19, 24, 38).getTime();
+    let t = new Date(2026, 10, 16, 19, 20, 10).getTime();
+    let confirm = false;
+    const send = mockSend(async (msg) => {
+      if (msg.type === RT.SAVE_MESSAGES) {
+        const r = defaultReply(msg);
+        r.stream = confirm ? { startedAt: act, startedAtSource: 'meta-actual', scheduledStartAt: sch, startPending: false }
+          : { startedAt: null, scheduledStartAt: sch, startPending: true };
+        return r;
+      }
+      return defaultReply(msg);
+    });
+    const e = engine({ send, now: () => t });
+    e.start();
+    // 待機室時看到的 startDate（預定時間），之後一直沒有更新（頁面沒有重新整理）
+    e.setInfo({ videoId: 'testVidDLY1', startDate: sch, isLiveBroadcast: true });
+    await until(() => e.state().mode === 'capturing');
+    eq([e.state().stream.startedAt ?? null, e.state().stream.startPending], [null, true]);
+    items.append(textMsg({ id: 'D1', ts: '下午7:20' }));
+    await until(() => savedIds(send).includes('D1'), 2000);
+    const d1 = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'D1');
+    eq([d1.phase, d1.videoOffsetSec], ['pre', null]);
+    eq(send.of(RT.SAVE_MESSAGES)[0].msg.stream.startedAt, undefined, '不送出以預定時間為準的 startedAt');
+    confirm = true; // background 重新抓取 meta 確認實際開播
+    items.append(textMsg({ id: 'D2', ts: '下午7:25' }));
+    t = new Date(2026, 10, 16, 19, 25, 20).getTime();
+    await until(() => savedIds(send).includes('D2'), 2000);
+    eq([e.state().stream.startedAt, e.state().stream.startedAtSource], [act, 'meta-actual'], '採用回應中的確認時間');
+    t = new Date(2026, 10, 16, 19, 30, 38).getTime();
+    items.append(textMsg({ id: 'D3', ts: '下午7:30' }));
+    await until(() => savedIds(send).includes('D3'), 2000);
+    const d3 = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'D3');
+    eq([d3.phase, d3.videoOffsetSec], ['live', 360]);
+    e.stop();
+  });
+
+  test('T3.6：頁面載入後才開播 → startDate 有秒數即為實際（meta-actual）；播放器訊號只在等待確認時採用，可被 meta-actual 覆蓋', async () => {
+    buildChat();
+    const send = mockSend();
+    const e = engine({ send });
+    e.start();
+    const act = NOW - 3600e3 + 7000; // 有秒數
+    e.setInfo({ videoId: 'testVidDLY2', startDate: act, isLiveBroadcast: true, liveSignalAt: NOW });
+    await until(() => e.state().mode === 'capturing');
+    eq([e.state().stream.startedAt, e.state().stream.startedAtSource], [act, 'meta-actual'], '不是等待確認 → 不採用播放器訊號');
+    e.stop();
+    const e2 = engine({ send });
+    e2.start();
+    const sch = Math.floor((NOW - 600e3) / 60000) * 60000;
+    e2.setInfo({ videoId: 'testVidDLY3', startDate: sch, isLiveBroadcast: true });
+    eq(e2.state().stream.startPending, true);
+    e2.setInfo({ videoId: 'testVidDLY3', startDate: sch, liveSignalAt: NOW - 20000 });
+    eq([e2.state().stream.startedAt, e2.state().stream.startedAtSource, e2.state().stream.startPending], [NOW - 20000, 'signal', false]);
+    e2.setInfo({ videoId: 'testVidDLY3', startDate: sch + 37000 }); // 重新整理後的實際時間
+    eq([e2.state().stream.startedAt, e2.state().stream.startedAtSource], [sch + 37000, 'meta-actual'], 'meta-actual 覆蓋 signal');
+    e2.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];
