@@ -222,12 +222,15 @@
   //   'warn'：該頁確定有聊天室（或 chat frame 已載入），預期應該存在的元素卻找不到、且會影響功能時才用。
   //   'info'（預設）：沒有聊天室的頁面、可退回的情況、PoC 一般提示。'debug'：診斷細節、舊版相容錨點。
   // 同一頁面內每個 key 只輸出一次。
+  // T3.8：S.onWarn(key, level) 由 content／background 設定，供 F-20 P8 記錄「key＋等級」（不取執行期字串）
   const warned = new Set();
+  S.onWarn = null;
   S.warnOnce = function (key, detail, level) {
     if (warned.has(key)) return;
     warned.add(key);
     const lv = level === 'warn' || level === 'debug' ? level : 'info';
     console[lv]('[ytcas] 找不到 YouTube 元素：' + key, detail || '');
+    if (typeof S.onWarn === 'function') { try { S.onWarn(key, lv); } catch (_) { /* ignore */ } }
   };
 
   // 找出影片下方輪播中「聊天室」那張卡片（同一輪播可能還有會員福利等其他卡片）。

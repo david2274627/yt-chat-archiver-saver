@@ -50,17 +50,24 @@
     try { const p = chrome.runtime.sendMessage({ type: RT.DIAG_LOG, records }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* ignore */ }
   }
   window.addEventListener('pagehide', dflush);
-  // P8：本套件（content script）的 warn／error 與例外。console 物件是 content script 世界自己的，不影響 YouTube
+  // P8：本套件（content script）的 warn／error 與例外。console 物件是 content script 世界自己的，不影響 YouTube。
+  // T3.8（審查十追加七 B-1）：warnOnce 只記 key＋等級＋預先定義的說明（不取執行期字串）；其他 warn／error 與例外的
+  // 訊息只保留 ASCII（中日韓文字換成 […]），避免意外帶到聊天內容
+  const WARN_ONCE_PREFIX = '[ytcas] 找不到 YouTube 元素';
+  S.onWarn = (key, lv) => { if (lv === 'warn' && diagOn('P8')) dlog('P8', 'warnOnce', { key: C.asciiOnly(key), level: lv, desc: C.diagWarnText(key) }); };
   for (const lv of ['warn', 'error']) {
     const orig = console[lv].bind(console);
     console[lv] = (...a) => {
       orig(...a);
-      try { if (diagOn('P8')) dlog('P8', lv, { message: a.map((x) => (x && x.stack) || (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ').slice(0, 800) }); } catch (_) { /* ignore */ }
+      try {
+        if (!diagOn('P8') || (typeof a[0] === 'string' && a[0].startsWith(WARN_ONCE_PREFIX))) return; // warnOnce 由 onWarn 記錄
+        dlog('P8', lv, { message: C.asciiOnly(a.map((x) => (x && x.stack) || (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ')) });
+      } catch (_) { /* ignore */ }
     };
   }
   window.addEventListener('error', (e) => {
     if (!diagOn('P8') || !String(e.filename || '').startsWith('chrome-extension://')) return; // 只收本套件的例外
-    dlog('P8', 'exception', { message: String(e.message || ''), stack: String((e.error && e.error.stack) || ''), line: e.lineno || null });
+    dlog('P8', 'exception', { message: C.asciiOnly(e.message), stack: C.asciiOnly((e.error && e.error.stack) || ''), line: e.lineno || null });
   });
 
   if (env === 'chatframe' || env === 'popout') runChat();

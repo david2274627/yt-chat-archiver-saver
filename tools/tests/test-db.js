@@ -904,6 +904,28 @@
     eq(chrome.downloads._list[chrome.downloads._list.length - 1].url.startsWith('data:application/json;base64,'), true);
   });
 
+  test('T3.8 B-1：P8 只保留 ASCII（中日韓文字換成 […]）；warnOnce 只記 key＋等級＋預先定義的說明，任意說明文字被去除', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    await BG.diag.start({ probes: ['P8'] });
+    try {
+      await send({ type: 'DIAG_LOG', records: [
+        { probe: 'P8', kind: 'error', data: { message: 'TypeError: x is null（聊天內容：哈囉大家）' } },
+        { probe: 'P8', kind: 'warnOnce', data: { key: 'F-12:failed:not-selected', level: 'warn', desc: self.YTCAS_CONST.diagWarnText('F-12:failed:not-selected') } },
+        { probe: 'P8', kind: 'warnOnce', data: { key: 'chat.items', level: 'warn', desc: '某人說了什麼' } },
+      ] });
+      self.YTCAS_SEL.warnOnce('chat.items:bgtest', 'detail 不應被記錄', 'warn'); // background 的 warnOnce 也經 onWarn 記錄
+      await BG.diag.flush();
+      const recs = (await DB.diagAll()).filter((x) => x.probe === 'P8' && x.kind !== 'diag-start');
+      eq(recs[0].data.message, 'TypeError: x is null[…]');
+      eq([recs[1].data.key, recs[1].data.desc], ['F-12:failed:not-selected', '無法自動切換到「即時聊天室」'], '預先定義的說明保留');
+      eq(recs[2].data.desc, '[removed]', '執行期字串被去除');
+      const bgw = recs.find((x) => x.data.key === 'chat.items:bgtest');
+      eq([bgw.kind, bgw.data.level, JSON.stringify(bgw).includes('detail')], ['warnOnce', 'warn', false]);
+      eq(self.YTCAS_CONST.diagWarnText('poc:anchor:header'), 'PoC 錨點或結構找不到', '前綴比對');
+    } finally { await BG.diag.stop(); }
+  });
+
   test('F-20：最長時限自動停止；指定開始時間（排程）；停止 30 天後自動清除；控制只接受擴充功能頁面', async () => {
     await resetAll();
     await BG.diag.clear();

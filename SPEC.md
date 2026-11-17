@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v35**（前版：v34；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v36**（前版：v35；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -35,6 +35,7 @@
 - **v33 調整**（`docs/review-2026-11-16.md` 追加三，T3.5）：子元件標籤改為規則式判斷；`viewer-engagement` 同一場次以內容去重；沒有寫入任何訊息的收錄紀錄不計入；清除預覽列出保留的標籤。
 - **v34 調整**（`docs/review-2026-11-16.md` 追加五，T3.6）：**F-13 禮物元件 `yt-gift-message-view-model`**；清除規則白名單優先、只清 T3.4 部署前的子元件紀錄；欄位完整度統計；**開播／結束判斷改為 background 重新抓取 watch 頁 meta**，`startedAt` 依來源等級可被覆蓋（`startedAtSource`），`startPending` 期間不得以預定時間寫入；`recomputeStream` 維護函式。
 - **v35 調整**（`docs/review-2026-11-16.md` 追加六，T3.7）：開播／結束的 meta 重新抓取加上 `chrome.alarms` 每 1 分鐘排程；重新抓取先 `credentials: 'omit'`、取不到 meta 時以 `include` 重試一次；新增 **F-20 診斷記錄模式**；`alarms`、`downloads` 權限提前加入。
+- **v36 調整**（`docs/review-2026-11-16.md` 追加七，T3.8）：Console 輸出不得含訊息文字等個資（CLAUDE.md）；F-20 P8 只記 `warnOnce` key 與預先定義的說明、其他訊息只保留 ASCII；原始診斷檔放 `docs/diag/raw/`（不進 git），只 commit 摘要；**新增 `scripting` 權限**：擴充功能更新後自動重新注入已開著的 YouTube 分頁；斷線分頁偵測；診斷控制頁改為單一切換按鈕與「記錄 N 分鐘／指定結束時間」二選一。
 
 ---
 
@@ -490,7 +491,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   | P5 | background：`fieldStats`、有分頁開著的場次的 phase 分布與 `capture_sessions` 摘要 | 每 10 分鐘 |
   | P6 | 彈出視窗開啟／關閉／接手 | 事件 |
   | P7 | 結構探針：遇到未知元件、禮物元件、降落橫幅、直播結束時，自動記錄該元件（或聊天室）的結構（同附錄 C／E：標籤、id、屬性名稱、`img` 網域、有無文字），同一標籤每場最多 3 次 | 事件 |
-  | P8 | 本套件的 `warn`／`error` 與未捕捉的例外（含堆疊，去除網址參數與 handle） | 事件 |
+  | P8 | 本套件的 `warn`／`error` 與未捕捉的例外（含堆疊，去除網址參數與 handle）。（v36，追加七 B-1）`warnOnce` 只記 **key＋等級＋`constants.js` 預先定義的說明**（`DIAG_WARN_TEXT`，不取執行期字串）；其他訊息與堆疊**只保留 ASCII**（中日韓文字換成 `[…]`） | 事件 |
 - **隱私**：只記筆數、元件標籤、id、屬性名稱、時間、`videoId`、圖片**網域**。**不記**訊息文字、使用者名稱或 handle、頻道名稱、影片標題、頭像網址。content script 端只組這些欄位；background 寫入前再消毒一次（字串只允許標籤／id／時間類字元，含 `@` 或中日韓文字的字串一律換成 `[removed]`，網址只留網域）。
 - **容量**：獨立資料表 `diag_log`（4.1），環狀：最多 5 萬筆或 20 MB，超過丟最舊；停止 30 天後自動清除（診斷資料不屬於聊天存檔，可自動刪除）。
 - **匯出**：單一 `ytcas-diag-YYYYMMDD-HHmm.json`（`{ format: 'ytcas-diag', formatVersion: 1, version, chrome, exportedAt, period, probes, records[] }`），下載到「下載\YT聊天室診斷\」（`downloads`）；也提供「複製摘要」（前 200 行人類可讀文字）。使用者把檔案放進 `docs/diag/`。

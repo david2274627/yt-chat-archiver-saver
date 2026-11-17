@@ -178,7 +178,8 @@ async function processHandle(h) {
     });
   } finally {
     inflight.delete(h);
-    if (err) console.info('[ytcas] 頻道名稱解析失敗', h, String(err && err.message));
+    // T3.8（CLAUDE.md 規則）：Console 不得輸出 handle → 只記失敗原因
+    if (err) console.info('[ytcas] 頻道名稱解析失敗', String(err && err.message));
     kickQueue();
   }
 }
@@ -265,7 +266,10 @@ function sanitizeDiag(v, key, depth) {
   if (v === null || typeof v === 'boolean') return v;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v === 'string') {
-    if (key === 'message' || key === 'stack') return scrubText(v); // P8：錯誤訊息與堆疊（去除網址參數與 handle）
+    // P8：錯誤訊息與堆疊只保留 ASCII（T3.8），並去除網址參數與 handle
+    if (key === 'message' || key === 'stack') return scrubText(C.asciiOnly(v));
+    // P8 warnOnce 的說明：只接受預先定義的文字（C.DIAG_WARN_TEXT），不接受任何執行期字串
+    if (key === 'desc') return Object.values(C.DIAG_WARN_TEXT).includes(v) ? v : '[removed]';
     if (/^https?:\/\//.test(v)) { try { return new URL(v).host; } catch (_) { return '(url)'; } }
     return SAFE_STR.test(v) ? v : '[removed]';
   }
@@ -428,6 +432,7 @@ for (const lv of ['warn', 'error']) {
     try { if (diagOn('P8')) diagLog('P8', lv, { message: a.map((x) => (x && x.stack) || (typeof x === 'object' ? JSON.stringify(x) : String(x))).join(' ') }); } catch (_) { /* ignore */ }
   };
 }
+SEL.onWarn = (key, lv) => { if (lv === 'warn' && diagOn('P8')) diagLog('P8', 'warnOnce', { key: C.asciiOnly(key), level: lv, desc: C.diagWarnText(key) }); };
 self.addEventListener('error', (e) => { if (diagOn('P8')) diagLog('P8', 'exception', { message: String(e.message || ''), stack: String((e.error && e.error.stack) || '') }); });
 self.addEventListener('unhandledrejection', (e) => { if (diagOn('P8')) diagLog('P8', 'rejection', { message: String((e.reason && e.reason.message) || e.reason || ''), stack: String((e.reason && e.reason.stack) || '') }); });
 

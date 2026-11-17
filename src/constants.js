@@ -230,6 +230,27 @@
     return t;
   };
 
+  // T3.8（審查十追加七 B-1）F-20 P8：只記 warnOnce 的 key（ASCII）＋等級＋這裡預先定義的說明，不取執行期字串。
+  // key 以「前綴」比對（例：'F-12:failed:not-selected' 對到 'F-12:'）
+  C.DIAG_WARN_TEXT = Object.freeze({
+    'chat.items': '聊天室已渲染，但 10 秒內找不到訊息列表',
+    'F-12:': '無法自動切換到「即時聊天室」',
+    'popout:videoId': '彈出式聊天室網址沒有 v 參數，無法收錄',
+    'chatframe:STREAM_INFO': '30 秒內沒有收到 top frame 的場次資訊，本聊天室不收錄',
+    'handoff:teaser': '找不到可用的「開啟面板」，無法自動展開聊天室',
+    'poc:': 'PoC 錨點或結構找不到',
+  });
+  C.diagWarnText = function (key) {
+    const k = String(key || '');
+    if (Object.prototype.hasOwnProperty.call(C.DIAG_WARN_TEXT, k)) return C.DIAG_WARN_TEXT[k];
+    const hit = Object.keys(C.DIAG_WARN_TEXT).find((p) => p.endsWith(':') && k.startsWith(p));
+    return hit ? C.DIAG_WARN_TEXT[hit] : null;
+  };
+  // 執行期字串只保留 ASCII（中日韓文字等換成 […]）：錯誤訊息若意外帶到聊天內容也不會進入診斷檔
+  C.asciiOnly = function (s) {
+    return String(s == null ? '' : s).replace(/[^\x20-\x7E\n]+/g, '[…]').slice(0, 800);
+  };
+
   C.isAllowedImageUrl = function (url) {
     try {
       const u = new URL(url);
