@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F-20 診斷控制頁測試</title>
+<link rel="stylesheet" href="../../src/styles/tokens.css">
+<link rel="stylesheet" href="../diag.css">
+<style>
+  #report { max-width: 720px; margin: 16px auto; font: 14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; color: var(--ytcas-text); }
+  .ok { color: var(--ytcas-accent); } .ng { color: var(--ytcas-danger); }
+</style>
+</head>
+<body>
+<div id="report"><h1>F-20 診斷控制頁測試（T3.8 F）</h1>
+<p>載入真正的 <code>tools/diag.html</code> 內容與 <code>tools/diag.js</code>，以真正的 background 處理函式（測試資料庫、chrome.* 假物件）回應。</p>
+<p id="summary">執行中…</p><ol id="list"></ol></div>
+<div id="host"></div>
+<script src="keep-fetch.js"></script>
+<script src="../../src/constants.js"></script>
+<script src="../../src/selectors.js"></script>
+<script src="../../src/db.js"></script>
+<script src="mock-chrome.js"></script>
+<script src="../../src/background.js"></script>
+<script src="test-diag-page.js"></script>
+</body>
+</html>

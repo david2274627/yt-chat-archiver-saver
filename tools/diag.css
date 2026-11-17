@@ -1,0 +1,39 @@
+/* F-20 診斷控制頁（tools/diag.html）。顏色、字級、間距一律使用 tokens.css（SPEC 第 10 節，方向 B） */
+[hidden] { display: none !important; } /* .field 等的 display 不得蓋過 hidden 屬性 */
+body { background: var(--ytcas-bg); color: var(--ytcas-text); font: var(--ytcas-fs-md)/1.5 var(--ytcas-font); margin: 0; }
+main { max-width: 720px; margin: 0 auto; padding: var(--ytcas-space-5) var(--ytcas-space-4); }
+h1 { font-size: var(--ytcas-fs-xl); margin: 0 0 var(--ytcas-space-2); }
+h2 { font-size: var(--ytcas-fs-lg); margin: 0 0 var(--ytcas-space-3); }
+p.note { color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); margin: 0 0 var(--ytcas-space-4); }
+section { background: var(--ytcas-surface); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md);
+  padding: var(--ytcas-space-4); margin-bottom: var(--ytcas-space-4); }
+fieldset { border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-sm); margin: 0 0 var(--ytcas-space-3);
+  padding: var(--ytcas-space-3); }
+legend { padding: 0 var(--ytcas-space-1); color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
+.field, .choice { display: flex; flex-wrap: wrap; gap: var(--ytcas-space-2); align-items: center; margin-top: var(--ytcas-space-2); }
+.check, .radio { display: inline-flex; gap: var(--ytcas-space-2); align-items: center; }
+.probes { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--ytcas-space-2); margin-top: var(--ytcas-space-3); }
+.probes label { display: flex; gap: var(--ytcas-space-2); align-items: flex-start; font-size: var(--ytcas-fs-sm); }
+details { margin: var(--ytcas-space-2) 0 var(--ytcas-space-3); }
+summary { cursor: pointer; color: var(--ytcas-text-2); }
+.row { display: flex; flex-wrap: wrap; gap: var(--ytcas-space-3); align-items: center; margin-top: var(--ytcas-space-3); }
+input[type="number"], input[type="datetime-local"] { background: var(--ytcas-surface-2); color: var(--ytcas-text);
+  border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-sm); padding: var(--ytcas-space-1) var(--ytcas-space-2); font: inherit; }
+input[type="number"] { width: 6em; }
+input:disabled { opacity: .45; cursor: not-allowed; }
+button { font: inherit; border-radius: var(--ytcas-radius-pill); padding: var(--ytcas-space-2) var(--ytcas-space-4); cursor: pointer;
+  border: 1px solid var(--ytcas-border); background: var(--ytcas-surface-2); color: var(--ytcas-text); }
+button.primary { background: var(--ytcas-accent); color: var(--ytcas-on-accent); border-color: transparent; }
+button.primary:hover { background: var(--ytcas-accent-hover); }
+button.danger { background: var(--ytcas-danger); color: var(--ytcas-on-danger); border-color: transparent; }
+button.secondary { background: var(--ytcas-surface-2); color: var(--ytcas-text); }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--ytcas-focus-ring); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+#btn-toggle { min-width: 14em; font-variant-numeric: tabular-nums; }
+#status { font-size: var(--ytcas-fs-sm); white-space: pre-wrap; margin: 0; }
+.rec { color: var(--ytcas-danger); font-weight: 600; }
+.hint { color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); margin: var(--ytcas-space-2) 0 0; }
+.warn { color: var(--ytcas-danger); font-size: var(--ytcas-fs-sm); margin: var(--ytcas-space-2) 0 0; }
+.notice { border-left: 3px solid var(--ytcas-danger); padding-left: var(--ytcas-space-3); margin-top: var(--ytcas-space-3); }
+.notice p { margin: 0; font-size: var(--ytcas-fs-sm); }
+#msg { min-height: 1.5em; color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }

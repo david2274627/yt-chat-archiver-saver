@@ -366,7 +366,15 @@ async function diagCheck(now) {
 }
 async function diagStatus() {
   await loadDiag();
-  return Object.assign({}, diagState, { records: await DB.diagCount() });
+  const records = await DB.diagCount();
+  // T3.8（審查十追加七 B-3）上一段尚未匯出：已停止、有紀錄、停止後沒有匯出過
+  const unexported = !diagState.active && !diagState.scheduled && records > 0 &&
+    !(diagState.exportedAt && (!diagState.stoppedAt || diagState.exportedAt >= diagState.stoppedAt));
+  return Object.assign({}, diagState, { records, unexported, now: Date.now() });
+}
+async function markExported() {
+  await loadDiag();
+  await saveDiag(Object.assign({}, diagState, { exportedAt: Date.now() }));
 }
 
 // P5（每 10 分鐘）：欄位統計、有分頁開著的場次的 phase 分布與收錄紀錄摘要（只有筆數）
@@ -409,6 +417,7 @@ async function diagDownload() {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   const id = await chrome.downloads.download({ url: 'data:application/json;base64,' + btoa(bin), filename: diagFilename(data.exportedAt), saveAs: false, conflictAction: 'uniquify' });
+  await markExported();
   return { downloadId: id, filename: diagFilename(data.exportedAt), records: data.records.length, bytes: bytes.length };
 }
 // 人類可讀摘要（前 maxLines 行）
@@ -820,7 +829,7 @@ const handlers = {
     }
     if (op === 'stop') return { status: await diagStop('manual') };
     if (op === 'status') return { status: await diagStatus() };
-    if (op === 'export') return { data: await diagExport() };
+    if (op === 'export') { const data = await diagExport(); await markExported(); return { data }; }
     if (op === 'summary') return { text: await diagSummary(msg.maxLines || 200) };
     if (op === 'clear') { await DB.diagClear(); return { status: await diagStatus() }; }
     throw new Error('unknown op');

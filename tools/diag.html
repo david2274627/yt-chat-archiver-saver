@@ -6,68 +6,75 @@
 <title>診斷記錄</title>
 <script src="../src/theme.js" data-auto></script>
 <link rel="stylesheet" href="../src/styles/tokens.css">
-<style>
-  body { background: var(--ytcas-bg); color: var(--ytcas-text); font: var(--ytcas-fs-md)/1.5 var(--ytcas-font); margin: 0; }
-  main { max-width: 720px; margin: 0 auto; padding: var(--ytcas-space-5) var(--ytcas-space-4); }
-  h1 { font-size: var(--ytcas-fs-xl); margin: 0 0 var(--ytcas-space-2); }
-  p.note { color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); margin: 0 0 var(--ytcas-space-4); }
-  section { background: var(--ytcas-surface); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-md);
-    padding: var(--ytcas-space-4); margin-bottom: var(--ytcas-space-4); }
-  h2 { font-size: var(--ytcas-fs-lg); margin: 0 0 var(--ytcas-space-3); }
-  .probes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--ytcas-space-2); }
-  label { display: flex; gap: var(--ytcas-space-2); align-items: flex-start; font-size: var(--ytcas-fs-sm); }
-  .row { display: flex; flex-wrap: wrap; gap: var(--ytcas-space-3); align-items: center; margin-top: var(--ytcas-space-3); }
-  input[type="number"], input[type="datetime-local"] { background: var(--ytcas-surface-2); color: var(--ytcas-text);
-    border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-sm); padding: var(--ytcas-space-1) var(--ytcas-space-2); font: inherit; }
-  button { font: inherit; border-radius: var(--ytcas-radius-pill); padding: var(--ytcas-space-2) var(--ytcas-space-4); cursor: pointer;
-    border: 1px solid var(--ytcas-border); background: var(--ytcas-surface-2); color: var(--ytcas-text); }
-  button.primary { background: var(--ytcas-accent); color: var(--ytcas-on-accent); border-color: transparent; }
-  button.danger { background: var(--ytcas-danger); color: var(--ytcas-on-danger); border-color: transparent; }
-  button:focus-visible, input:focus-visible { outline: 2px solid var(--ytcas-focus-ring); outline-offset: 2px; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  #status { font-size: var(--ytcas-fs-sm); white-space: pre-wrap; margin: 0; }
-  .rec { color: var(--ytcas-danger); font-weight: 600; }
-  #msg { min-height: 1.5em; color: var(--ytcas-text-2); font-size: var(--ytcas-fs-sm); }
-</style>
+<link rel="stylesheet" href="diag.css">
 </head>
 <body>
 <main>
   <h1>診斷記錄（F-20）</h1>
-  <p class="note">記錄期間，套件會自動執行內建的診斷探針並存在本機。只記筆數、元件標籤、屬性名稱、時間與 videoId；不記訊息文字、使用者名稱、頻道名稱、標題或頭像網址。記錄中套件圖示會顯示紅色「REC」，YouTube 頁面上不會出現任何東西。開始新的一段記錄會清除上一段，請先匯出。</p>
+  <p class="note">記錄期間，套件會自動執行內建的診斷探針並存在本機。只記筆數、元件標籤、屬性名稱、時間與 videoId；不記訊息文字、使用者名稱、頻道名稱、標題或頭像網址。記錄中套件圖示會顯示紅色「REC」，YouTube 頁面上不會出現任何東西。</p>
 
   <section aria-labelledby="h-state">
     <h2 id="h-state">目前狀態</h2>
-    <p id="status">讀取中…</p>
-  </section>
-
-  <section aria-labelledby="h-probes">
-    <h2 id="h-probes">探針</h2>
-    <div class="probes" id="probes"></div>
+    <p id="status" aria-live="polite">讀取中…</p>
+    <div id="stale" class="notice" hidden>
+      <p id="stale-text"></p>
+      <div class="row">
+        <button type="button" id="btn-reinject">重新接上這些分頁</button>
+      </div>
+    </div>
   </section>
 
   <section aria-labelledby="h-time">
     <h2 id="h-time">時段</h2>
+
+    <fieldset>
+      <legend>開始</legend>
+      <label class="check"><input type="checkbox" id="schedule"> 排程開始（不勾選 = 立即開始）</label>
+      <div class="field" id="start-field" hidden>
+        <label for="startAt">開始時間</label>
+        <input type="datetime-local" id="startAt">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>結束（二選一）</legend>
+      <div class="choice">
+        <label class="radio"><input type="radio" name="endMode" id="mode-minutes" value="minutes" checked> 記錄</label>
+        <input type="number" id="minutes" min="1" max="1440" value="10" inputmode="numeric" aria-label="記錄分鐘數（1～1440）">
+        <span>分鐘</span>
+      </div>
+      <div class="choice">
+        <label class="radio"><input type="radio" name="endMode" id="mode-end" value="end"> 指定結束時間</label>
+        <input type="datetime-local" id="endAt" aria-label="結束時間" disabled>
+      </div>
+      <p id="plan" class="hint" aria-live="polite"></p>
+      <p id="limit-warn" class="warn" aria-live="polite" hidden></p>
+    </fieldset>
+
+    <details>
+      <summary>進階</summary>
+      <div class="field">
+        <label for="hours">最長時限（安全上限，小時，1～24）</label>
+        <input type="number" id="hours" min="1" max="24" value="6">
+      </div>
+      <div class="probes" id="probes" role="group" aria-label="探針"></div>
+    </details>
+
     <div class="row">
-      <label>最長時限（小時，1～24）<input type="number" id="hours" min="1" max="24" value="6"></label>
-    </div>
-    <div class="row">
-      <label>指定開始（留空 = 立即）<input type="datetime-local" id="startAt"></label>
-      <label>指定結束（留空 = 依時限）<input type="datetime-local" id="endAt"></label>
-    </div>
-    <div class="row">
-      <button class="primary" id="btn-start">開始記錄</button>
-      <button class="danger" id="btn-stop">停止記錄</button>
+      <button type="button" id="btn-toggle" class="primary">開始記錄</button>
+      <span id="unexported" class="warn" hidden>上一段尚未匯出</span>
+      <button type="button" id="btn-export-start" hidden>先匯出再開始</button>
     </div>
   </section>
 
   <section aria-labelledby="h-export">
     <h2 id="h-export">匯出</h2>
     <div class="row">
-      <button class="primary" id="btn-export">匯出診斷記錄（.json）</button>
-      <button id="btn-summary">複製摘要（前 200 行）</button>
-      <button id="btn-clear">清除記錄</button>
+      <button type="button" class="primary" id="btn-export">匯出診斷記錄（.json）</button>
+      <button type="button" id="btn-summary">複製摘要（前 200 行）</button>
+      <button type="button" id="btn-clear">清除記錄</button>
     </div>
-    <p class="note">檔案下載到「下載\YT聊天室診斷\」。請把檔案放進 repo 的 <code>docs/diag/</code>，交給 Claude Code 分析。</p>
+    <p class="note">檔案下載到「下載\YT聊天室診斷\」。請放進 repo 的 <code>docs/diag/raw/</code>（不會被 commit），並告訴 Claude Code 檔名。</p>
   </section>
   <p id="msg" role="status" aria-live="polite"></p>
 </main>
