@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // F-20 診斷記錄分析：讀取匯出檔（ytcas-diag-*.json），產生 Markdown 摘要（時間軸、各探針統計、異常列表）。
-// 用法：node tools/diag-report.js docs/diag/ytcas-diag-20261116-2030.json [輸出.md]
+// 用法：node tools/diag-report.js docs/diag/raw/ytcas-diag-20261116-2030.json docs/diag/diag-summary-2026-11-16-2030.md
+// 原始匯出檔（含觀看過的 videoId 與時間）放 docs/diag/raw/（.gitignore），只 commit 產生的摘要（videoId 只留前 4 碼）
 // 沒有相依套件（CLAUDE.md）。匯出檔本身只有筆數、標籤、屬性名稱、時間與 videoId。
 'use strict';
 const fs = require('fs');
@@ -9,6 +10,8 @@ function pad(n) { return String(n).padStart(2, '0'); }
 function hm(ms) { const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); }
 function dt(ms) { if (!ms) return '—'; const d = new Date(ms); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + hm(ms); }
 const esc = (s) => String(s == null ? '—' : s).replace(/\|/g, '\\|');
+// T3.8（審查十追加七 B-2）：摘要會 commit 進 repo → videoId 只保留前 4 碼（原始匯出檔放 docs/diag/raw/，不進 git）
+const vid4 = (v) => (typeof v === 'string' && v.length > 4 && v !== '—' ? v.slice(0, 4) + '…' : v);
 const short = (o, n) => { const s = JSON.stringify(o); return s.length > (n || 160) ? s.slice(0, n || 160) + '…' : s; };
 
 function report(data) {
@@ -50,7 +53,8 @@ function report(data) {
     L('| videoId | 來源 | 分頁 | 環境 | 期間 | 筆數 | captured | added | idMerged | fpMerged | dupCaptured | dropped | rejected | domNodes 最大 | 未擷取 最大 | 開播時間來源 |');
     L('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const [k, list] of groups) {
-      const [vid, src, tab, env] = k.split('|');
+      const [vidFull, src, tab, env] = k.split('|');
+      const vid = vid4(vidFull);
       const last = list[list.length - 1].data;
       const maxDom = Math.max(...list.map((r) => r.data.domNodes || 0));
       const maxUn = Math.max(...list.map((r) => r.data.unmarkedNodes || 0));
@@ -99,7 +103,7 @@ function report(data) {
   const p5 = (byProbe.P5 || []).filter((r) => r.kind === 'stream');
   if (p5.length) {
     const last = new Map();
-    for (const r of p5) last.set((r.ctx && r.ctx.videoId) || '—', r);
+    for (const r of p5) last.set(vid4((r.ctx && r.ctx.videoId) || '—'), r);
     L('## P5 場次摘要（各場最後一筆）');
     L();
     L('| videoId | 時間 | 類型 | phase | 收錄紀錄 | 來源 | 進行中 | 重新載入 | 開播時間來源 | 等待確認 |');
@@ -119,7 +123,7 @@ function report(data) {
     L();
     for (const r of p7) {
       const d = r.data || {};
-      L('### ' + hm(r.ts) + ' ' + esc(d.reason) + '：`' + esc(d.tag) + '`（' + ((r.ctx && r.ctx.videoId) || '—') + '）');
+      L('### ' + hm(r.ts) + ' ' + esc(d.reason) + '：`' + esc(d.tag) + '`（' + vid4((r.ctx && r.ctx.videoId) || '—') + '）');
       L();
       L('- 屬性：' + esc((d.attrs || []).join(', ') || '—') + '；有 id：' + (d.hasId ? '是' : '否'));
       L('```');
@@ -145,7 +149,7 @@ function report(data) {
     for (const r of events.slice(0, 300)) {
       const c = r.ctx || {};
       const d = r.probe === 'P7' ? { reason: r.data.reason, tag: r.data.tag, nodes: (r.data.tree || []).length } : r.data;
-      L('| ' + [hm(r.ts), r.probe, r.kind, c.env, c.videoId, short(d, 140)].map(esc).join(' | ') + ' |');
+      L('| ' + [hm(r.ts), r.probe, r.kind, c.env, vid4(c.videoId), short(d, 140)].map(esc).join(' | ') + ' |');
     }
     if (events.length > 300) L('| … | | 其餘 ' + (events.length - 300) + ' 筆省略 | | | |');
     L();

@@ -494,7 +494,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   | P8 | 本套件的 `warn`／`error` 與未捕捉的例外（含堆疊，去除網址參數與 handle）。（v36，追加七 B-1）`warnOnce` 只記 **key＋等級＋`constants.js` 預先定義的說明**（`DIAG_WARN_TEXT`，不取執行期字串）；其他訊息與堆疊**只保留 ASCII**（中日韓文字換成 `[…]`） | 事件 |
 - **隱私**：只記筆數、元件標籤、id、屬性名稱、時間、`videoId`、圖片**網域**。**不記**訊息文字、使用者名稱或 handle、頻道名稱、影片標題、頭像網址。content script 端只組這些欄位；background 寫入前再消毒一次（字串只允許標籤／id／時間類字元，含 `@` 或中日韓文字的字串一律換成 `[removed]`，網址只留網域）。
 - **容量**：獨立資料表 `diag_log`（4.1），環狀：最多 5 萬筆或 20 MB，超過丟最舊；停止 30 天後自動清除（診斷資料不屬於聊天存檔，可自動刪除）。
-- **匯出**：單一 `ytcas-diag-YYYYMMDD-HHmm.json`（`{ format: 'ytcas-diag', formatVersion: 1, version, chrome, exportedAt, period, probes, records[] }`），下載到「下載\YT聊天室診斷\」（`downloads`）；也提供「複製摘要」（前 200 行人類可讀文字）。使用者把檔案放進 `docs/diag/`。
+- **匯出**：單一 `ytcas-diag-YYYYMMDD-HHmm.json`（`{ format: 'ytcas-diag', formatVersion: 1, version, chrome, exportedAt, period, probes, records[] }`），下載到「下載\YT聊天室診斷\」（`downloads`）；也提供「複製摘要」（前 200 行人類可讀文字）。使用者把檔案放進 `docs/diag/raw/`（v36，追加七 B-2：匯出檔含觀看過的 `videoId` 與時間，等同觀看紀錄，**`.gitignore` 排除，不進 git**）。Claude Code 以 `tools/diag-report.js` 產生的 Markdown 摘要放在 `docs/diag/`，只 commit 摘要（摘要中的 `videoId` 只保留前 4 碼）。
 - **分析工具**：`tools/diag-report.js`（Node，無相依）讀取匯出檔，產生 Markdown 摘要（時間軸、各探針統計、異常列表），作為每輪報告的附件。
 - AC：(1) 設定 10 分鐘時段後離開，期間開直播、切換分頁、開關彈出視窗；結束後匯出檔包含 P1～P6 紀錄，時間連續、無訊息內容。(2) 遇到未知元件時 P7 自動留下結構紀錄（模擬頁注入未知元件驗證）。(3) 超過最長時限自動停止，停止後不再寫入。(4) 匯出檔以 `tools/diag-report.js` 產生摘要，數字與 Console 中的收錄統計一致。
 
