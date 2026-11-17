@@ -109,6 +109,21 @@
   - `tools/tests/test-viewer.html`（commit `1e08a22`）。
   - 規格 v38、測試清單、HANDOFF 檢視器入口、T4 報告（本段落所在的 commit）。
 
+- v39／T4.1（`docs/review-2026-11-17.md` 第 4、5 節；報告為 T4 報告的「T4.1」）：
+  - 審查報告（十一）與使用者 T4 實測結果（commit `c72e5e5`）。
+  - 置頂：同一則以作者＋正規化內容判斷，寫入時合併、檢視器去重、既有重複可預覽整理（`YTCAS_BG.dedupePinned`）；頭像網域分布（`YTCAS_BG.avatarHosts`）（commit `aedb546`）。
+  - 場次下拉選單的訊息數即時更新（commit `7e242ea`）。
+  - 重新注入後以 DOM 事件讓舊實例退場、連線判斷用實例自己的 runtime、SW 啟動檢查提前並輸出結果（commit `cf24946`）。
+  - T4 報告更正頭像說法（commit `3945da3`）。
+  - SC 文字色依對比度定為已決（commit `da8e494`）。
+  - 測試清單、CHANGELOG、T4 報告「T4.1」（本段落所在的 commit）。
+
+### 規格 v39（2026-11-17，T4.1）
+- F-07／4.1：同一則置頂＝正規化內容相同且作者相同（或一筆缺作者）；`SAVE_PINNED` 合併、`pinnedLastAt`；既有重複整理。
+- T4：場次選單訊息數不需重新整理即更新。
+- 第 7 節「權限」：重新注入的腳本在新的隔離環境（實測），新舊實例以 DOM 事件 `ytcas:handoff`／`ytcas:retired` 交接；連線判斷用實例啟動時的 `chrome.runtime`；SW 啟動檢查 1 秒後。
+- 10.3／10.4：SC 文字色依對比度選黑或白（使用者選 (a)，已決）。
+
 ### 規格 v38（2026-11-17，T4 實作細節）
 - 3.1：`src/viewer-core.js`。
 - F-05 膠囊數字反映目前篩選條件；F-06 使用者與關鍵字的比對範圍；F-07 多則置頂；F-08 時間碼規則與捲動起點；10.3 SC 文字色以 WCAG 對比度選擇、只接受色碼與 `rgb()`。
