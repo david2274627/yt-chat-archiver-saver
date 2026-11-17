@@ -14,3 +14,6 @@ _to_delete/
 bak/
 *.indexeddb.leveldb/
 *.indexeddb.blob/
+
+# F-20 原始診斷匯出檔（含觀看紀錄，不進 git）
+docs/diag/raw/
