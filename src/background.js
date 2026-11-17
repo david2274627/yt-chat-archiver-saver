@@ -867,9 +867,36 @@ try {
   });
 } catch (_) { /* alarms 不可用（測試頁以外不會發生） */ }
 
+// ---------------------------------------------------------------- T3.8 擴充功能更新後自動接回已開著的 YouTube 分頁
+// （審查十追加七 C-1、E：使用者同意 scripting 權限）擴充功能 🔄 或 Chrome 自動更新後，已開著的分頁裡的舊 content script
+// 與新的 background 斷線（只剩修剪、不再收錄）。update 時對所有 YouTube 分頁的所有 frame 重新注入 content script；
+// 新腳本會讓同一環境裡已斷線的舊實例退場（content.js 的 __ytcasRetire）。
+// PoC（src/poc/）的腳本依 frame 有不同的 matches，無法以 allFrames 正確重現，不重新注入（PoC 需要 F5；T9 移除）。
+const REINJECT_FILES = ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/content.js'];
+async function reinjectYouTubeTabs(tabIds) {
+  const out = { tabs: 0, ok: 0, failed: [] };
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ url: 'https://www.youtube.com/*' }); } catch (_) { return out; }
+  for (const t of tabs) {
+    if (tabIds && !tabIds.includes(t.id)) continue;
+    if (t.discarded) continue; // 被 Chrome 卸載的分頁：使用者切回時會重新載入，manifest 會自動注入
+    out.tabs++;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: t.id, allFrames: true }, files: REINJECT_FILES });
+      out.ok++;
+    } catch (e) {
+      out.failed.push({ tabId: t.id, error: C.asciiOnly(e && e.message) });
+    }
+  }
+  console.info('[ytcas] 已重新接上 YouTube 分頁', { tabs: out.tabs, ok: out.ok, failed: out.failed.length });
+  diagLog('P6', 'reinject', { tabs: out.tabs, ok: out.ok, failed: out.failed.length });
+  return out;
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.info('[ytcas] installed', details.reason, chrome.runtime.getManifest().version_name);
   autoMigrateLegacy(false).catch((e) => console.warn('[ytcas] 舊資料遷移失敗', e));
+  if (details.reason === 'update') reinjectYouTubeTabs().catch((e) => console.info('[ytcas] 重新注入失敗', C.asciiOnly(e && e.message)));
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   onPopoutTabRemoved(tabId).catch((e) => console.warn('[ytcas] 彈出視窗關閉處理失敗', String(e && e.message)));

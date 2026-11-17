@@ -25,6 +25,25 @@
   };
   const isVideoId = (v) => typeof v === 'string' && /^[\w-]{6,20}$/.test(v);
 
+  // T3.8（審查十追加七 C-1）擴充功能更新後 background 會重新注入本檔。若同一環境裡已有實例：
+  //   舊實例已斷線 → 讓它退場（停止擷取引擎與定時工作），由新實例接手；舊實例仍連線 → 新實例不啟動（避免重複）
+  const prevRetire = globalThis.__ytcasRetire;
+  if (typeof prevRetire === 'function') {
+    let stillLive = false;
+    try { stillLive = prevRetire() === false; } catch (_) { /* ignore */ }
+    if (stillLive) return;
+  }
+  let retired = false;
+  const retireHooks = [];
+  globalThis.__ytcasRetire = () => {
+    if (connected()) return false; // 仍連線：不退場
+    if (!retired) {
+      retired = true;
+      for (const f of retireHooks) { try { f(); } catch (_) { /* ignore */ } }
+    }
+    return true;
+  };
+
   // ================================================================ F-20 診斷記錄（T3.7）
   // 記錄中（chrome.storage.local 的 diagState）才收集並批次送給 background；只送筆數、標籤、屬性名稱、時間、videoId。
   // 不在 YouTube 頁面上顯示任何東西（10.1 原則 6）。
@@ -109,6 +128,7 @@
     if (env === 'popout') dlog('P6', 'popout-open', { urlHasV: !!urlVid }, { source, videoId: isVideoId(urlVid) ? urlVid : null });
     setTimeout(() => diag(null), 10000);
     engine.start();
+    retireHooks.push(() => engine.stop()); // T3.8：被新注入的實例取代時停止（觀察器、計時器一併解除）
 
     if (env === 'popout') {
       if (isVideoId(urlVid)) engine.setInfo({ videoId: urlVid });
@@ -240,6 +260,7 @@
     }
 
     window.addEventListener('message', (e) => {
+      if (retired) return;
       const f = chatIframe();
       if (e.origin !== YT || !f || e.source !== f.contentWindow || !e.data || e.data.__ytcas !== true) return;
       if (e.data.type === FM.STREAM_INFO_REQUEST) sendInfo();
@@ -271,6 +292,7 @@
     //   background 依 F-14 重算 phase。其他候選訊號（ytd-watch-flexy 屬性變化）尚未實機確認，只記屬性名稱供診斷。
     let lastEnd = { videoId: null, endDate: null, isLive: null, duration: undefined };
     setInterval(() => {
+      if (retired) return;
       const info = streamInfo();
       if (!info) return;
       if (info.videoId !== lastEnd.videoId) lastEnd = { videoId: info.videoId, endDate: info.endDate, isLive: info.isLiveBroadcast, duration: undefined };
@@ -325,11 +347,13 @@
       flexyObs.observe(fx, { attributes: true });
       flexyObs.__t = fx;
     }
-    setInterval(watchFlexyAttrs, 5000);
+    setInterval(() => { if (!retired) watchFlexyAttrs(); }, 5000);
+    retireHooks.push(() => { if (flexyObs) flexyObs.disconnect(); });
 
     // 聊天室 iframe 狀態（診斷）：彈出視窗開啟時主分頁的嵌入式聊天室是否仍存在（F-19 第 4 點，待實機確認）
     let lastFrameKey = '';
     setInterval(() => {
+      if (retired) return;
       bindVideo();
       const f = chatIframe();
       let p = null;
@@ -348,7 +372,7 @@
     // F-19：彈出視窗關閉 → 主分頁自動接手（展開聊天室、恢復收錄；預設開啟面板於 T5）
     try {
       chrome.runtime.onMessage.addListener((msg) => {
-        if (!msg || msg.type !== RT.CAPTURE_END || msg.source !== 'popout' || msg.videoId !== currentVideoId()) return;
+        if (retired || !msg || msg.type !== RT.CAPTURE_END || msg.source !== 'popout' || msg.videoId !== currentVideoId()) return;
         handoff();
       });
     } catch (_) { /* ignore */ }

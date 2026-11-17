@@ -64,7 +64,12 @@
     // tabs：_tabs 為假分頁清單（query 一律回傳全部，由 background 自行比對網址），sent 記錄 sendMessage
     tabs: {
       _tabs: [], sent: [],
-      query: async () => self.chrome.tabs._tabs.slice(),
+      // url 篩選（match pattern 的 * 視為萬用字元）；沒有 url 時回傳全部
+      query: async (q) => {
+        const pats = q && q.url ? [].concat(q.url) : null;
+        const ok = (u) => !pats || pats.some((p) => new RegExp('^' + p.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$').test(u));
+        return self.chrome.tabs._tabs.filter((t) => ok(t.url || '')).slice();
+      },
       sendMessage: async (tabId, m) => { self.chrome.tabs.sent.push({ tabId, msg: JSON.parse(JSON.stringify(m)) }); },
       onRemoved: { addListener: (f) => listeners.removed.push(f) },
     },
@@ -81,6 +86,15 @@
       setBadgeText: (o) => { self.chrome.action._badge.text = o.text; return Promise.resolve(); },
       setBadgeBackgroundColor: (o) => { self.chrome.action._badge.color = o.color; return Promise.resolve(); },
       setTitle: (o) => { self.chrome.action._badge.title = o.title; return Promise.resolve(); },
+    },
+    // T3.8：scripting（只記錄；_fail 內的 tabId 會拋錯）
+    scripting: {
+      _calls: [], _fail: new Set(),
+      executeScript: async (o) => {
+        self.chrome.scripting._calls.push(JSON.parse(JSON.stringify(o)));
+        if (self.chrome.scripting._fail.has(o.target.tabId)) throw new Error('Cannot access contents of the page');
+        return [{ frameId: 0, result: null }];
+      },
     },
     downloads: {
       _list: [],

@@ -926,6 +926,28 @@
     } finally { await BG.diag.stop(); }
   });
 
+  test('T3.8 C-1：擴充功能更新（onInstalled: update）→ 對所有 YouTube 分頁的所有 frame 重新注入 content script；非 YouTube 分頁與卸載分頁不注入；失敗分頁回報', async () => {
+    await resetAll();
+    chrome.scripting._calls.length = 0;
+    chrome.scripting._fail = new Set([12]);
+    chrome.tabs._tabs = [
+      { id: 10, url: 'https://www.youtube.com/watch?v=' + V },
+      { id: 11, url: 'https://www.youtube.com/live_chat?is_popout=1&v=' + V },
+      { id: 12, url: 'https://www.youtube.com/' },
+      { id: 13, url: 'https://example.com/' },
+      { id: 14, url: 'https://www.youtube.com/watch?v=' + V2, discarded: true },
+    ];
+    try {
+      for (const f of M.listeners.installed) f({ reason: 'install' });
+      await sleep(50);
+      eq(chrome.scripting._calls.length, 0, '新安裝不注入（manifest 會自動注入）');
+      for (const f of M.listeners.installed) f({ reason: 'update' });
+      await until(() => chrome.scripting._calls.length === 3, 2000);
+      eq(chrome.scripting._calls.map((c) => [c.target.tabId, c.target.allFrames]), [[10, true], [11, true], [12, true]]);
+      eq(chrome.scripting._calls[0].files, ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/content.js'], '與 manifest 的 content script 相同順序，不含 PoC');
+    } finally { chrome.tabs._tabs = []; chrome.scripting._fail = new Set(); }
+  });
+
   test('F-20：最長時限自動停止；指定開始時間（排程）；停止 30 天後自動清除；控制只接受擴充功能頁面', async () => {
     await resetAll();
     await BG.diag.clear();
