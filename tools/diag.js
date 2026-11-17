@@ -15,6 +15,7 @@
     P6: 'P6 彈出視窗開啟／關閉／接手、斷線分頁',
     P7: 'P7 結構探針（未知元件、禮物、降落、直播結束時自動記錄結構）',
     P8: 'P8 本套件的警告、錯誤與例外',
+    P9: 'P9 記憶體（JS heap、DOM 節點數，每 5 分鐘）',
   };
   const pad = (n) => String(n).padStart(2, '0');
   const hhmm = (t) => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };

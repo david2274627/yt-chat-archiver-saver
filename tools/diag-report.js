@@ -116,6 +116,52 @@ function report(data) {
     L();
   }
 
+  // ---- P9 記憶體（T4.2）：各分頁 × 環境的時間序列（超過 24 列時平均抽樣，保留第一與最後一筆）
+  const p9 = (byProbe.P9 || []).filter((r) => r.kind === 'memory' && r.data);
+  if (p9.length) {
+    const g9 = new Map();
+    for (const r of p9) {
+      const c = r.ctx || {};
+      const k = [c.tab != null ? c.tab : '—', c.env || '—', vid4(c.videoId || '—')].join('|');
+      if (!g9.has(k)) g9.set(k, []);
+      g9.get(k).push(r);
+    }
+    L('## P9 記憶體（每 5 分鐘）');
+    L();
+    L('同源的 top 與聊天室 iframe 通常共用同一個 V8 heap，兩邊的 heap 數字可能相同；各 frame 的差異看 DOM 節點數。`performance.memory` 的數值有量化誤差，只看趨勢。');
+    L();
+    L('| 分頁 | 環境 | videoId | 期間 | 筆數 | used heap 首→末（MB） | used 最大 | 每小時變化 | DOM 節點 首→末 | #items 最大 |');
+    L('|---|---|---|---|---|---|---|---|---|---|');
+    for (const [k, list] of g9) {
+      const [tab, env, vid] = k.split('|');
+      const a = list[0], b = list[list.length - 1];
+      const used = list.map((r) => r.data.usedJSHeapMB).filter((x) => typeof x === 'number');
+      const hours = (b.ts - a.ts) / 3600000;
+      const du = typeof a.data.usedJSHeapMB === 'number' && typeof b.data.usedJSHeapMB === 'number' ? b.data.usedJSHeapMB - a.data.usedJSHeapMB : null;
+      const items = list.map((r) => r.data.itemsNodes).filter((x) => typeof x === 'number');
+      L('| ' + [tab, env, vid, hm(a.ts) + '～' + hm(b.ts), list.length, a.data.usedJSHeapMB + ' → ' + b.data.usedJSHeapMB,
+        used.length ? Math.max(...used) : '—', du != null && hours >= 0.25 ? (du / hours).toFixed(1) : '—',
+        a.data.domNodes + ' → ' + b.data.domNodes, items.length ? Math.max(...items) : '—'].map(esc).join(' | ') + ' |');
+      if (du != null && hours >= 0.5 && du > 100 && du > a.data.usedJSHeapMB * 0.5) {
+        anomalies.push('P9 ' + env + '（分頁 ' + tab + '）JS heap ' + hours.toFixed(1) + ' 小時內增加 ' + du.toFixed(0) + ' MB（' + a.data.usedJSHeapMB + ' → ' + b.data.usedJSHeapMB + '）');
+      }
+    }
+    L();
+    for (const [k, list] of g9) {
+      const [tab, env, vid] = k.split('|');
+      const pick = list.length <= 24 ? list : Array.from({ length: 24 }, (_, i) => list[Math.round(i * (list.length - 1) / 23)]);
+      L('### ' + env + '（分頁 ' + tab + '，' + vid + '）');
+      L();
+      L('| 時間 | used（MB） | total（MB） | DOM 節點 | #items | 佇列 | 背景 |');
+      L('|---|---|---|---|---|---|---|');
+      for (const r of pick) {
+        const d = r.data;
+        L('| ' + [hm(r.ts), d.usedJSHeapMB, d.totalJSHeapMB, d.domNodes, d.itemsNodes, d.queue, d.hidden ? '是' : '否'].map(esc).join(' | ') + ' |');
+      }
+      L();
+    }
+  }
+
   // ---- P7 結構
   const p7 = byProbe.P7 || [];
   if (p7.length) {

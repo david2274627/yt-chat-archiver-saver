@@ -87,6 +87,25 @@
     try { const p = chrome.runtime.sendMessage({ type: RT.DIAG_LOG, records }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* ignore */ }
   }
   window.addEventListener('pagehide', dflush);
+  // F-20 P9 記憶體（T4.2，審查十一 6.3）：每 5 分鐘記錄 JS heap（performance.memory，Chrome 專有，只有數字）、
+  // 本 frame 的 DOM 節點數；chat frame 另記 #items 節點數與佇列長度。注意：同源的 top 與聊天室 iframe 通常在同一個
+  // renderer 程序、共用同一個 V8 heap，兩邊的 heap 數字可能相同，各 frame 的差異以 DOM 節點數判斷
+  let p9Extra = null; // () => { data, ctx }
+  function p9() {
+    if (retired || !diagOn('P9')) return;
+    const pm = (typeof performance !== 'undefined' && performance.memory) || null;
+    const mb = (v) => (typeof v === 'number' ? Math.round(v / 104857.6) / 10 : null);
+    let e = {};
+    try { e = (p9Extra && p9Extra()) || {}; } catch (_) { /* ignore */ }
+    dlog('P9', 'memory', Object.assign({ usedJSHeapMB: mb(pm && pm.usedJSHeapSize), totalJSHeapMB: mb(pm && pm.totalJSHeapSize),
+      heapLimitMB: mb(pm && pm.jsHeapSizeLimit), domNodes: document.getElementsByTagName('*').length, hidden: document.hidden }, e.data || {}), e.ctx);
+  }
+  if (env !== 'other') {
+    setTimeout(p9, 30000);
+    setInterval(p9, DG.P9_MINUTES * 60000);
+    // 記錄途中才開始（或新加入 P9）時立即取樣一次
+    try { chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch[DG.STATE_KEY]) setTimeout(p9, 1000); }); } catch (_) { /* ignore */ }
+  }
   // P8：本套件（content script）的 warn／error 與例外。console 物件是 content script 世界自己的，不影響 YouTube。
   // T3.8（審查十追加七 B-1）：warnOnce 只記 key＋等級＋預先定義的說明（不取執行期字串）；其他 warn／error 與例外的
   // 訊息只保留 ASCII（中日韓文字換成 […]），避免意外帶到聊天內容
@@ -158,6 +177,11 @@
     setTimeout(() => diag(null), 10000);
     engine.start();
     retireHooks.push(() => engine.stop()); // T3.8：被新注入的實例取代時停止（觀察器、計時器一併解除）
+    p9Extra = () => {
+      const s = engine.state();
+      const items = document.querySelector(S.chat.items);
+      return { data: { itemsNodes: items ? items.children.length : null, queue: s.queue, observers: s.observers, mode: s.mode }, ctx: { source, videoId: s.videoId } };
+    };
 
     if (env === 'popout') {
       if (isVideoId(urlVid)) engine.setInfo({ videoId: urlVid });
@@ -244,6 +268,12 @@
       return m ? m[1] : null;
     };
     const chatIframe = () => document.querySelector(T.chatIframe);
+    p9Extra = () => {
+      const v = currentVideoId();
+      const vid = document.querySelector(T.video);
+      return { data: { hasChatFrame: !!chatIframe(), videoBufferedSec: vid && vid.buffered && vid.buffered.length ? Math.round(vid.buffered.end(vid.buffered.length - 1) - vid.buffered.start(0)) : null },
+        ctx: { videoId: isVideoId(v) ? v : null } };
+    };
     const metaContent = (sel) => { const el = document.querySelector(sel); return el ? el.getAttribute('content') : null; };
     const parseDate = (s) => { const t = s ? Date.parse(s) : NaN; return Number.isFinite(t) ? t : null; };
 

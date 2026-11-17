@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v39**（前版：v38；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v40**（前版：v39；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -39,6 +39,7 @@
 - **v37 調整**（`docs/review-2026-11-16.md` 追加八，T3.9）：重新注入擴大到**首次安裝**與 **Service Worker 每次啟動時的斷線分頁檢查**（第 7 節「權限」）；`scripting` 權限在 Chrome 不顯示額外警告，記錄為「使用者已同意」；F-20 P3 只記有聊天室的分頁；F-08 新增**長期直播**（`startDate` 遠早於 DVR 可回放範圍）的顯示備註。
 - **v38 調整**（T4 實作時確定的細節）：新增 `src/viewer-core.js`（3.1）；F-05 膠囊數字反映目前的篩選條件；F-06 比對範圍；F-07 多則置頂的呈現；時間碼規則（offset 未知、長期直播）；SC 文字色以對比度選擇；後台分頁在 T7 之前以場次下拉選單切換。
 - **v39 調整**（`docs/review-2026-11-17.md` 第 5 節，T4.1）：F-07 置頂的「同一則」改為作者＋正規化內容，寫入時合併、既有重複可整理（`pinnedLastAt`）；T4 場次選單訊息數即時更新；重新注入後新舊實例改以 DOM 事件交接（第 7 節「權限」）；SC 文字色依對比度（10.3、10.4）定為已決。
+- **v40 調整**（`docs/review-2026-11-17.md` 第 6、9 節，T4.2）：F-20 新增 **P9 記憶體**探針；第 9 節新增記憶體**對照測試**（停用／啟用本套件、關閉 DevTools）。
 
 ---
 
@@ -503,6 +504,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   | P6 | 彈出視窗開啟／關閉／接手 | 事件 |
   | P7 | 結構探針：遇到未知元件、禮物元件、降落橫幅、直播結束時，自動記錄該元件（或聊天室）的結構（同附錄 C／E：標籤、id、屬性名稱、`img` 網域、有無文字），同一標籤每場最多 3 次 | 事件 |
   | P8 | 本套件的 `warn`／`error` 與未捕捉的例外（含堆疊，去除網址參數與 handle）。（v36，追加七 B-1）`warnOnce` 只記 **key＋等級＋`constants.js` 預先定義的說明**（`DIAG_WARN_TEXT`，不取執行期字串）；其他訊息與堆疊**只保留 ASCII**（中日韓文字換成 `[…]`） | 事件 |
+  | P9 | （v40，T4.2）記憶體：top frame 與 chat frame（彈出式聊天室）各自每 5 分鐘記錄 `performance.memory` 的 `usedJSHeapSize`／`totalJSHeapSize`／`jsHeapSizeLimit`（MB，Chrome 專有 API，只有數字）、該 frame 的 DOM 節點數、是否在背景；chat frame 另記 `#items` 節點數、佇列長度、observer 數與收錄狀態；top frame 另記影片緩衝秒數。同源的 top 與聊天室 iframe 通常共用同一個 V8 heap，heap 數字只看趨勢，各 frame 的差異看 DOM 節點數。`diag-report.js` 輸出各 frame 的時間序列與每小時變化，30 分鐘以上增加超過 100 MB 且超過 50% 時列入異常 | 定時 |
 - **隱私**：只記筆數、元件標籤、id、屬性名稱、時間、`videoId`、圖片**網域**。**不記**訊息文字、使用者名稱或 handle、頻道名稱、影片標題、頭像網址。content script 端只組這些欄位；background 寫入前再消毒一次（字串只允許標籤／id／時間類字元，含 `@` 或中日韓文字的字串一律換成 `[removed]`，網址只留網域）。
 - **容量**：獨立資料表 `diag_log`（4.1），環狀：最多 5 萬筆或 20 MB，超過丟最舊；停止 30 天後自動清除（診斷資料不屬於聊天存檔，可自動刪除）。
 - **匯出**：單一 `ytcas-diag-YYYYMMDD-HHmm.json`（`{ format: 'ytcas-diag', formatVersion: 1, version, chrome, exportedAt, period, probes, records[] }`），下載到「下載\YT聊天室診斷\」（`downloads`）；也提供「複製摘要」（前 200 行人類可讀文字）。使用者把檔案放進 `docs/diag/raw/`（v36，追加七 B-2：匯出檔含觀看過的 `videoId` 與時間，等同觀看紀錄，**`.gitignore` 排除，不進 git**）。Claude Code 以 `tools/diag-report.js` 產生的 Markdown 摘要放在 `docs/diag/`，只 commit 摘要（摘要中的 `videoId` 只保留前 4 碼）。
@@ -744,6 +746,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 測試帳號：需為某頻道會員以測會員表符；`$` 流程測到確認頁即可取消。
 - Chrome：最新穩定版；記錄版本號於測試清單。
 - 記憶體量測：Chrome 工作管理員（Shift+Esc）記錄 0 / 30 / 60 / 120 分鐘。
+- **記憶體對照測試**（v40，`docs/review-2026-11-17.md` 6.3）：分頁記憶體包含影片播放（MSE 緩衝、解碼、GPU）、播放器與頁面程式、聊天室 iframe，以及**開著的 DevTools**（Console 紀錄會留在記憶體），單看一個數字無法判斷聊天室是否為主因。對照方式：同一個高流量直播、相同畫質、**關閉 DevTools**，分別在「停用本套件」與「啟用本套件」兩種情況下各開 60 分鐘；以 Chrome 工作管理員（Shift+Esc）記錄**該分頁**與**「子框架：youtube.com」（聊天室）**在 0／15／30／60 分鐘的記憶體，啟用時另以 F-20 P9 記錄 JS heap 與 `#items` 節點數。判斷：啟用時聊天室子框架的記憶體不隨時間持續增長、`#items` 維持上限；停用時應可觀察到增長。
 - **YouTube DOM 依據**（v25）：所有依賴 YouTube DOM 結構的功能（量測、錨點、彈窗偵測、擷取）以 `docs/youtube-dom-notes.md` 記錄的實機結構為準。模擬頁測試只能證明「程式邏輯沒錯」，報告中標為「模擬頁：邏輯檢查通過；真實結構待實機」，實機確認後才可標 ✅。新取得的診斷資料寫入該筆記（標註日期與 Chrome 版本），原始輸出存於 `docs/diag/`。
 - **相容性**（v24）：使用者裝有 Holodex+（Console 會出現 `[Holodex+] live chat overrides injected`，它也會修改直播聊天室）。回歸測試需在**有／無 Holodex+** 兩種情況下各測一次；實測遇到錯位或樣式異常時，先停用 Holodex+ 重測以排除干擾。
 - **必測情境**（v24）：有**置頂訊息列**的直播、有**投票卡**的直播（底部互動區高度會變）；劇院模式與窄版面。

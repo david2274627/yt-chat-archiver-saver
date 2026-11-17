@@ -965,6 +965,25 @@
     } finally { await BG.diag.stop(); }
   });
 
+  test('T4.2 F-20 P9 記憶體：數字與狀態字串保留、分頁 id 由 background 補上；未選 P9 時不記錄', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    await BG.diag.start({ probes: ['P9'] });
+    try {
+      const d = { usedJSHeapMB: 85.3, totalJSHeapMB: 120.1, heapLimitMB: 4096, domNodes: 912, hidden: false, itemsNodes: 45, queue: 0, observers: 2, mode: 'capturing' };
+      await send({ type: 'DIAG_LOG', records: [
+        { probe: 'P9', kind: 'memory', ctx: { env: 'chatframe', source: 'live', videoId: 'vidAAAAAAA1' }, data: d },
+        { probe: 'P1', kind: 'stats', data: { captured: 1 } },
+      ] });
+      await BG.diag.flush();
+      const recs = (await DB.diagAll()).filter((x) => x.kind !== 'diag-start');
+      eq(recs.map((x) => x.probe), ['P9']);
+      eq(recs[0].data, d);
+      eq([recs[0].ctx.env, recs[0].ctx.tab], ['chatframe', 1]);
+    } finally { await BG.diag.stop(); }
+    eq(self.YTCAS_CONST.DIAG.PROBES.includes('P9'), true);
+  });
+
   test('T3.8 C-1／T3.9 B-1：擴充功能更新或首次安裝（onInstalled: update／install）→ 對所有 YouTube 分頁的所有 frame 重新注入 content script；非 YouTube 分頁與卸載分頁不注入；失敗分頁回報', async () => {
     await resetAll();
     chrome.scripting._calls.length = 0;
