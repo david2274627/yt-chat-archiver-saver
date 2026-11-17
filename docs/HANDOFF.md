@@ -48,6 +48,12 @@ Claude Code 會自動讀取 `CLAUDE.md`。進入後貼上：
    - Service Worker 的錯誤：擴充功能卡片上點「Service Worker」連結
    - 把錯誤訊息或截圖直接貼給 Claude Code
 
+## 三之一、診斷記錄（F-20）
+- 控制頁：在 Chrome 網址列輸入 **`chrome-extension://ejdhefdjjjlajfilfijnanippgdcdeoi/tools/diag.html`**（擴充功能 ID 已核對，見 `docs/test-checklist.md`）。T7 完成後也可從後台「設定 → 進階 → 診斷記錄」開啟。
+- 用法：選擇要記錄多久（或指定結束時間）→「開始記錄」（套件圖示出現紅色 REC）→ 正常觀看 → 時間到自動停止 →「匯出診斷記錄」。
+- 匯出檔在「下載\YT聊天室診斷\」。**放到 repo 的 `docs/diag/raw/`**（已列入 `.gitignore`，含觀看紀錄，不會被 commit），告訴 Claude Code 檔名；Claude Code 產生的摘要放在 `docs/diag/` 並 commit。
+- 擴充功能 🔄 之後，已開著的 YouTube 分頁會自動重新接上（T3.8 起，`scripting` 權限）；控制頁若顯示「需要重新整理的分頁」，請對那些分頁按 F5。
+
 ## 四、停下來等你的關卡
 | 關卡 | 你要做的事 |
 |---|---|
