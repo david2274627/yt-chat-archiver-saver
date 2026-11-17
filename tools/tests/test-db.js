@@ -4,6 +4,7 @@
   const DB = self.YTCAS_DB;
   const U = DB.util;
   const BG = self.YTCAS_BG;
+  BG._setWakeChecked(true); // SW 啟動時的斷線分頁檢查（3 秒後）會送 PING，干擾其他測試的 tabs.sent；由專屬測試個別執行
   const M = self.__mock;
   const tests = [];
   const test = (name, fn) => tests.push({ name, fn });
@@ -926,7 +927,7 @@
     } finally { await BG.diag.stop(); }
   });
 
-  test('T3.8 C-1：擴充功能更新（onInstalled: update）→ 對所有 YouTube 分頁的所有 frame 重新注入 content script；非 YouTube 分頁與卸載分頁不注入；失敗分頁回報', async () => {
+  test('T3.8 C-1／T3.9 B-1：擴充功能更新或首次安裝（onInstalled: update／install）→ 對所有 YouTube 分頁的所有 frame 重新注入 content script；非 YouTube 分頁與卸載分頁不注入；失敗分頁回報', async () => {
     await resetAll();
     chrome.scripting._calls.length = 0;
     chrome.scripting._fail = new Set([12]);
@@ -939,13 +940,42 @@
     ];
     try {
       for (const f of M.listeners.installed) f({ reason: 'install' });
-      await sleep(50);
-      eq(chrome.scripting._calls.length, 0, '新安裝不注入（manifest 會自動注入）');
+      await until(() => chrome.scripting._calls.length === 3, 2000);
+      eq(chrome.scripting._calls.map((c) => c.target.tabId), [10, 11, 12], '首次安裝：安裝前就開著的分頁也注入');
+      chrome.scripting._calls.length = 0;
       for (const f of M.listeners.installed) f({ reason: 'update' });
       await until(() => chrome.scripting._calls.length === 3, 2000);
       eq(chrome.scripting._calls.map((c) => [c.target.tabId, c.target.allFrames]), [[10, true], [11, true], [12, true]]);
       eq(chrome.scripting._calls[0].files, ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/content.js'], '與 manifest 的 content script 相同順序，不含 PoC');
+      chrome.scripting._calls.length = 0;
+      for (const f of M.listeners.installed) f({ reason: 'chrome_update' });
+      await sleep(50);
+      eq(chrome.scripting._calls.length, 0, 'Chrome 本身更新：content script 未斷線，不注入');
+      eq(await BG.reconnectStaleTabs(), null, 'install／update 已全部注入：SW 啟動檢查不再執行');
     } finally { chrome.tabs._tabs = []; chrome.scripting._fail = new Set(); }
+  });
+
+  test('T3.9 B-1：SW 啟動時（每個實例一次）只對 PING 無回應的分頁重新注入；載入中的分頁略過', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    await send({ type: 'DIAG_CONTROL', op: 'start', opts: { probes: ['P6'] } }, PAGE);
+    BG._setWakeChecked(false);
+    chrome.tabs._tabs = [
+      { id: 30, url: 'https://www.youtube.com/watch?v=' + V },
+      { id: 31, url: 'https://www.youtube.com/watch?v=' + V2 },
+      { id: 32, url: 'https://www.youtube.com/', status: 'loading' },
+      { id: 33, url: 'https://example.com/' },
+    ];
+    chrome.tabs._alive = new Set([30]);
+    chrome.scripting._calls.length = 0;
+    try {
+      const r = await BG.reconnectStaleTabs();
+      eq([r.tabs, r.ok], [1, 1]);
+      eq(chrome.scripting._calls.map((c) => c.target.tabId), [31], '只注入斷線且已載入完成的分頁');
+      eq(await BG.reconnectStaleTabs(), null, '同一個 SW 實例只檢查一次');
+      await BG.diag.flush();
+      eq((await DB.diagAll()).find((x) => x.kind === 'wake-check').data, { stale: 2, reinject: 1 });
+    } finally { chrome.tabs._tabs = []; chrome.tabs._alive = new Set(); await BG.diag.stop(); }
   });
 
   test('T3.8 C-2：斷線分頁偵測（PING 無回應）；開始記錄時一併回傳並記入 P6；重新接上後重新檢查', async () => {

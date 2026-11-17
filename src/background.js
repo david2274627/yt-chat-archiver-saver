@@ -870,6 +870,8 @@ function onWake() {
   kickQueue(); // SW 被喚醒時接續頻道解析佇列
   ensureMetaAlarm();
   diagCheck().catch(() => {}); // F-20：排程開始、超過時限停止、30 天後清除、REC 標記
+  // T3.9 B-1：等 onInstalled（若有）先處理，再檢查斷線分頁
+  setTimeout(() => { reconnectStaleTabs().catch((e) => console.info('[ytcas] 斷線分頁檢查失敗', C.asciiOnly(e && e.message))); }, 3000);
 }
 
 // chrome.alarms 分派（T3.7）：各功能以 alarmHandlers[name] 登記
@@ -932,10 +934,32 @@ async function findStaleTabs() {
   return (await Promise.all(checks)).filter(Boolean);
 }
 
+// T3.9（審查十追加八 B-1）Service Worker 每次啟動（每個 SW 實例一次）檢查斷線分頁並只對它們重新注入：
+// 涵蓋 install／update 以外、已開著的分頁也會斷線的情況（在 chrome://extensions 關閉再開啟擴充功能不會觸發 onInstalled）。
+// 成本：每個 YouTube 分頁 1 次 PING。仍在載入的分頁略過（manifest 會注入）。install／update 已全部重新注入時不再檢查。
+let wakeChecked = false;
+async function reconnectStaleTabs() {
+  if (wakeChecked) return null;
+  wakeChecked = true;
+  const stale = await findStaleTabs();
+  let ids = [];
+  if (stale.length) {
+    let loading = new Set();
+    try { loading = new Set((await chrome.tabs.query({ url: 'https://www.youtube.com/*' })).filter((t) => t.status === 'loading').map((t) => t.id)); } catch (_) {}
+    ids = stale.map((s) => s.tabId).filter((id) => !loading.has(id));
+  }
+  diagLog('P6', 'wake-check', { stale: stale.length, reinject: ids.length });
+  return ids.length ? reinjectYouTubeTabs(ids) : { tabs: 0, ok: 0, failed: [] };
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.info('[ytcas] installed', details.reason, chrome.runtime.getManifest().version_name);
   autoMigrateLegacy(false).catch((e) => console.warn('[ytcas] 舊資料遷移失敗', e));
-  if (details.reason === 'update') reinjectYouTubeTabs().catch((e) => console.info('[ytcas] 重新注入失敗', C.asciiOnly(e && e.message)));
+  // T3.9 B-1：首次安裝也重新注入（安裝前就開著的 YouTube 分頁沒有 content script）
+  if (details.reason === 'update' || details.reason === 'install') {
+    wakeChecked = true;
+    reinjectYouTubeTabs().catch((e) => console.info('[ytcas] 重新注入失敗', C.asciiOnly(e && e.message)));
+  }
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   onPopoutTabRemoved(tabId).catch((e) => console.warn('[ytcas] 彈出視窗關閉處理失敗', String(e && e.message)));
@@ -950,4 +974,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
