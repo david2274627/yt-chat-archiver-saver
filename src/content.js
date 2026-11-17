@@ -18,15 +18,23 @@
   const isChatPath = path.startsWith('/live_chat'); // 含 /live_chat_replay
   const env = isChatPath ? (isTop ? 'popout' : 'chatframe') : (isTop ? 'top' : 'other');
 
-  const connected = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (_) { return false; } };
+  // T4.1（審查十一 5.3）以本實例啟動時取得的 runtime 判斷連線（不受其他實例影響）
+  const myRuntime = (() => { try { return chrome.runtime; } catch (_) { return null; } })();
+  const connected = () => { try { return !!(myRuntime && myRuntime.id); } catch (_) { return false; } };
   const send = (msg) => {
     if (!connected()) return Promise.reject(Object.assign(new Error('disconnected'), { disconnected: true }));
     return chrome.runtime.sendMessage(msg);
   };
   const isVideoId = (v) => typeof v === 'string' && /^[\w-]{6,20}$/.test(v);
 
-  // T3.8（審查十追加七 C-1）擴充功能更新後 background 會重新注入本檔。若同一環境裡已有實例：
-  //   舊實例已斷線 → 讓它退場（停止擷取引擎與定時工作），由新實例接手；舊實例仍連線 → 新實例不啟動（避免重複）
+  // 舊實例的退場（擴充功能 🔄、關閉再開啟後，background 重新注入本檔）：
+  // T4.1（審查十一 5.3）實測（Chromium 157，docs/reports/2026-11-17-t4-viewer.md「T4.1」）：重新載入或關閉再開啟後，
+  // 重新注入的腳本跑在**新的隔離環境**，看不到舊實例的全域變數，所以 T3.8 的 globalThis.__ytcasRetire 從未生效，
+  // 舊實例的擷取引擎一直在跑（斷線狀態下修剪會直接移除最舊的節點，不先擷取）。改以兩種方式通知：
+  //   1. 同一環境（同一次載入重複注入）：globalThis.__ytcasRetire；舊實例仍連線 → 新實例不啟動（避免重複）
+  //   2. 不同環境：DOM 事件（各環境共用同一個 document）。舊實例只在自己已斷線時退場，並回覆 RETIRED
+  const EV_HANDOFF = 'ytcas:handoff';
+  const EV_RETIRED = 'ytcas:retired';
   const prevRetire = globalThis.__ytcasRetire;
   if (typeof prevRetire === 'function') {
     let stillLive = false;
@@ -35,7 +43,7 @@
   }
   let retired = false;
   const retireHooks = [];
-  globalThis.__ytcasRetire = () => {
+  const retireIfDisconnected = () => {
     if (connected()) return false; // 仍連線：不退場
     if (!retired) {
       retired = true;
@@ -43,6 +51,16 @@
     }
     return true;
   };
+  globalThis.__ytcasRetire = retireIfDisconnected;
+  let handedOff = 0; // 本實例啟動時讓幾個舊實例退場（診斷）
+  const onRetired = () => { handedOff++; };
+  document.addEventListener(EV_RETIRED, onRetired);
+  try { document.dispatchEvent(new CustomEvent(EV_HANDOFF)); } catch (_) { /* ignore */ }
+  document.removeEventListener(EV_RETIRED, onRetired); // dispatchEvent 同步執行：舊實例的回覆此時已收到
+  document.addEventListener(EV_HANDOFF, () => {
+    if (!retired && retireIfDisconnected()) { try { document.dispatchEvent(new CustomEvent(EV_RETIRED)); } catch (_) { /* ignore */ } }
+  });
+  if (handedOff) console.info('[ytcas] 已接手先前斷線的實例（重新注入）', { env, retired: handedOff });
 
   // ================================================================ F-20 診斷記錄（T3.7）
   // 記錄中（chrome.storage.local 的 diagState）才收集並批次送給 background；只送筆數、標籤、屬性名稱、時間、videoId。

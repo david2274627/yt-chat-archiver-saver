@@ -880,8 +880,9 @@ function onWake() {
   kickQueue(); // SW 被喚醒時接續頻道解析佇列
   ensureMetaAlarm();
   diagCheck().catch(() => {}); // F-20：排程開始、超過時限停止、30 天後清除、REC 標記
-  // T3.9 B-1：等 onInstalled（若有）先處理，再檢查斷線分頁
-  setTimeout(() => { reconnectStaleTabs().catch((e) => console.info('[ytcas] 斷線分頁檢查失敗', C.asciiOnly(e && e.message))); }, 3000);
+  // T3.9 B-1：等 onInstalled（若有）先處理，再檢查斷線分頁。
+  // T4.1：3 秒 → 1 秒（onInstalled 在 SW 腳本執行後立即觸發；加上 PING 逾時 1.5 秒，關閉再開啟後約 3 秒內接上）
+  setTimeout(() => { reconnectStaleTabs().catch((e) => console.info('[ytcas] 斷線分頁檢查失敗', C.asciiOnly(e && e.message))); }, 1000);
 }
 
 // chrome.alarms 分派（T3.7）：各功能以 alarmHandlers[name] 登記
@@ -959,6 +960,8 @@ async function reconnectStaleTabs() {
     ids = stale.map((s) => s.tabId).filter((id) => !loading.has(id));
   }
   diagLog('P6', 'wake-check', { stale: stale.length, reinject: ids.length });
+  // T4.1：實機確認用（只有分頁數），不需開診斷記錄也看得到
+  console.info('[ytcas] Service Worker 啟動檢查', { youtubeTabsStale: stale.length, reinject: ids.length });
   return ids.length ? reinjectYouTubeTabs(ids) : { tabs: 0, ok: 0, failed: [] };
 }
 
