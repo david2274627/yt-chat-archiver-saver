@@ -329,9 +329,10 @@
     let p3At = 0;
     function p3(info) {
       if (!diagOn('P3') || !info) return;
+      if (!chatIframe()) return; // T3.9（審查十追加八 C）：沒有聊天室的一般影片分頁不記錄，減少雜訊
       const iso = (t) => (t == null ? null : new Date(t).toISOString());
       const d = { startDate: iso(info.startDate), endDate: iso(info.endDate), isLiveBroadcast: info.isLiveBroadcast, duration: info.duration,
-        liveSignalAt: iso(info.liveSignalAt), pageAgeSec: Math.round((Date.now() - pageAt) / 1000), hasChatFrame: !!chatIframe() };
+        liveSignalAt: iso(info.liveSignalAt), pageAgeSec: Math.round((Date.now() - pageAt) / 1000), hasChatFrame: true };
       const key = JSON.stringify([d.startDate, d.endDate, d.isLiveBroadcast, d.duration, d.liveSignalAt]);
       if (key === p3Key && Date.now() - p3At < 5 * 60000) return;
       p3Key = key; p3At = Date.now();
