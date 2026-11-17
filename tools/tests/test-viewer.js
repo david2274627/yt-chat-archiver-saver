@@ -262,6 +262,28 @@
     window.__perf = { firstScreenMs: Math.round(first), searchMs: Math.round(searchMs), queryMs: Math.round(tm.queryMs), indexMs: Math.round(tm.indexMs) };
   });
 
+  test('T4.1 後台場次選單筆數：目前場次隨推播更新；其他場次與新場次在重新查詢時更新，選擇不變', async () => {
+    await resetDb();
+    const SA = { videoId: 'vidSelAAAA1', title: 'A 場', isLive: true, startedAt: T0, lastMessageAt: T0 + 2e3, messageCount: 2 };
+    const SB = { videoId: 'vidSelBBBB2', title: 'B 場', isLive: false, startedAt: T0 - 86400e3, lastMessageAt: T0 - 86000e3, messageCount: 1 };
+    await put(SA, [mk({ id: 'sa1', videoId: SA.videoId, timestampAbs: T0 + 1e3 }), mk({ id: 'sa2', videoId: SA.videoId, timestampAbs: T0 + 2e3 })]);
+    await put(SB, [mk({ id: 'sb1', videoId: SB.videoId, timestampAbs: T0 - 86000e3 })]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: SA.videoId });
+    await c.ready;
+    const opt = (v) => Array.from(c.els.pick.options).find((o) => o.value === v);
+    assert(opt(SA.videoId).textContent.endsWith('2 則') && opt(SB.videoId).textContent.endsWith('1 則'), '初始：' + opt(SA.videoId).textContent);
+    c._onRuntime({ type: 'NEW_MESSAGES', videoId: SA.videoId, messages: [mk({ id: 'sa3', videoId: SA.videoId, timestampAbs: T0 + 3e3 })] });
+    assert(opt(SA.videoId).textContent.endsWith('3 則'), '推播後：' + opt(SA.videoId).textContent);
+    await put(Object.assign({}, SB, { messageCount: 5 }), []);
+    await put({ videoId: 'vidSelCCCC3', title: 'C 場', isLive: true, startedAt: T0 + 10e3, lastMessageAt: T0 + 10e3, messageCount: 7 }, []);
+    await c._refreshStreamCounts();
+    assert(opt(SB.videoId).textContent.endsWith('5 則'), '重新查詢：' + opt(SB.videoId).textContent);
+    assert(opt('vidSelCCCC3') && opt('vidSelCCCC3').textContent.endsWith('7 則'), '新場次加入選單');
+    eq(c.els.pick.value, SA.videoId, '選擇不變');
+    assert(opt(SA.videoId).textContent.endsWith('3 則'), '目前場次不被舊的 messageCount 蓋回');
+  });
+
   test('空狀態：沒有資料的場次、沒有任何場次（後台）', async () => {
     await resetDb();
     const a = V.mount(host, { embed: true, videoId: 'nothing' });

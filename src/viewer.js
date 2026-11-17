@@ -567,6 +567,7 @@
         const liveNow = S.stream.isLive && S.stream.endedAt == null;
         resume.textContent = embed || liveNow ? '↓ 恢復自動捲動' : '↓ 跳到最新';
         apply({ reset: true, toBottom: embed || liveNow, toTop: !(embed || liveNow) });
+        setCurrentCount();
         S.timings.firstScreenMs = performance.now() - t0;
       } catch (e) {
         console.warn('[ytcas] 檢視器載入失敗', C.asciiOnly(e && e.message));
@@ -575,18 +576,51 @@
       }
     }
 
+    const optLabel = (s, n) => {
+      const d = s.startedAt || s.scheduledStartAt || s.lastMessageAt;
+      return [s.title || s.videoId, d ? new Date(d).toLocaleDateString() : '', fmtN(n != null ? n : s.messageCount || 0) + ' 則'].filter(Boolean).join(' · ');
+    };
     async function loadStreamList() {
       try { S.streams = await DB.listStreams(); } catch (_) { S.streams = []; }
       if (!pick) return;
       pick.textContent = '';
       for (const s of S.streams) {
-        const d = s.startedAt || s.scheduledStartAt || s.lastMessageAt;
-        const o = el('option', null, [s.title || s.videoId, d ? new Date(d).toLocaleDateString() : '', fmtN(s.messageCount || 0) + ' 則'].filter(Boolean).join(' · '));
+        const o = el('option', null, optLabel(s));
         o.value = s.videoId;
         pick.appendChild(o);
       }
       pick.hidden = !S.streams.length;
     }
+    // T4.1（審查十一 5.2）選單筆數：目前場次隨推播更新（以已載入的筆數為準）；其他場次在游標移到選單上或取得焦點時重新查詢
+    //（最多每 2 秒一次）。只改選項文字與新增場次，不重建選單，不影響目前的選擇
+    function setCurrentCount() {
+      if (!pick || !S.videoId) return;
+      const o = Array.from(pick.options).find((x) => x.value === S.videoId);
+      const s = S.streams.find((x) => x.videoId === S.videoId);
+      if (o && s) { const t = optLabel(Object.assign({}, s, S.stream || {}), S.items.length); if (o.textContent !== t) o.textContent = t; }
+    }
+    let lastListRefresh = 0;
+    async function refreshStreamCounts() {
+      if (!pick || Date.now() - lastListRefresh < 2000) return;
+      lastListRefresh = Date.now();
+      let list;
+      try { list = await DB.listStreams(); } catch (_) { return; }
+      const opts = new Map(Array.from(pick.options).map((o) => [o.value, o]));
+      list.forEach((s, i) => {
+        const n = s.videoId === S.videoId && !S.loading ? Math.max(S.items.length, s.messageCount || 0) : null;
+        let o = opts.get(s.videoId);
+        if (!o) { // 新的場次：依清單順序插入
+          o = el('option', null, '');
+          o.value = s.videoId;
+          pick.insertBefore(o, pick.options[i] || null);
+        }
+        const t = optLabel(s, n);
+        if (o.textContent !== t) o.textContent = t;
+      });
+      S.streams = list;
+      pick.hidden = !list.length;
+    }
+    if (pick) for (const ev of ['pointerenter', 'focus']) pick.addEventListener(ev, () => { refreshStreamCounts(); });
 
     // ---------------- 推播：新訊息、刪除標記、頻道名稱
     // 推播合併成每 300ms 最多一次；reset：既有訊息內容改變（刪除標記、名稱），可見列需重新繪製
@@ -622,7 +656,7 @@
       if (!msg || typeof msg !== 'object') return;
       if (msg.type === RT.NEW_MESSAGES && msg.videoId === S.videoId && !S.loading && Array.isArray(msg.messages)) {
         const changed = msg.messages.some((m) => m && S.byId.has(m.id)); // 既有訊息更新（例如被刪除）
-        upsert(msg.messages);
+        if (upsert(msg.messages)) setCurrentCount();
         scheduleApply(changed);
         maybeRefreshStream();
       } else if (msg.type === RT.CHANNEL_RESOLVED && msg.handleOrId && msg.displayName) {
@@ -657,7 +691,7 @@
     })();
 
     return {
-      ready, load, state: S, _onRuntime: onRuntime, apply,
+      ready, load, state: S, _onRuntime: onRuntime, _refreshStreamCounts: refreshStreamCounts, apply,
       els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick },
     };
   }
