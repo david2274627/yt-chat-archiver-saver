@@ -310,6 +310,44 @@
     eq(m.sources, ['live', 'import']);
   });
 
+  test('T4.1 置頂：同一則以不同 id 再次送來 → 合併為一筆（pinnedAt 最早、pinnedLastAt 最晚、別名）；既有重複可預覽後整理', async () => {
+    await resetAll();
+    const pin = (id, at, o) => ({ videoId: V, message: Object.assign(msg({ id, type: 'text', runs: [{ text: '會員招募 ' }], authorHandle: '@ch', pinnedAt: at }), o || {}) });
+    await DB.savePinned(pin('p1', 1000));
+    await DB.savePinned(pin('p2', 5000, { authorHandle: '', authorName: 'ch' }));
+    await DB.savePinned(pin('p3', 3000, { runs: [{ text: '會員招募' }] }));
+    await DB.savePinned(pin('q1', 4000, { runs: [{ text: '抽獎' }] }));
+    let list = await DB.queryPinned(V);
+    eq(list.map((x) => x.id).sort(), ['p1', 'q1']);
+    const p1 = list.find((x) => x.id === 'p1');
+    eq([p1.pinnedAt, p1.pinnedLastAt], [1000, 5000]);
+    assert(p1.aliasIds.includes('p2') && p1.aliasIds.includes('p3'), '別名');
+    // 既有重複（T4.1 以前寫入）：直接寫進 store 模擬
+    const db = await DB.open();
+    const t = db.transaction('pinned_messages', 'readwrite');
+    t.objectStore('pinned_messages').put(Object.assign({}, p1, { id: 'old1', aliasIds: [], pinnedAt: 500, pinnedLastAt: undefined }));
+    t.objectStore('pinned_messages').put(Object.assign({}, p1, { id: 'old2', aliasIds: [], pinnedAt: 9000, pinnedLastAt: undefined, authorHandle: '' }));
+    await new Promise((r) => { t.oncomplete = r; });
+    const pre = await BG.dedupePinned();
+    eq([pre.dryRun, pre.records, pre.groups, pre.removed], [true, 4, 1, 2]);
+    assert(pre.diffFields.id === 1 && pre.diffFields.authorHandle === 1, 'diffFields：' + JSON.stringify(pre.diffFields));
+    eq((await DB.queryPinned(V)).length, 4, '預覽不改資料');
+    const r = await BG.dedupePinned({ dryRun: false });
+    eq(r.removed, 2);
+    list = await DB.queryPinned(V);
+    eq(list.map((x) => x.id).sort(), ['old1', 'q1']);
+    const k = list.find((x) => x.id === 'old1');
+    eq([k.pinnedAt, k.pinnedLastAt], [500, 9000]);
+    eq((await BG.dedupePinned()).removed, 0, '再跑一次沒有重複');
+  });
+
+  test('T4.1 頭像網域分布：只回傳 類型 × 網域 → 筆數', async () => {
+    await resetAll();
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [msg({ authorAvatar: 'https://yt4.ggpht.com/a' }), msg({ authorAvatar: 'https://yt4.ggpht.com/b' }), msg({})] });
+    const s = await BG.avatarHosts();
+    eq(s.text, { 'yt4.ggpht.com': 2, '(none)': 1 });
+  });
+
   test('F-11：v2.6.0 匯出 JSON 匯入；格式錯誤時不寫入任何資料', async () => {
     await resetAll();
     const legacy = { videoId: V, streamMeta: { videoId: V, title: '舊匯出', streamStartEpochMs: 1000 }, pinnedMessages: [],

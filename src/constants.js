@@ -262,5 +262,31 @@
     }
   };
 
+  // T4.1（審查十一 5.1）置頂的「同一則」判斷：正規化內容（NFKC、小寫、去掉所有空白；表符取 alt、含禮物名稱）相同，
+  // 且作者相同或其中一筆沒有作者資訊。同一則在不同時間可能被擷取成不同 id（YouTube 重新渲染置頂列）。
+  // background（寫入合併、既有資料整理）與檢視器（顯示去重）共用
+  C.pinnedContentKey = function (m) {
+    const parts = [];
+    for (const r of (m && m.runs) || []) {
+      if (r && r.emoji) parts.push(r.emoji.alt || r.emoji.shortcut || '');
+      else if (r && r.text) parts.push(r.text);
+    }
+    if (m && m.giftName) parts.push(m.giftName);
+    if (!parts.length && m && typeof m.text === 'string') parts.push(m.text);
+    return parts.join('').normalize('NFKC').toLowerCase().replace(/\s+/g, '');
+  };
+  // 作者識別：handle、頻道 id、名稱任一相同即視為同一作者（同一則置頂的兩次擷取可能只有其中一筆有 handle）
+  C.pinnedAuthors = function (m) {
+    const n = (s) => String(s || '').normalize('NFKC').toLowerCase().replace(/^@/, '').trim();
+    return [m && m.authorHandle, m && m.authorChannelId, m && m.authorName].map(n).filter(Boolean);
+  };
+  C.samePinned = function (a, b) {
+    if (C.pinnedContentKey(a) !== C.pinnedContentKey(b)) return false;
+    const x = C.pinnedAuthors(a), y = C.pinnedAuthors(b);
+    return !x.length || !y.length || x.some((v) => y.includes(v));
+  };
+  // 依最後一次置頂時間（pinnedLastAt，舊資料為 pinnedAt）
+  C.pinnedTime = function (p) { return (p && (p.pinnedLastAt || p.pinnedAt || p.timestampAbs)) || 0; };
+
   root.YTCAS_CONST = Object.freeze(C);
 })(typeof globalThis !== 'undefined' ? globalThis : self);

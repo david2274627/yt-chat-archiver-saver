@@ -436,16 +436,32 @@
       const work = (async () => {
         const sStore = t.objectStore('streams');
         if (!(await req(sStore.get(videoId)))) sStore.put(newStream(videoId, now));
+        let same = null; // 本場既有置頂（第一次需要時才讀）
         for (const raw of list) {
           const ctx = { videoId, source: p.source || 'live', versionId: p.versionId || 'v1', now, preserve: !!p.preserve, useFp: false };
           const inc = normalizeIncoming(raw, ctx);
           inc.pinnedAt = num(raw.pinnedAt) !== null ? raw.pinnedAt : inc.timestampAbs;
-          const ex = (await req(store.get(inc.id))) || null;
+          let ex = (await req(store.get(inc.id))) || null;
+          // T4.1（審查十一 5.1）：id 不同但同一則（作者＋正規化內容）→ 合併到既有那筆，不新增
+          if (!ex) {
+            if (!same) same = await req(store.index('videoId').getAll(videoId));
+            ex = same.find((q) => C.samePinned(q, inc)) || null;
+          }
           if (ex) {
             const m = mergeMessage(ex, inc, ctx);
-            if (m.changed) store.put(m.rec);
+            const rec = m.rec;
+            const first = Math.min(num(ex.pinnedAt) ?? Infinity, inc.pinnedAt);
+            const last = Math.max(C.pinnedTime(ex), inc.pinnedAt);
+            const timesChanged = rec.pinnedAt !== first || rec.pinnedLastAt !== last;
+            rec.pinnedAt = first; rec.pinnedLastAt = last;
+            if (m.changed || timesChanged) store.put(rec);
+            if (same) { const i = same.findIndex((q) => q.id === rec.id); if (i >= 0) same[i] = rec; }
             if (m.significant) stats.merged++; else stats.unchanged++;
-          } else { store.put(inc); stats.added++; }
+          } else {
+            inc.pinnedLastAt = inc.pinnedAt;
+            store.put(inc); stats.added++;
+            if (same) same.push(inc);
+          }
         }
       })();
       work.catch(() => { try { t.abort(); } catch (_) { /* */ } });
@@ -740,6 +756,82 @@
   async function queryPinned(videoId) {
     const db = await open();
     return req(db.transaction('pinned_messages').objectStore('pinned_messages').index('videoId').getAll(videoId));
+  }
+
+  // T4.1（審查十一 5.1）既有置頂重複的整理：同一場、同一則（C.samePinned）的多筆合併成一筆
+  //（保留最早置頂的那筆為主，pinnedAt 取最早、pinnedLastAt 取最晚，其他筆的 id 記入 aliasIds 後刪除）。
+  // dryRun：只回傳筆數與「重複的各筆哪些欄位不同」（欄位名稱，不含內容），供確認原因
+  const PIN_DIFF_FIELDS = ['id', 'authorHandle', 'authorName', 'authorChannelId', 'timestampAbs', 'source', 'type', 'authorBadges'];
+  async function dedupePinnedStore(opts) {
+    const dryRun = !opts || opts.dryRun !== false;
+    const db = await open();
+    const all = await req(db.transaction('pinned_messages').objectStore('pinned_messages').getAll());
+    const byVid = new Map();
+    for (const p of all) { if (!byVid.has(p.videoId)) byVid.set(p.videoId, []); byVid.get(p.videoId).push(p); }
+    const out = { dryRun, records: all.length, streams: 0, groups: 0, removed: 0, perStream: [], diffFields: {} };
+    for (const [videoId, list] of byVid) {
+      const groups = [];
+      for (const p of list.slice().sort((a, b) => (num(a.pinnedAt) ?? 0) - (num(b.pinnedAt) ?? 0))) {
+        const g = groups.find((x) => C.samePinned(x[0], p));
+        if (g) g.push(p); else groups.push([p]);
+      }
+      const dup = groups.filter((g) => g.length > 1);
+      if (!dup.length) continue;
+      out.streams++;
+      out.groups += dup.length;
+      const n = dup.reduce((s, g) => s + g.length - 1, 0);
+      out.removed += n;
+      out.perStream.push({ video: String(videoId).slice(0, 4) + '…', records: list.length, groups: dup.length, removed: n });
+      for (const g of dup) {
+        for (const f of PIN_DIFF_FIELDS) {
+          if (new Set(g.map((x) => JSON.stringify(x[f] ?? null))).size > 1) out.diffFields[f] = (out.diffFields[f] || 0) + 1;
+        }
+        // 內容只差空白（原始文字不同、正規化後相同）
+        const raw = new Set(g.map((x) => JSON.stringify((x.runs || []).map((r) => (r && (r.text || (r.emoji && r.emoji.alt))) || ''))));
+        if (raw.size > 1) out.diffFields.runsRaw = (out.diffFields.runsRaw || 0) + 1;
+      }
+      if (dryRun) continue;
+      await withLock(videoId, async () => {
+        const t = db.transaction('pinned_messages', 'readwrite');
+        const store = t.objectStore('pinned_messages');
+        for (const g of dup) {
+          let rec = g[0];
+          let first = num(rec.pinnedAt) ?? Infinity, last = C.pinnedTime(rec);
+          for (const o of g.slice(1)) {
+            rec = mergeMessage(rec, o, { videoId, versionId: 'v1', preserve: true }).rec;
+            first = Math.min(first, num(o.pinnedAt) ?? Infinity);
+            last = Math.max(last, C.pinnedTime(o));
+            store.delete(o.id);
+          }
+          rec.pinnedAt = Number.isFinite(first) ? first : rec.pinnedAt;
+          rec.pinnedLastAt = last;
+          store.put(rec);
+        }
+        await done(t);
+      });
+    }
+    return out;
+  }
+
+  // T4.1（審查十一 2.2）頭像網址的網域分布：只回傳 類型 → 網域 → 筆數（不含網址），以游標逐筆讀
+  async function avatarHostStats() {
+    const db = await open();
+    const out = {};
+    await new Promise((res, rej) => {
+      const r = db.transaction('messages').objectStore('messages').openCursor();
+      r.onerror = () => rej(r.error);
+      r.onsuccess = () => {
+        const cur = r.result;
+        if (!cur) return res();
+        const m = cur.value;
+        let host = '(none)';
+        if (m.authorAvatar) { try { host = new URL(m.authorAvatar).hostname; } catch (_) { host = '(invalid)'; } }
+        const b = out[m.type] || (out[m.type] = {});
+        b[host] = (b[host] || 0) + 1;
+        cur.continue();
+      };
+    });
+    return out;
   }
 
   async function countAll() {
@@ -1395,7 +1487,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary,
+    getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer,

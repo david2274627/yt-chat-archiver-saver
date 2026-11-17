@@ -220,6 +220,16 @@ async function cleanupJunkSystem(opts) {
   return r;
 }
 
+// T4.1（審查十一 5.1）既有置頂重複的整理。用法：await YTCAS_BG.dedupePinned()（預覽）→ 確認後 { dryRun: false }
+// 回傳筆數、各場（videoId 前 4 碼）與「重複的各筆哪些欄位不同」（只有欄位名稱）
+async function dedupePinned(opts) {
+  const r = await DB.dedupePinnedStore({ dryRun: !(opts && opts.dryRun === false) });
+  console.info('[ytcas] 置頂重複整理' + (r.dryRun ? '（預覽）' : ''), { records: r.records, streams: r.streams, groups: r.groups, removed: r.removed, diffFields: r.diffFields });
+  return r;
+}
+// T4.1（審查十一 2.2）頭像網址網域分布：console.table(await YTCAS_BG.avatarHosts())（類型 × 網域 → 筆數，不含網址）
+const avatarHosts = () => DB.avatarHostStats();
+
 // T3.6 欄位完整度（SW Console）：console.table(await YTCAS_BG.fieldStats())；預設只算 T3 部署後收錄的。
 // 可指定 { videoId, since }。只回傳筆數，不含任何訊息內容
 async function fieldStats(opts) {
@@ -974,4 +984,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

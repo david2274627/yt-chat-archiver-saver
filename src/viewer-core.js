@@ -162,16 +162,13 @@
   }
 
   // ---------------------------------------------------------------- F-07 置頂
-  // 同內容去重（保留最新一次置頂），依置頂時間新到舊
+  // 同一則（C.samePinned：作者＋正規化內容）只留最後一次置頂的那筆，依最後置頂時間新到舊。
+  // T4.1：v38 以內容＋handle 為鍵，同一則的兩次擷取只要一筆缺 handle 或空白不同就會重複顯示
   function dedupePinned(list) {
-    const by = new Map();
-    for (const p of list || []) {
-      const k = norm(contentText(p)) + '\u0001' + (p.authorHandle || '');
-      const t = p.pinnedAt || p.timestampAbs || 0;
-      const old = by.get(k);
-      if (!old || t > (old.pinnedAt || old.timestampAbs || 0)) by.set(k, p);
-    }
-    return Array.from(by.values()).sort((a, b) => (b.pinnedAt || b.timestampAbs || 0) - (a.pinnedAt || a.timestampAbs || 0));
+    const sorted = (list || []).filter(Boolean).slice().sort((a, b) => C.pinnedTime(b) - C.pinnedTime(a));
+    const out = [];
+    for (const p of sorted) if (!out.some((q) => C.samePinned(p, q))) out.push(p);
+    return out;
   }
 
   // ---------------------------------------------------------------- SC 顏色（10.3：底色用訊息本身的等級色，文字依底色選黑或白）

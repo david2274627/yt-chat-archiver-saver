@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v38**（前版：v37；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v39**（前版：v38；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -38,6 +38,7 @@
 - **v36 調整**（`docs/review-2026-11-16.md` 追加七，T3.8）：Console 輸出不得含訊息文字等個資（CLAUDE.md）；F-20 P8 只記 `warnOnce` key 與預先定義的說明、其他訊息只保留 ASCII；原始診斷檔放 `docs/diag/raw/`（不進 git），只 commit 摘要；**新增 `scripting` 權限**：擴充功能更新後自動重新注入已開著的 YouTube 分頁；斷線分頁偵測；診斷控制頁改為單一切換按鈕與「記錄 N 分鐘／指定結束時間」二選一。
 - **v37 調整**（`docs/review-2026-11-16.md` 追加八，T3.9）：重新注入擴大到**首次安裝**與 **Service Worker 每次啟動時的斷線分頁檢查**（第 7 節「權限」）；`scripting` 權限在 Chrome 不顯示額外警告，記錄為「使用者已同意」；F-20 P3 只記有聊天室的分頁；F-08 新增**長期直播**（`startDate` 遠早於 DVR 可回放範圍）的顯示備註。
 - **v38 調整**（T4 實作時確定的細節）：新增 `src/viewer-core.js`（3.1）；F-05 膠囊數字反映目前的篩選條件；F-06 比對範圍；F-07 多則置頂的呈現；時間碼規則（offset 未知、長期直播）；SC 文字色以對比度選擇；後台分頁在 T7 之前以場次下拉選單切換。
+- **v39 調整**（`docs/review-2026-11-17.md` 第 5 節，T4.1）：F-07 置頂的「同一則」改為作者＋正規化內容，寫入時合併、既有重複可整理（`pinnedLastAt`）。
 
 ---
 
@@ -200,7 +201,7 @@ yt-chat-archiver-saver/
 ```
 > v28 遷移（同屬 `DB_VERSION` 2，因 v1 從未有正式資料）：既有紀錄補 `offsets: { v1: videoOffsetSec }`（有值時）、`aliasIds: []`；streams 補 `versions: []`、`linkedVideos: []`、`approxBytes`、`popoutCaptureCount: 0`。
 
-**pinned_messages**（keyPath `id`；索引 `videoId`）— 結構同 messages，另加 `pinnedAt`。
+**pinned_messages**（keyPath `id`；索引 `videoId`）— 結構同 messages，另加 `pinnedAt`（首次置頂）、`pinnedLastAt`（v39：最後一次置頂；同一則合併時更新，見 F-07）。
 
 **capture_sessions**（v27，keyPath `id` 自動遞增；索引 `videoId`）— 每次開始收錄記一筆（F-14）
 ```js
@@ -530,6 +531,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 **F-07 懸浮主播置頂卡片**（v2.6.0 已驗證可行）
 - 置頂訊息去重後固定在搜尋列下方，不混入一般流；點擊展開/收合；顯示主播頭像。
 - （v38，T4）去重以「內容＋作者」為準，保留最新一次置頂；有多則不同的置頂時卡片顯示最新一則，展開後列出較早的置頂。
+- （v39，T4.1）**同一則置頂**：正規化內容（NFKC、小寫、去掉所有空白；表符取 `alt`、含禮物名稱）相同，且作者相同（`@handle`、頻道 id、名稱任一相同）或其中一筆沒有作者資訊。同一則置頂在不同時間可能被擷取成不同 id（YouTube 重新渲染置頂列），`SAVE_PINNED` 寫入時合併到既有那筆（`pinnedAt` 記首次、`pinnedLastAt` 記最後一次，新 id 記入 `aliasIds`），不新增。檢視器以同一規則去重，依 `pinnedLastAt` 排序，「較早的置頂」只列內容不同的。T4.1 以前寫入的重複以 `YTCAS_BG.dedupePinned()`（預覽）／`{ dryRun: false }`（執行）整理，T7 起由後台「設定 → 進階」執行。
 - **與原生置頂列的關係**（v24）：目前 YouTube 版面把置頂訊息放在**輸入列正上方**（屬於底部互動區，F-10 必須露出，見 6.3），而不是舊版的聊天室頂部橫幅。面板內仍顯示置頂卡片（訊息列表由套件接管），但**不得與原生那條列功能衝突**，例如點擊展開時不應互相遮蓋；D1 設計稿需考量這一點。
 
 **F-08 VOD 時間軸雙向同步**（v2.6.0 已驗證可行；預設開啟，無開關）

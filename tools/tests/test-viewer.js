@@ -125,6 +125,16 @@
     const p = (id, t, at) => mk({ id, runs: [{ text: t }], pinnedAt: at, authorHandle: '@host' });
     eq(CORE.dedupePinned([p('1', '規則', 1), p('2', '規則', 5), p('3', '抽獎', 3)]).map((x) => x.id), ['2', '3']);
   });
+  test('T4.1 置頂去重：同一則以不同 id 擷取（一筆缺 handle、空白不同、全形）仍只顯示一次；不同作者同內容各自保留；pinnedLastAt 優先', () => {
+    const a = mk({ id: 'x1', runs: [{ text: '會員招募中 ' }, { emoji: { alt: ':heart:' } }], pinnedAt: 10, authorHandle: '@TVBS', authorName: 'TVBS' });
+    const b = mk({ id: 'x2', runs: [{ text: '會員招募中' }, { emoji: { alt: ':heart:' } }], pinnedAt: 20, authorHandle: '', authorName: 'TVBS' });
+    const c = mk({ id: 'x3', runs: [{ text: '會員招募中　' }, { emoji: { alt: ':heart:' } }], pinnedAt: 30, authorHandle: '@tvbs' });
+    const d = mk({ id: 'x4', runs: [{ text: '會員招募中' }, { emoji: { alt: ':heart:' } }], pinnedAt: 5, authorHandle: '@other' });
+    eq(CORE.dedupePinned([a, b, c, d]).map((x) => x.id), ['x3', 'x4']);
+    const e = mk({ id: 'y1', runs: [{ text: '舊' }], pinnedAt: 1, pinnedLastAt: 100, authorHandle: '@h' });
+    const f = mk({ id: 'y2', runs: [{ text: '新' }], pinnedAt: 50, authorHandle: '@h' });
+    eq(CORE.dedupePinned([f, e]).map((x) => x.id), ['y1', 'y2']);
+  });
 
   // ================================================================ 渲染（真實 DOM）
   const STREAM = { videoId: VID, title: '測試場次', isLive: false, startedAt: T0, endedAt: T0 + 7200e3, scheduledStartAt: T0 - 600e3,
