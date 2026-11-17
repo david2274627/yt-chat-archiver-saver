@@ -1098,6 +1098,16 @@
     const db = await open();
     return req(db.transaction('channels').objectStore('channels').get(handleOrId));
   }
+  // T4 viewer：一次唯讀交易取多個頻道（回傳 Map，只含有 displayName 的紀錄）
+  async function getChannels(keys) {
+    const db = await open();
+    const st = db.transaction('channels').objectStore('channels');
+    const uniq = Array.from(new Set((keys || []).filter(Boolean)));
+    const recs = await Promise.all(uniq.map((k) => req(st.get(k))));
+    const out = new Map();
+    recs.forEach((r, i) => { if (r && r.displayName) out.set(uniq[i], r); });
+    return out;
+  }
   async function putChannel(rec) {
     const db = await open();
     const t = db.transaction('channels', 'readwrite');
@@ -1388,7 +1398,7 @@
     getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
-    getChannel, putChannel, putChannelIfNewer,
+    getChannel, getChannels, putChannel, putChannelIfNewer,
     exportData, importData, parseImport, migrateLegacy,
     // 純函式（測試用）
     util: { hash, normText, makeFp, fallbackId, normalizeIncoming, mergeMessage, resolveVersion, mergeIntervals, coverage,
