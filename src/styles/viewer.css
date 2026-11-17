@@ -1,1 +1,55 @@
-/* viewer 元件樣式（D2 / T4 實作）。只能使用 tokens.css 的變數。 */
+/* viewer 版面（T4）。元件外觀在 components.css；這裡只處理整頁版面、虛擬清單與互動元素。只能使用 tokens.css 的變數。 */
+[hidden] { display: none !important; } /* .chip／.field 等的 display 不得蓋過 hidden 屬性 */
+html, body { height: 100%; }
+body { background: var(--ytcas-bg); overflow: hidden; }
+#app { height: 100%; }
+
+/* 整頁面板：內嵌模式填滿 iframe；後台獨立分頁暫時置中（T7 改為側欄＋主區） */
+.panel.app { height: 100%; border-radius: 0; box-shadow: none; }
+.panel.app:not(.embed) { max-width: 820px; margin: 0 auto; box-shadow: var(--ytcas-shadow-1); }
+.actions .sess-pick { flex: 1; min-width: 0; max-width: 100%; height: 30px; padding: 0 var(--ytcas-space-2); font: inherit;
+  color: var(--ytcas-text); background: var(--ytcas-surface-2); border: 1px solid var(--ytcas-border); border-radius: var(--ytcas-radius-sm); }
+
+/* 搜尋欄（F-06）：輸入框、清除鈕、使用者 chip */
+.field:focus-within { border-color: var(--ytcas-accent); background: var(--ytcas-surface); }
+.field .glyph { flex: none; }
+.field input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: transparent; color: var(--ytcas-text); font: inherit; outline: none; }
+.field input::placeholder { color: var(--ytcas-text-3); }
+.field input::-webkit-search-cancel-button { display: none; }
+.field .clr, .chip .chip-x { flex: none; border: 0; background: transparent; padding: 0 2px; cursor: pointer; color: var(--ytcas-text-3); line-height: 1; font-size: var(--ytcas-fs-md); }
+.field .clr:hover, .chip .chip-x:hover { color: var(--ytcas-text); }
+.chip { min-width: 0; max-width: 100%; }
+.chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip .chip-x { color: var(--ytcas-accent); }
+.pill .num { font-variant-numeric: tabular-nums; }
+
+/* 置頂卡片展開時列出較早的置頂 */
+.pin .pin-more { display: block; margin-top: var(--ytcas-space-1); color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); }
+.pin .pin-old { display: block; color: var(--ytcas-text-2); }
+
+/* 虛擬清單 */
+.list-wrap { flex: 1; min-height: 0; position: relative; display: flex; }
+.list.vlist { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0; overscroll-behavior: contain; }
+.list.vlist:focus-visible { outline-offset: -2px; }
+.vspace { position: relative; width: 100%; }
+.vrow { position: absolute; left: 0; right: 0; display: flow-root; } /* flow-root：子元素 margin 計入高度 */
+.list-wrap > .empty { position: absolute; inset: 0; align-content: center; pointer-events: none; }
+
+/* 訊息內容 */
+.content, .sub.content { white-space: pre-line; }
+img.av { object-fit: cover; background: var(--ytcas-surface-2); }
+.emo-img { height: var(--ytcas-emoji); width: auto; max-width: 64px; vertical-align: -5px; margin: 0 1px; }
+.emo-alt { color: var(--ytcas-text-2); }
+mark .emo-img { vertical-align: -5px; }
+.nm[role="button"]:hover { text-decoration: underline; }
+
+/* Super Chat／超級貼圖：底色與文字色由訊息資料提供（10.3 例外）；下半訊息區以文字色調淡底 */
+.card .tx { background: color-mix(in srgb, currentColor 12%, transparent); }
+.card .tc, .card .nm, .card .bdg.del { color: inherit; }
+.card .tc { opacity: .85; }
+.card .nm { font-weight: 700; }
+.card.nocolor { background: var(--ytcas-surface-2); color: var(--ytcas-text); }
+.card .stk img { width: 72px; height: 72px; object-fit: contain; }
+.giftcard .gimg img { width: 40px; height: 40px; object-fit: contain; }
+.card.deleted .content, .giftcard.deleted .content { color: var(--ytcas-text-3); text-decoration: line-through; }
+.card.deleted .content { color: inherit; opacity: .6; }
