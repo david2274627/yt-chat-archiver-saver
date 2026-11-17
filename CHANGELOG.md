@@ -125,6 +125,19 @@
   - 頻道名稱解析：無 og:title 時以 include 重試一次、失敗原因、統計與重新排入（commit `906437a`）。
   - CHANGELOG、T4 報告「T4.2」（本段落所在的 commit）。
 
+- v41／T5 優化面板（報告 `docs/reports/2026-11-17-t5-panel.md`）：
+  - top frame 面板控制器 `src/panel.js`、開關錨點、聊天室頂部列按鈕、manifest 移除 PoC（commit `73814c1`）。
+  - 檢視器內嵌面板：時間軸同步、Click-to-Seek、關閉按鈕、F-12 說明、版本切換與連結影片（commit `8b180ab`）。
+  - 規格 v41、測試清單、HANDOFF、T5 報告（本段落所在的 commit）。
+
+### 規格 v41（2026-11-17，T5 實作細節）
+- 3.1：新增 `src/panel.js`。
+- 4.3：`PANEL_READY`／`PANEL_CLOSE`／`PANEL_STATE`；`VOD_TIME` 帶直播 DVR 範圍；`CAPTURE_STATUS` 帶 F-12 結果。
+- F-08：直播中以 DVR 範圍換算影片時間；直播邊緣 15 秒內維持跟隨到底；「↓ 回到播放位置」。
+- F-09：T5 的裁切為全隱藏（動態露出在 T6）；頂部列圖示按鈕；斷線時移除面板。
+- F-18：連結影片 `offsetShift` 定義（新影片時間 = 原始 offset + offsetShift）。
+- 第 8 節 T5：PoC content script 不再載入。
+
 ### 規格 v40（2026-11-17，T4.2）
 - F-20：新增 P9 記憶體探針。
 - 第 9 節：記憶體對照測試（停用／啟用本套件、關閉 DevTools）。

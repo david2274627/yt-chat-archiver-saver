@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v40**（前版：v39；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v41**（前版：v40；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -40,6 +40,7 @@
 - **v38 調整**（T4 實作時確定的細節）：新增 `src/viewer-core.js`（3.1）；F-05 膠囊數字反映目前的篩選條件；F-06 比對範圍；F-07 多則置頂的呈現；時間碼規則（offset 未知、長期直播）；SC 文字色以對比度選擇；後台分頁在 T7 之前以場次下拉選單切換。
 - **v39 調整**（`docs/review-2026-11-17.md` 第 5 節，T4.1）：F-07 置頂的「同一則」改為作者＋正規化內容，寫入時合併、既有重複可整理（`pinnedLastAt`）；T4 場次選單訊息數即時更新；重新注入後新舊實例改以 DOM 事件交接（第 7 節「權限」）；SC 文字色依對比度（10.3、10.4）定為已決。
 - **v40 調整**（`docs/review-2026-11-17.md` 第 6、9 節，T4.2）：F-20 新增 **P9 記憶體**探針；第 9 節新增記憶體**對照測試**（停用／啟用本套件、關閉 DevTools）；F-03 頻道頁沒有 `og:title` 時以 `include` 重試一次、失敗原因統計。
+- **v41 調整**（T5 實作時確定的細節）：新增 `src/panel.js`（3.1）；frame 訊息 `PANEL_READY`／`PANEL_CLOSE`／`PANEL_STATE`、`VOD_TIME` 帶直播 DVR 範圍、`CAPTURE_STATUS` 帶 F-12 結果（4.3）；F-08 直播中以 DVR 範圍換算、直播邊緣 15 秒內維持跟隨到底；F-09 T5 的裁切為全隱藏（動態露出輸入區在 T6）；F-18 連結影片的 `offsetShift` 定義；PoC content script 自 T5 起不再載入。
 
 ---
 
@@ -98,6 +99,7 @@ yt-chat-archiver-saver/
 │   ├── background.js # Service Worker：唯一資料庫存取者、推播、頻道名稱/頭像解析
 │   ├── capture.js    # v29：擷取引擎（解析、回溯擷取、修剪、批次、重試、刪除偵測）；嵌入式 chat frame 與彈出式聊天室共用，不依賴 chrome.*，測試頁可直接載入
 │   ├── content.js    # 三種環境：top watch 頁（按鈕、面板、clip-path、時間軸、場次資訊）／嵌入式 chat frame／彈出式聊天室（v28 F-19）
+│   ├── panel.js      # v41（T5）：top frame 的優化面板控制器（插入、退讓、開關錨點、面板訊息、VOD_TIME）；不依賴 chrome.*，content.js 傳入依賴，測試頁以同源模擬頁驗證
 │   ├── popup.html / popup.js
 │   └── viewer.html / viewer.js / viewer-core.js  # v38：viewer-core.js 為不依賴 DOM 的分類、篩選、搜尋、時間碼邏輯（測試頁共用）
 ├── docs/
@@ -279,11 +281,14 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, bottomZoneHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗；v24 起 `inputHeight` 改名 `bottomZoneHeight`，定義見 6.3） |
 | `TOGGLE_PANEL` | chat frame → top | `{}`（v24：使用者點了聊天室頂部列的 F-09 按鈕；top 端只接受 `event.source === iframe#chatframe.contentWindow` 且 origin 為 youtube.com） |
 | `THEME` | top → viewer iframe | `{ theme: 'light'|'dark' }`（v27：top frame 監看 `html[dark]` 的實際外觀，開啟面板時送一次、變更時再送；面板依 `themeMode` 決定是否採用，見 10.2） |
-| `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`） |
-| `SEEK_TO` | viewer iframe → top | `{ seconds }` |
+| `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`）。（v41）實際送出 `{ currentTime, paused, duration, seekStart, seekEnd, live, at }`：`seekStart`／`seekEnd` 為 `video.seekable` 範圍（直播的 DVR 可回放範圍），`live` 為 `isLiveBroadcast` meta 為 true 且沒有 `endDate`，`at` 為取樣時間（ms）；另在 `seeked` 時立即送出，暫停中且沒有變化時不重送 |
+| `SEEK_TO` | viewer iframe → top | `{ seconds }`（v41：影片時間；top 限制在 `seekable` 範圍內） |
+| `PANEL_READY` | viewer iframe → top | `{}`（v41：面板載入完成；top 回送 `THEME`、最近的 `CAPTURE_STATUS` 與 `VOD_TIME`） |
+| `PANEL_CLOSE` | viewer iframe → top | `{}`（v41：面板頂部列的「關閉優化面板」） |
+| `PANEL_STATE` | top → chat frame；chat frame → top | top → chat：`{ on, paused, reason: null|'theater'|'small' }`（頂部列按鈕的狀態與停用樣式）；chat → top：`{ headerMounted: true }`（頂部列按鈕已掛上，供錨點檢查） |
 | `STREAM_INFO_REQUEST` | chat frame → top | `{}`（v29：chat frame 啟動時向 top frame 要場次資訊；收到前每秒重送，最多 30 秒） |
 | `STREAM_INFO` | top → chat frame | `{ videoId, title, channelName, channelHandle, channelUrl, startDate, endDate, isLiveBroadcast, duration }`（v29：`startDate`／`endDate` 為 ms 或 `null`；`duration` 為秒（四捨五入）或 `null`，直播中為 `null`。收到 `STREAM_INFO_REQUEST`、`yt-navigate-finish`、`durationchange` 時送出；只送給 `iframe#chatframe.contentWindow`） |
-| `CAPTURE_STATUS` | chat frame → top | `{ videoId, capturing: boolean, reason: null|'paused'|'no-items'|'no-video-id'|'disconnected' }`（v29：狀態變化時送出；top frame 用於 F-19 自動接手與之後 popup 狀態） |
+| `CAPTURE_STATUS` | chat frame → top；top → viewer iframe | `{ videoId, capturing: boolean, reason: null|'paused'|'no-items'|'no-video-id'|'disconnected' }`（v29：狀態變化時送出；top frame 用於 F-19 自動接手與之後 popup 狀態）。（v41）另帶 F-12 結果 `f12`、`viewMode`（F-12 結果出來時也送一次）；top 轉送給面板，作為 F-12 說明文字 |
 
 > （v29）嵌入式 chat frame 的網址通常只有 `continuation` 參數、沒有 `v`，所以 `videoId` 以 `STREAM_INFO` 為準；網址有 `v` 時先採用網址值。彈出式聊天室沒有 top frame，`videoId` 取自網址 `v`，場次資訊由 background 的 `FETCH_STREAM_META` 補齊（F-19）。
 
@@ -459,7 +464,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   3. **offset 分版本**：訊息 `offsets: { v1, v2, … }`；`videoOffsetSec` 恆等於 v1 的值。同一則訊息在新版本中出現就寫入該版本 offset；**在新版本中沒出現的訊息（被剪掉的段落）不刪除**，只是沒有該版本的 offset。只在新版本中出現的訊息，`videoOffsetSec` 為 `null`。
   4. **檢視器**（T4／T5）：場次有多個版本時顯示版本切換（「原始 2:31:05」「剪輯版 1 2:10:44」）。觀看 VOD 時自動選擇長度相符的版本做時間軸同步；選「原始」顯示全部訊息；選剪輯版時，被剪掉段落的訊息淡色顯示並標「剪輯版中不存在」。
   5. **匯出**（T7）：HTML／JSON 匯出可選「原始版本」「指定剪輯版本」「全部（含所有版本 offset）」；JSON 一律保留所有版本資料（`formatVersion` 2）。
-  6. **重新上傳成新影片**：後台場次「連結剪輯版影片」：輸入新影片網址 → `linkedVideos[] = { videoId, label, offsetShift }`（`LINK_VIDEO`）。觀看該影片時檢視器可載入原始場次聊天，以 `offsetShift`（秒，檢視器內 ±1／±10 秒按鈕微調）同步。中段剪接造成的多段位移列為之後的待議功能。
+  6. **重新上傳成新影片**：後台場次「連結剪輯版影片」：輸入新影片網址 → `linkedVideos[] = { videoId, label, offsetShift }`（`LINK_VIDEO`）。觀看該影片時檢視器可載入原始場次聊天，以 `offsetShift`（秒，檢視器內 ±1／±10 秒按鈕微調）同步。（v41）定義：新影片的時間 = 原始 offset + `offsetShift`；內嵌面板在該影片沒有自己的場次紀錄時，從 `linkedVideos` 找出原始場次載入，微調後 0.8 秒存回（`LINK_VIDEO`）。中段剪接造成的多段位移列為之後的待議功能。
 - AC：(a) 同一 `videoId` 先直播收錄、再於影片長度改變後重播收錄 → 產生 v2，v1 的時間碼完全不變；(b) 兩個版本各自匯出，時間碼分別正確；(c) 連結新上傳影片並設定時間差後，Click-to-Seek 跳到正確位置。
 - 任務：T2 資料層；T3 讀取 `video.duration`（top frame 傳給 chat frame／background）；T4／T5 版本切換、剪掉段落呈現、連結影片同步與微調；T7 匯出選項。
 
@@ -544,6 +549,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - （v38，T4 捲動）內嵌面板與直播中場次從最底部開始並自動跟隨；往上捲即暫停，底部顯示「↓ 恢復自動捲動」。後台開啟已結束的場次從最上方開始，按鈕文字為「↓ 跳到最新」。
 - 使用者手動往上捲 → 暫停跟隨，底部出現「↓ 恢復自動捲動」。
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
+- （v41，T5 實作）**影片時間換算**：VOD（`live: false`）＝該版本的 offset（v1 為 `videoOffsetSec`，F-18）＋連結影片的 `offsetShift`；直播中（`live: true`）一律以 DVR 可回放範圍換算：`seekEnd − (VOD_TIME.at − timestampAbs) / 1000`，可點條件為落在 `[seekStart, seekEnd]` 內（一般直播與長期直播相同；長期直播的時間碼文字仍為當地時間）。直播中距離直播邊緣 `PANEL.LIVE_EDGE_SEC`（15 秒）以內維持一般「跟隨到底」、不加框；倒轉 DVR 超過 15 秒才依時間軸同步。目前訊息＝影片時間 ≤ 播放位置的最後一則，捲到可視範圍底部（距離 ≤ 1500px 平滑捲動，否則直接跳）。同步中使用者自己捲動 → 暫停同步，按鈕文字為「↓ 回到播放位置」（直播跟隨到底時仍為「↓ 恢復自動捲動」）；暫停期間目前訊息的框仍會更新。
 - **長期直播備註**（v37，`docs/review-2026-11-16.md` 追加八 C，T4／T5／T7 設計時處理）：24 小時不間斷直播的 `startDate` 可能是數年前（實測 `startDate` 2023-05-07，播放器 DVR 只能回放約 17 小時），`videoOffsetSec` 以年計，功能上正確但直接顯示 offset 無意義。判斷：直播中且 `videoOffsetSec` 遠大於播放器可回放長度（`video.duration`，或 offset 超過 24 小時）即視為長期直播。處理：(a) 訊息時間碼改顯示**絕對時間**（當地時間 `HH:mm:ss`，跨日時加日期）；(b) 時間軸同步與 Click-to-Seek 以「DVR 可回放範圍」換算（offset − (直播經過秒數 − DVR 長度)），落在範圍外的訊息不可點擊；(c) 後台「覆蓋範圍」以絕對時間顯示。原始 `videoOffsetSec` 不改寫（F-14）。
 
 ### C. YouTube 頁面整合（`content.js`）
@@ -563,6 +569,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 每個錨點找不到時都要 `warnOnce()`，不得靜默失敗。
 - 注入到原生頂部列或卡片的按鈕：樣式只能加在 `ytcas-` 前綴的元素上，**不得**改動原生元素的 class、樣式或版面；不得依賴 YouTube 版本化的樣式類別（如 `ytSpecButtonShapeNext*`、`ytVideoMetadataCarouselViewModel*`）做比對，只用標籤名稱與 id 定位。
 - 卡片區（`#teaser-carousel`）會隨導航重建：以 `MutationObserver` 監看 `ytd-watch-metadata`，並在 `yt-navigate-finish` 後重新掛載。
+- （v41，T5 實作）**T5 的裁切**：面板開啟時 `iframe#chatframe` 一律 `clip-path: inset(100% 0 0 0)`（6.2「無輸入區」），面板佔滿全高；直播中要留言需先關閉面板。依 `CHAT_INPUT_STATE` 動態露出原生底部互動區是 T6。聊天室頂部列的按鈕為 `⋮` 之前的圓形圖示按鈕（`#ytcas-header-btn`，提示文字即狀態），面板開啟時被面板蓋住；退讓時顯示停用樣式與「劇院模式下無法使用優化面板」／「聊天室太小，無法使用優化面板」。擴充功能斷線（關閉或重新載入）且沒有新實例接手時，舊實例移除面板，原生聊天室完全還原。
 - **預設開啟（v24 已決，使用者 2026-11-15）**：進入有聊天室的影片頁（直播或有聊天重播的 VOD）時，優化面板**預設開啟**；**不記住**上次關閉狀態（使用者在某頁關閉只對該次頁面有效）；沒有聊天室的影片不顯示任何東西。
 
 **F-10 直播中保留底部原生互動輸入區**（v2.6.0 未解決，本版重點，詳見第 6 節）
@@ -731,7 +738,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03）；F-11 自動遷移（唯讀複製，不動舊資料庫）；（v27）`DB_VERSION` 2：`capture_sessions` 資料表、messages 新欄位與 `[videoId+fp]` 索引、v1→v2 遷移；F-14 合併規則（欄位合併、`sources` 累加、後備指紋去重、以 `videoId` 序列化寫入）、`CAPTURE_START/END`、`RESET_STREAM`、`RECLASSIFY_SYSTEM`、`MESSAGE_DELETED`；`phase` 事後重算；（v28）SW 休眠對策（3.2：立即寫入、頻道解析佇列存 `storage.session`）、F-15 設定讀取（`GET_CAPTURE_POLICY`、`SAVE_MESSAGES` 暫停判斷）、F-16 用量查詢（`GET_STORAGE_USAGE`、`DELETE_STREAMS`）、F-18 資料層（`versions`、`offsets`、`linkedVideos`、版本偵測、合併規則修正）、F-19 資料層（`source: 'popout'`、覆蓋範圍合併計算）、F-14 別名與跨來源限制、v3 匯出／匯入資料層（`formatVersion` 2） | commit | 單元測試（`tools/tests/test-db.html`）：F-14 情境表每列至少一個測試、v1→v2 遷移、F-11 遷移後舊庫筆數不變且新舊筆數一致、重複匯入無重複、SW 重啟後頻道解析佇列可接續；以 DevTools 呼叫訊息 API 可寫入/查詢（F-14 AC 1、3、5） |
 | T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02）；（v27）**第一步：直播／重播訊息 id 一致性驗證**（只比對 id，結果寫入 `docs/youtube-dom-notes.md`，決定後備去重的啟用條件）；`phase` 判斷來源的實機確認（`startDate`／結束訊號，只記標籤與屬性）；`gift` 擷取（標籤待實機）、`system` 保存 `rawTag`；刪除訊息偵測；（v28）數量觸發修剪與批次（F-01、F-02）、`sendMessage` 重試（3.2）、**啟動時回溯擷取**、F-15 暫停判斷、F-18 讀取 `video.duration`、**F-19 彈出式聊天室收錄**（環境判斷三種、`FETCH_STREAM_META`、彈出視窗開啟時主分頁狀態實機確認、關閉後自動接手）；（v29）擷取引擎 `src/capture.js` 與測試頁 `test-capture.html`、（v30）**F-12 開始收錄時自動切換「即時聊天室」**、彈出視窗關閉以 `chrome.tabs.onRemoved` 偵測、top frame 的 `STREAM_INFO`（4.3）、刪除通知先後順序（3.2）、寫入壓力測試（第 7 節）。T3 含實機驗證，完成後 ⏸ 停下 | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50（含背景 30 分鐘）；id 一致性驗證結果已寫入筆記；F-19 AC (a)(b)(e)(g)；壓力測試達第 7 節寫入效能指標 |
 | T4 | viewer 核心：虛擬清單、訊息列、膠囊列（v27：4 個）、雙搜尋列、置頂卡片（F-04～F-07）；（v27）`pre`／`live`／`post` 分隔線、已刪除標記與隱藏切換、禮物卡片；（v38）後台分頁在 T7 之前以場次下拉選單切換；（v39）選單的訊息數不需重新整理即更新：目前場次隨推播、其他場次在游標移到選單或取得焦點時重新查詢 | commit；`tools/tests/test-viewer.html` | 對既有場次資料可篩選、搜尋、高亮；（v38）使用者以真實收錄資料確認 |
-| T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09）；F-12 的面板說明文字（v30：切換本身已移到 T3 擷取端）；（v27）`THEME` 傳遞、時間軸同步排除 `pre`／`post` | commit | 使用者在 VOD 與直播實測 |
+| T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09）；F-12 的面板說明文字（v30：切換本身已移到 T3 擷取端）；（v27）`THEME` 傳遞、時間軸同步排除 `pre`／`post`；（v41）F-18 版本切換、連結影片；T5 的裁切為全隱藏（動態露出在 T6）；PoC content script 不再載入 | commit；`tools/tests/test-panel.html`、`test-viewer.html` | 使用者在 VOD 與直播實測 |
 | T6 ⏸ | F-10 完整實作：輸入區/彈窗偵測、`CHAT_INPUT_STATE`、clip 狀態機、面板底部 padding、關閉還原（第 6 節） | commit | 使用者依 6.5 AC 1～7 實測 |
 | T6-c ⏸ | （v28）F-19 彈出視窗面板 PoC：面板覆蓋在 `#item-list` 範圍、底部互動區不覆蓋 | `docs/` PoC 紀錄 | 使用者實測可打字、面板可捲動點擊 |
 | T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON（含 `formatVersion`）、刪除；F-11 JSON 匯入 UI（v2.6.0 / v3 格式、預覽、去重）與「刪除舊版資料」按鈕；（v27）主題設定 UI（後台設定區、popup 底部）、場次清單收錄次數與覆蓋範圍、「清空此場次後重新收錄」、「重新分類系統訊息」；（v28）F-15 popup 開關與後台暫停清單、F-16 用量／排序／批次刪除／提醒、**F-17 自動備份（模式 A、排程、重試、通知）與 manifest 新權限**、F-18 版本匯出選項、`.json.gz` 匯入、popup 收錄狀態（10.4） | commit | 匯出 HTML 離線開啟可搜尋；同一 JSON 匯入兩次無重複；F-16、F-17 AC |
