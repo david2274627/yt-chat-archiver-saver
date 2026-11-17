@@ -284,6 +284,158 @@
     assert(opt(SA.videoId).textContent.endsWith('3 則'), '目前場次不被舊的 messageCount 蓋回');
   });
 
+  // ================================================================ T5（F-08、F-12、F-18）
+  test('T5 純函式：影片時間換算（VOD 版本 offset＋時間差、直播 DVR 範圍）、pre／post 不參與、同步位置、版本選擇、連結影片、F-12 說明', () => {
+    const m = mk({ id: 'a', videoOffsetSec: 100, offsets: { v1: 100, v2: 80 }, timestampAbs: T0 + 100e3 });
+    const vod = { live: false, currentTime: 0, duration: 3600, at: 0 };
+    eq(CORE.videoTimeOf(m, vod, {}), 100);
+    eq(CORE.videoTimeOf(m, vod, { ver: 'v2' }), 80);
+    eq(CORE.videoTimeOf(m, vod, { ver: 'v3' }), null, '該版本沒有 offset');
+    eq(CORE.videoTimeOf(m, vod, { shift: 12 }), 112, '連結影片時間差');
+    eq(CORE.videoTimeOf(mk({ phase: 'pre', videoOffsetSec: -30 }), vod, {}), null, 'pre 不參與');
+    eq(CORE.videoTimeOf(mk({ phase: 'post', videoOffsetSec: 4000 }), vod, {}), null, 'post 不參與');
+    // 直播：取樣時間 at 時的直播邊緣為 seekEnd；訊息 10 分鐘前 → seekEnd − 600
+    const live = { live: true, currentTime: 50000, seekStart: 40000, seekEnd: 50000, at: T0 + 3600e3 };
+    eq(CORE.videoTimeOf(mk({ timestampAbs: T0 + 3000e3 }), live, {}), 49400);
+    assert(CORE.inRange(49400, live) && !CORE.inRange(39000, live), 'DVR 範圍');
+    assert(CORE.inRange(100, vod) && !CORE.inRange(3700, vod) && !CORE.inRange(-1, vod), 'VOD 範圍');
+    assert(CORE.atLiveEdge(live, 15) && !CORE.atLiveEdge(Object.assign({}, live, { currentTime: 49000 }), 15), '直播邊緣');
+    // 同步位置：VOD 依 offset、直播依實際時間；分隔線與 pre 略過
+    const items = [mk({ id: 'p', phase: 'pre', videoOffsetSec: -5, timestampAbs: T0 - 5e3 }), mk({ id: 'x', videoOffsetSec: 10, timestampAbs: T0 + 10e3 }),
+      mk({ id: 'y', videoOffsetSec: 20, timestampAbs: T0 + 20e3 }), mk({ id: 'z', videoOffsetSec: 30, timestampAbs: T0 + 30e3 })].map((x) => CORE.indexMessage(x, new Map()));
+    const entries = CORE.withPhaseDividers(items);
+    const at = (t) => { const i = CORE.syncIndex(entries, Object.assign({}, vod, { currentTime: t }), {}); return i < 0 ? null : entries[i].it.m.id; };
+    eq([at(5), at(10), at(25), at(99)], [null, 'x', 'y', 'z']);
+    const lc = { live: true, seekStart: 0, seekEnd: 1000, currentTime: 1000 - 15, at: T0 + 30e3 }; // 播放位置 = T0 + 15s
+    const li = CORE.syncIndex(entries, lc, {});
+    eq(entries[li].it.m.id, 'x');
+    eq(CORE.pickVersion([{ id: 'v1', duration: 3600 }, { id: 'v2', duration: 3000 }], 3001.4), 'v2');
+    eq(CORE.pickVersion([{ id: 'v1', duration: 3600 }], 100), null);
+    const ls = CORE.findLinkedStream([{ videoId: 'orig', linkedVideos: [{ videoId: 'newone', offsetShift: -30 }] }], 'newone');
+    eq([ls.stream.videoId, ls.link.offsetShift], ['orig', -30]);
+    eq(CORE.findLinkedStream([], 'x'), null);
+    eq(CORE.captureNote({ capturing: true, f12: 'switched' }).sticky, false);
+    eq(CORE.captureNote({ capturing: true, f12: 'failed:no-menu' }).tone, 'warn');
+    eq(CORE.captureNote({ capturing: true, f12: 'already' }), null, '本來就是即時聊天室：不顯示');
+    eq(CORE.captureNote({ capturing: false, reason: 'channel' }).sticky, true);
+  });
+
+  test('T5 內嵌面板：VOD 時間軸同步（目前訊息框、捲到可視範圍、使用者捲動暫停、回到播放位置）、時間碼跳轉、關閉按鈕、F-12 說明', async () => {
+    await resetDb();
+    const VV = 'vidSYNCVOD1';
+    const msgs = [];
+    for (let i = 0; i < 400; i++) msgs.push(mk({ id: 's' + i, videoId: VV, timestampAbs: T0 + i * 10e3, videoOffsetSec: i * 10, offsets: { v1: i * 10 }, runs: [{ text: '同步 ' + i }] }));
+    await put({ videoId: VV, title: '同步測試', isLive: true, startedAt: T0, endedAt: T0 + 4000e3, lastMessageAt: T0 + 3990e3, messageCount: 400, versions: [{ id: 'v1', duration: 4000, label: '原始' }], linkedVideos: [] }, msgs);
+    await DB.close();
+    const opened = [];
+    const realOpen = window.open;
+    window.open = (u) => { opened.push(String(u)); return null; }; // 測試頁沒有 parent：跳轉退回開新分頁，這裡攔截
+    try {
+      const c = V.mount(host, { embed: true, videoId: VV });
+      await c.ready; await frame();
+      assert(c.els.closeBtn && c.els.closeBtn.textContent === '關閉優化面板', '關閉按鈕');
+      c._onClock({ currentTime: 1505, paused: false, duration: 4000, live: false, at: Date.now() });
+      await frame(); await frame();
+      eq(c.state.mode, 'sync');
+      eq(c.state.currentId, 's150');
+      const cur = c.els.list.querySelector('.current');
+      assert(cur && cur.dataset.id === 's150', '目前訊息加框');
+      const lr = c.els.list.getBoundingClientRect(), cr = cur.getBoundingClientRect();
+      assert(cr.bottom <= lr.bottom + 2 && cr.top >= lr.top - 2, '目前訊息在可視範圍');
+      // 時間碼：可點，跳轉送出該訊息的影片時間（測試頁沒有 parent → 開新分頁）
+      const tc = cur.querySelector('button.tc');
+      assert(tc && tc.textContent === '25:00', '時間碼 ' + (tc && tc.textContent));
+      tc.click();
+      assert(opened.length === 1 && opened[0].includes('t=1500'), '跳轉 ' + opened[0]);
+      // 使用者往上捲 → 暫停同步，出現「回到播放位置」
+      c.els.list.dispatchEvent(new Event('wheel'));
+      c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame(); // 背景分頁不會自動觸發 scroll 事件
+      eq(c.state.syncPaused, true);
+      assert(!c.els.resume.hidden && c.els.resume.textContent.includes('回到播放位置'), '回到播放位置按鈕');
+      c._onClock({ currentTime: 2005, paused: false, duration: 4000, live: false, at: Date.now() });
+      await frame();
+      eq(c.state.currentId, 's200', '暫停捲動時仍更新目前訊息');
+      assert(c.els.list.scrollTop < 50, '暫停中不捲動');
+      c.els.resume.click(); await frame(); await frame();
+      eq(c.state.syncPaused, false);
+      assert(c.els.list.scrollTop > 1000, '回到播放位置');
+      // F-12 說明
+      c._onCapture({ capturing: true, f12: 'switched' });
+      assert(!c.els.note.hidden && c.els.noteText.textContent.includes('即時聊天室'), 'F-12 說明');
+      c._onCapture({ capturing: true, f12: 'already' });
+      assert(c.els.note.hidden, '已是即時聊天室：不顯示');
+    } finally { window.open = realOpen; }
+  });
+
+  test('T5 直播中：在直播邊緣跟隨到底；倒轉 DVR 時依時間同步；DVR 範圍外的時間碼不可點', async () => {
+    await resetDb();
+    const VL = 'vidSYNCLIV1';
+    const now = Date.now();
+    const msgs = [];
+    for (let i = 0; i < 300; i++) msgs.push(mk({ id: 'l' + i, videoId: VL, timestampAbs: now - (300 - i) * 20e3, videoOffsetSec: 100000 + i * 20, runs: [{ text: '直播 ' + i }] }));
+    await put({ videoId: VL, title: '直播測試', isLive: true, startedAt: now - 7 * 86400e3, lastMessageAt: now - 20e3, messageCount: 300, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VL });
+    await c.ready; await frame();
+    // 直播邊緣：DVR 只有最近 1 小時（seekEnd − seekStart = 3600）
+    c._onClock({ currentTime: 9998, paused: false, duration: null, seekStart: 6400, seekEnd: 10000, live: true, at: now });
+    await frame(); await frame();
+    eq(c.state.mode, 'tail');
+    assert(c.state.vl.follow, '跟隨到底');
+    // 最後一則（20 秒前）在 DVR 內：可點；最舊的（100 分鐘前）不可點
+    const last = c.els.list.querySelector('[data-id="l299"] .tc');
+    assert(last && last.tagName === 'BUTTON', 'DVR 內可點');
+    // 倒轉 30 分鐘
+    c._onClock({ currentTime: 10000 - 1800, paused: false, duration: null, seekStart: 6400, seekEnd: 10000, live: true, at: now });
+    await frame(); await frame();
+    eq(c.state.mode, 'sync');
+    const id = c.state.currentId;
+    const m = msgs.find((x) => x.id === id);
+    assert(m && m.timestampAbs <= now - 1800e3 && m.timestampAbs > now - 1800e3 - 20e3, '同步到 30 分鐘前的訊息 ' + id);
+    c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
+    const old = c.els.list.querySelector('[data-id="l0"] .tc');
+    assert(old && old.tagName === 'SPAN', 'DVR 範圍外不可點');
+  });
+
+  test('T5 F-18：版本切換（依影片長度自動選、剪輯版中不存在的訊息淡色標示）；連結影片以時間差同步並可微調', async () => {
+    await resetDb();
+    const VO = 'vidVERSION1', VN = 'vidLINKED01';
+    const msgs = [];
+    for (let i = 0; i < 50; i++) {
+      const o = { v1: i * 60 };
+      if (i < 20 || i >= 30) o.v2 = i < 20 ? i * 60 : i * 60 - 600; // 剪輯版剪掉 20～29
+      msgs.push(mk({ id: 'v' + i, videoId: VO, timestampAbs: T0 + i * 60e3, videoOffsetSec: i * 60, offsets: o }));
+    }
+    await put({ videoId: VO, title: '版本測試', isLive: true, startedAt: T0, endedAt: T0 + 3000e3, lastMessageAt: T0 + 2940e3, messageCount: 50,
+      versions: [{ id: 'v1', duration: 3000, label: '原始' }, { id: 'v2', duration: 2400, label: '剪輯版 1' }],
+      linkedVideos: [{ videoId: VN, label: '重新上傳', offsetShift: -120 }] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VO });
+    await c.ready; await frame();
+    assert(!c.els.verPick.hidden && c.els.verPick.options.length === 2, '版本選單');
+    c._onClock({ currentTime: 1900, paused: false, duration: 2400.6, live: false, at: Date.now() });
+    await frame(); await frame();
+    eq(c.state.ver, 'v2', '依長度選剪輯版');
+    eq(c.state.currentId, 'v41', '剪輯版時間 1900 → 第 41 則（v2 = 41×60−600 = 1860）');
+    c.els.verPick.value = 'v1'; c.els.verPick.dispatchEvent(new Event('change'));
+    c.els.verPick.value = 'v2'; c.els.verPick.dispatchEvent(new Event('change'));
+    await frame();
+    c.state.vl.reveal(25, false); c.state.syncPaused = true; await frame(); await frame();
+    const cutRow = c.els.list.querySelector('[data-id="v25"]');
+    assert(cutRow && cutRow.classList.contains('cut') && cutRow.textContent.includes('剪輯版中不存在'), '被剪掉的段落');
+    // 連結影片：載入原始場次，時間差 −120 秒
+    const d = V.mount(host, { embed: true, videoId: VN });
+    await d.ready; await frame();
+    assert(!d.els.linkBox.hidden && d.els.linkText.textContent.includes('−120'), '時間差 ' + d.els.linkText.textContent);
+    d._onClock({ currentTime: 600, paused: false, duration: 2880, live: false, at: Date.now() });
+    await frame();
+    eq(d.state.currentId, 'v12', '600 + 120 = 720 → 第 12 則');
+    d.els.linkBox.querySelectorAll('button')[3].click(); // +10
+    eq(d.state.link.shift, -110);
+    d._onClock({ currentTime: 600, paused: false, duration: 2880, live: false, at: Date.now() + 300 });
+    eq(d.state.currentId, 'v11', '時間差改為 −110 → 710 → 第 11 則');
+  });
+
   test('空狀態：沒有資料的場次、沒有任何場次（後台）', async () => {
     await resetDb();
     const a = V.mount(host, { embed: true, videoId: 'nothing' });

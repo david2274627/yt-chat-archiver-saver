@@ -41,7 +41,9 @@
     let progTop = -1;
     let raf = 0;
     let onFollow = null;
+    let onUserScroll = null;
     let width = 0;
+    let smoothUntil = 0; // T5：時間軸同步的平滑捲動中（到達目標、使用者操作或 2 秒逾時前），捲動事件不視為使用者捲動
 
     const keyOf = (e) => e.key;
     const hOf = (i) => { const h = hcache.get(keyOf(entries[i])); return h != null ? h : estimate(entries[i]); };
@@ -101,17 +103,31 @@
       }
     }
     // 背景分頁不會觸發 requestAnimationFrame：隱藏時改用 setTimeout（新訊息推播時清單仍保持正確）
-    const schedule = () => { if (!raf) raf = document.hidden ? setTimeout(draw, 50) : requestAnimationFrame(draw); };
+    // T5：requestAnimationFrame 有時不觸發（例如 iframe 在畫面外、視窗被遮住）→ 100ms 後仍未繪製就以 setTimeout 補上
+    const schedule = () => {
+      if (raf) return;
+      if (document.hidden) { raf = setTimeout(draw, 50); return; }
+      raf = requestAnimationFrame(draw);
+      setTimeout(() => { if (raf) draw(); }, 100);
+    };
 
     scroller.addEventListener('scroll', () => {
       const t = scroller.scrollTop;
+      if (smoothUntil) {
+        if (Math.abs(t - progTop) <= 1 || Date.now() > smoothUntil) smoothUntil = 0; // 到達目標或逾時
+        schedule();
+        return;
+      }
       if (Math.abs(t - progTop) > 1) { // 使用者捲動
         const atBottom = t >= maxTop() - 24;
         if (atBottom !== follow) { follow = atBottom; if (onFollow) onFollow(follow); }
         progTop = -1;
+        if (onUserScroll) onUserScroll(atBottom);
       }
       schedule();
     }, { passive: true });
+    // 使用者主動操作時立即結束平滑捲動的忽略期（之後的捲動視為使用者捲動）
+    for (const ev of ['wheel', 'touchstart', 'pointerdown', 'keydown']) scroller.addEventListener(ev, () => { smoothUntil = 0; }, { passive: true });
     if (root.ResizeObserver) {
       new ResizeObserver(() => {
         const w = scroller.clientWidth;
@@ -133,8 +149,23 @@
       },
       refresh() { for (const node of rendered.values()) node.remove(); rendered = new Map(); draw(); },
       toBottom() { follow = true; if (onFollow) onFollow(true); draw(); },
+      // T5 時間軸同步：把第 i 列捲到可視範圍底部（像原生聊天室：目前的訊息在最下方）；不改變 follow 以外的狀態
+      reveal(i, smooth) {
+        if (i < 0 || i >= entries.length) return;
+        if (follow) { follow = false; if (onFollow) onFollow(false); }
+        const y = Math.round(Math.min(maxTop(), Math.max(0, off[i + 1] - scroller.clientHeight + 8)));
+        if (Math.abs(y - scroller.scrollTop) < 2) { draw(); return; }
+        if (smooth && Math.abs(y - scroller.scrollTop) <= (C.PANEL ? C.PANEL.SYNC_SMOOTH_MAX_PX : 1500) && scroller.scrollTo) {
+          smoothUntil = Date.now() + 2000;
+          progTop = y;
+          scroller.scrollTo({ top: y, behavior: 'smooth' });
+          schedule();
+        } else { setTop(y); draw(); }
+      },
+      setFollow(v) { if (follow !== !!v) { follow = !!v; if (onFollow) onFollow(follow); } },
       get follow() { return follow; },
       set onFollow(f) { onFollow = f; },
+      set onUserScroll(f) { onUserScroll = f; },
       get count() { return entries.length; },
       get renderedCount() { return rendered.size; },
       _nodes: () => Array.from(rendered.values()),
@@ -151,6 +182,9 @@
       f: { pill: 'all', hideDeleted: false, userQuery: '', userChip: '', userChipLabel: '', keyword: '' },
       counts: { all: 0, sc: 0, mem: 0, raid: 0 }, long: false, loading: true, streams: [], pinOpen: false, menuOpen: false,
       timings: {},
+      // T5（F-08、F-18）：clock＝top 的 VOD_TIME；mode：tail（跟隨到底）／sync（依播放位置）；ver：同步用的版本；link：連結影片
+      clock: null, mode: 'tail', syncPaused: false, currentId: null, entries: [], points: null,
+      ver: 'v1', verManual: false, link: null, capture: null, noteKey: '', noteDismissed: null,
     };
 
     // ---------------- 版面
@@ -165,8 +199,39 @@
     const moreBtn = el('button', 'btn icon sm'); moreBtn.type = 'button';
     moreBtn.setAttribute('aria-label', '更多選項'); moreBtn.title = '更多選項'; moreBtn.setAttribute('aria-haspopup', 'menu');
     moreBtn.appendChild(glyph('more'));
-    top.append(mark, ttl, meta, moreBtn);
+    top.append(mark, ttl, meta);
+    // T5（F-09、10.4）：內嵌面板頂部列的紅色「關閉優化面板」
+    let closeBtn = null;
+    if (embed) {
+      closeBtn = el('button', 'btn danger close-panel', '關閉優化面板'); closeBtn.type = 'button';
+      closeBtn.addEventListener('click', () => toTop({ type: C.FM.PANEL_CLOSE }));
+      top.appendChild(closeBtn);
+    }
+    top.appendChild(moreBtn);
     panel.appendChild(top);
+
+    // T5：版本切換（F-18）與連結影片的時間差（F-18 第 6 點）；有需要時才顯示
+    const sub = el('div', 'p-sub'); sub.hidden = true;
+    const verPick = el('select', 'ver-pick'); verPick.setAttribute('aria-label', '影片版本'); verPick.hidden = true;
+    verPick.addEventListener('change', () => { S.ver = verPick.value; S.verManual = true; S.points = null; apply({ reset: true }); });
+    const linkBox = el('div', 'link-box'); linkBox.hidden = true;
+    const linkText = el('span', 'link-txt');
+    linkBox.appendChild(linkText);
+    for (const d of [-10, -1, 1, 10]) {
+      const b = el('button', 'btn sm shift', (d > 0 ? '+' : '−') + Math.abs(d)); b.type = 'button';
+      b.setAttribute('aria-label', '時間差' + (d > 0 ? '加 ' : '減 ') + Math.abs(d) + ' 秒');
+      b.addEventListener('click', () => shiftLink(d));
+      linkBox.appendChild(b);
+    }
+    sub.append(verPick, linkBox);
+    panel.appendChild(sub);
+    // T5：F-12 說明與收錄狀態（一行，不是大型橫幅；非持續性的 10 秒後自動隱藏）
+    const note = el('div', 'p-note'); note.hidden = true; note.setAttribute('role', 'status');
+    const noteText = el('span');
+    const noteX = el('button', 'note-x', '×'); noteX.type = 'button'; noteX.setAttribute('aria-label', '關閉說明');
+    noteX.addEventListener('click', () => { note.hidden = true; S.noteDismissed = S.noteKey; });
+    note.append(noteText, noteX);
+    panel.appendChild(note);
 
     // 後台獨立分頁：場次選擇（T7 改為側欄場次清單）
     let pick = null;
@@ -227,8 +292,15 @@
     panel.appendChild(listWrap);
 
     S.vl = VList(list, renderEntry, estimate);
-    S.vl.onFollow = (f) => { resume.hidden = f || !S.items.length; };
-    resume.addEventListener('click', () => S.vl.toBottom());
+    S.vl.onFollow = (f) => { resume.hidden = S.mode === 'sync' ? !S.syncPaused : (f || !S.items.length); };
+    // T5：時間軸同步中使用者自己捲動 → 暫停同步（F-08）
+    S.vl.onUserScroll = () => {
+      if (S.mode !== 'sync') return;
+      S.syncPaused = true; S.vl.setFollow(false); resume.hidden = false;
+    };
+    resume.addEventListener('click', () => {
+      if (S.mode === 'sync') { S.syncPaused = false; resume.hidden = true; doSync(false); } else S.vl.toBottom();
+    });
 
     function searchField(icon, placeholder, label) {
       const r = el('div', 'field');
@@ -368,6 +440,15 @@
     }
     function tcNode(m) {
       const tc = CORE.timecode(m, S.stream, { long: S.long, refMs: S.refMs });
+      // T5：內嵌面板收到播放器時間後，可點與否、跳到哪裡依時間軸換算（VOD：版本 offset＋連結時間差；直播：DVR 範圍）
+      if (embed && S.clock) {
+        const vt = CORE.videoTimeOf(m, S.clock, syncOpts());
+        if (vt == null || !CORE.inRange(vt, S.clock)) return el('span', 'tc static', tc.text);
+        const text = S.clock.live ? tc.text : CORE.fmtDur(vt);
+        const b = el('button', 'tc', text); b.type = 'button'; b.setAttribute('aria-label', '跳轉至 ' + text);
+        b.addEventListener('click', (e) => { e.stopPropagation(); seek(vt); });
+        return b;
+      }
       if (tc.seconds == null) return el('span', 'tc static', tc.text);
       const b = el('button', 'tc', tc.text); b.type = 'button'; b.setAttribute('aria-label', tc.label);
       b.addEventListener('click', (e) => { e.stopPropagation(); seek(tc.seconds); });
@@ -466,14 +547,23 @@
         row.append(avatar(m, it.name), body);
       }
       row.dataset.id = m.id;
+      if (m.id === S.currentId) row.classList.add('current');
+      // F-18：選了剪輯版時，剪輯版中沒有的訊息淡色顯示並標示
+      if (S.ver !== 'v1' && (m.phase || 'live') === 'live' && CORE.versionOffset(m, S.ver) == null) {
+        row.classList.add('cut');
+        row.appendChild(el('span', 'bdg cut', '剪輯版中不存在'));
+      }
       return row;
     }
 
+    // 內嵌面板 → top frame（只送給 youtube.com）
+    function toTop(msg) {
+      if (!(embed && root.parent && root.parent !== root)) return false;
+      try { root.parent.postMessage(Object.assign({ __ytcas: true }, msg), C.YT_ORIGIN); } catch (_) { return false; }
+      return true;
+    }
     function seek(seconds) {
-      if (embed && root.parent && root.parent !== root) {
-        root.parent.postMessage({ __ytcas: true, type: C.FM.SEEK_TO, seconds }, C.YT_ORIGIN); // T5 由 top frame 執行跳轉
-        return;
-      }
+      if (toTop({ type: C.FM.SEEK_TO, seconds })) return; // T5：由 top frame 執行跳轉
       root.open('https://www.youtube.com/watch?v=' + encodeURIComponent(S.videoId) + '&t=' + Math.max(0, seconds) + 's', '_blank', 'noopener');
     }
 
@@ -494,10 +584,107 @@
         b.querySelector('.num').textContent = fmtN(S.counts[p]);
         if (p === 'all') b.setAttribute('aria-label', '全部訊息 ' + fmtN(S.counts.all));
       }
+      S.entries = entries; S.points = null;
+      if (S.mode === 'sync') o = Object.assign({}, o, { toBottom: false });
       S.vl.set(entries, o);
       showEmpty(entries.length ? null : (S.items.length ? 'nomatch' : 'none'));
-      resume.hidden = S.vl.follow || !entries.length;
+      resume.hidden = S.mode === 'sync' ? !S.syncPaused : (S.vl.follow || !entries.length);
       renderMeta();
+      if (S.mode === 'sync') doSync(false);
+    }
+
+    // ---------------- T5：時間軸同步（F-08）
+    const syncOpts = () => ({ ver: S.ver, shift: S.link ? S.link.shift : 0, points: S.points });
+    function rowOf(id) {
+      for (const n of list.querySelectorAll('.vrow > [data-id]')) if (n.dataset.id === id) return n;
+      return null;
+    }
+    function setCurrent(id) {
+      if (id === S.currentId) return;
+      const old = S.currentId;
+      S.currentId = id;
+      if (old) { const n = rowOf(old); if (n) n.classList.remove('current'); }
+      if (id) { const n = rowOf(id); if (n) n.classList.add('current'); }
+    }
+    function doSync(smooth) {
+      if (!S.clock || S.mode !== 'sync') return;
+      if (!S.points && !S.clock.live) S.points = CORE.syncPoints(S.entries, { ver: S.ver, shift: S.link ? S.link.shift : 0 });
+      const i = CORE.syncIndex(S.entries, S.clock, syncOpts());
+      setCurrent(i >= 0 ? S.entries[i].it.m.id : null);
+      if (!S.syncPaused && S.entries.length) S.vl.reveal(Math.max(0, i), smooth);
+    }
+    function onClock(c) {
+      if (!c || typeof c.currentTime !== 'number' || !Number.isFinite(c.currentTime)) return;
+      const first = !S.clock;
+      const liveChanged = !!S.clock && !!S.clock.live !== !!c.live;
+      const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      S.clock = { currentTime: c.currentTime, paused: !!c.paused, duration: num(c.duration), seekStart: num(c.seekStart), seekEnd: num(c.seekEnd),
+        live: !!c.live, at: num(c.at) || Date.now() };
+      // F-18：VOD 依影片長度自動選版本（使用者手動選過就不改）
+      if (!S.clock.live && !S.verManual && S.stream && Array.isArray(S.stream.versions) && S.stream.versions.length > 1) {
+        const v = CORE.pickVersion(S.stream.versions, S.clock.duration);
+        if (v && v !== S.ver) { S.ver = v; S.points = null; renderSub(); S.vl.refresh(); }
+      }
+      const mode = S.clock.live && CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC) ? 'tail' : 'sync';
+      if (mode !== S.mode) {
+        S.mode = mode; S.syncPaused = false;
+        if (mode === 'tail') { setCurrent(null); resume.textContent = '↓ 恢復自動捲動'; S.vl.toBottom(); }
+        else resume.textContent = '↓ 回到播放位置';
+        resume.hidden = true;
+      }
+      if (first || liveChanged) S.vl.refresh(); // 時間碼的可點與文字依 clock 而定：重新繪製可見列
+      if (mode === 'sync') doSync(!first);
+    }
+
+    // ---------------- T5：版本（F-18）與連結影片（F-18 第 6 點）
+    function renderSub() {
+      const vers = (S.stream && Array.isArray(S.stream.versions)) ? S.stream.versions : [];
+      verPick.textContent = '';
+      if (vers.length > 1 && !S.link) {
+        for (const v of vers) {
+          const o = el('option', null, (v.label || v.id) + (typeof v.duration === 'number' ? ' ' + CORE.fmtDur(v.duration) : ''));
+          o.value = v.id;
+          verPick.appendChild(o);
+        }
+        verPick.value = S.ver;
+        verPick.hidden = false;
+      } else verPick.hidden = true;
+      if (S.link) {
+        const sh = S.link.shift;
+        linkText.textContent = '同步原始場次「' + ((S.stream && S.stream.title) || S.link.orig) + '」・時間差 ' + (sh >= 0 ? '+' : '−') + Math.abs(sh) + ' 秒';
+        linkBox.hidden = false;
+      } else linkBox.hidden = true;
+      sub.hidden = verPick.hidden && linkBox.hidden;
+    }
+    let linkSave = 0;
+    function shiftLink(d) {
+      if (!S.link) return;
+      S.link.shift = Math.round((S.link.shift + d) * 10) / 10;
+      S.points = null;
+      renderSub();
+      S.vl.refresh();
+      doSync(false);
+      clearTimeout(linkSave);
+      linkSave = setTimeout(() => {
+        try {
+          const p = chrome.runtime.sendMessage({ type: RT.LINK_VIDEO, videoId: S.link.orig, linkedVideoId: S.videoId, offsetShift: S.link.shift });
+          if (p && p.catch) p.catch(() => {});
+        } catch (_) { /* 測試頁 */ }
+      }, 800);
+    }
+
+    // ---------------- T5：收錄狀態與 F-12 說明
+    let noteTimer = 0;
+    function renderNote() {
+      const n = CORE.captureNote(S.capture);
+      clearTimeout(noteTimer);
+      const key = n ? n.text : '';
+      S.noteKey = key;
+      if (!n || S.noteDismissed === key) { note.hidden = true; return; }
+      noteText.textContent = n.text;
+      note.className = 'p-note ' + n.tone;
+      note.hidden = false;
+      if (!n.sticky) noteTimer = setTimeout(() => { note.hidden = true; }, 10000);
     }
 
     function showEmpty(kind) {
@@ -537,6 +724,7 @@
       const my = ++loadSeq;
       S.videoId = videoId || '';
       S.items = []; S.byId = new Map(); S.pinned = []; S.stream = null; S.pinOpen = false;
+      S.currentId = null; S.syncPaused = false; S.entries = []; S.points = null;
       renderPin();
       S.vl.set([], { reset: true });
       showEmpty('loading');
@@ -546,7 +734,15 @@
       if (!S.videoId) { showEmpty(embed ? 'none' : 'nostream'); S.loading = false; return; }
       try {
         const t0 = performance.now();
-        const [stream, msgs, pinned] = await Promise.all([DB.getStream(S.videoId), DB.queryMessages(S.videoId), DB.queryPinned(S.videoId)]);
+        // T5（F-18 第 6 點）：內嵌面板看的是某場的連結影片（剪輯版重新上傳）→ 載入原始場次，以時間差同步
+        S.link = null;
+        let dataVid = S.videoId;
+        if (embed && !(await DB.getStream(S.videoId))) {
+          const hit = CORE.findLinkedStream(await DB.listStreams(), S.videoId);
+          if (hit) { S.link = { orig: hit.stream.videoId, shift: Number(hit.link.offsetShift) || 0, label: hit.link.label || '' }; dataVid = hit.stream.videoId; }
+        }
+        if (my !== loadSeq) return;
+        const [stream, msgs, pinned] = await Promise.all([DB.getStream(dataVid), DB.queryMessages(dataVid), DB.queryPinned(dataVid)]);
         if (my !== loadSeq) return;
         S.timings.queryMs = performance.now() - t0;
         S.stream = stream || { videoId: S.videoId };
@@ -563,6 +759,8 @@
         S.timings.indexMs = performance.now() - t1;
         S.pinned = CORE.dedupePinned(pinned);
         renderPin();
+        S.ver = 'v1'; S.verManual = false; S.points = null;
+        renderSub();
         S.loading = false;
         const liveNow = S.stream.isLive && S.stream.endedAt == null;
         resume.textContent = embed || liveNow ? '↓ 恢復自動捲動' : '↓ 跳到最新';
@@ -681,6 +879,19 @@
     }
     if (root.chrome && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(onRuntime);
 
+    // ---------------- T5：top frame 的訊息（只接受 youtube.com 的 parent；THEME 由 theme.js 處理）
+    function onFrame(e) {
+      if (!embed || e.source !== root.parent || e.origin !== C.YT_ORIGIN) return;
+      const d = e.data;
+      if (!d || d.__ytcas !== true) return;
+      if (d.type === C.FM.VOD_TIME) onClock(d);
+      else if (d.type === C.FM.CAPTURE_STATUS) {
+        S.capture = { capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null };
+        renderNote();
+      }
+    }
+    if (embed) { root.addEventListener('message', onFrame); toTop({ type: C.FM.PANEL_READY }); }
+
     // ---------------- 啟動
     const ready = (async () => {
       if (!embed) await loadStreamList();
@@ -691,8 +902,8 @@
     })();
 
     return {
-      ready, load, state: S, _onRuntime: onRuntime, _refreshStreamCounts: refreshStreamCounts, apply,
-      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick },
+      ready, load, state: S, _onRuntime: onRuntime, _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
+      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText },
     };
   }
 

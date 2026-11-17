@@ -161,6 +161,111 @@
     return { text, seconds: Math.floor(off), label: '跳轉至 ' + text };
   }
 
+  // ---------------------------------------------------------------- F-08 時間軸同步（T5）
+  // clock：top frame 的 VOD_TIME { currentTime, paused, duration, seekStart, seekEnd, live, at }
+  //   VOD（live: false）：影片時間 = 該版本的 offset（v1 為 videoOffsetSec，F-18）＋ 連結影片的 offsetShift
+  //   直播中（live: true）：以 DVR 可回放範圍換算（F-08 v37 長期直播備註 (b)）：影片時間 = seekEnd − (取樣時間 − 訊息時間)
+  //   兩者都只用 phase 'live' 的訊息（F-14：pre／post 不參與跟隨與跳轉）
+  function versionOffset(m, ver) {
+    const v = ver && ver !== 'v1' ? (m.offsets ? m.offsets[ver] : null) : m.videoOffsetSec;
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  }
+  function videoTimeOf(m, clock, o) {
+    if (!m || !clock || (m.phase || 'live') !== 'live') return null;
+    if (clock.live) {
+      if (typeof clock.seekEnd !== 'number' || typeof m.timestampAbs !== 'number') return null;
+      return clock.seekEnd - (clock.at - m.timestampAbs) / 1000;
+    }
+    const off = versionOffset(m, o && o.ver);
+    return off == null ? null : off + ((o && o.shift) || 0);
+  }
+  function inRange(t, clock) {
+    if (t == null || !clock) return false;
+    if (clock.live) return typeof clock.seekStart === 'number' && t >= clock.seekStart - 1 && t <= clock.seekEnd + 1;
+    return t >= 0 && (clock.duration == null || t <= clock.duration + 1);
+  }
+  // 直播中：距離直播邊緣 LIVE_EDGE_SEC 以內 → 一般的「跟隨到底」；超過（倒轉 DVR）→ 依時間軸同步
+  function atLiveEdge(clock, edgeSec) {
+    return !!clock && clock.live && typeof clock.seekEnd === 'number' && clock.seekEnd - clock.currentTime <= edgeSec;
+  }
+  // 直播中目前播放位置對應的實際時間（ms）
+  function playheadAbs(clock) {
+    return clock.at - (clock.seekEnd - clock.currentTime) * 1000;
+  }
+  // 清單（withPhaseDividers 的輸出）中「目前播放位置」的訊息：影片時間 ≤ t 的最後一則。
+  // 直播：依 timestampAbs（清單本來就依此排序）二分搜尋；VOD：依該版本 offset，先抽出有 offset 的訊息（遞增）再二分搜尋
+  function syncIndex(entries, clock, o) {
+    if (!clock || !entries || !entries.length) return -1;
+    const isMsg = (e) => e.kind === 'msg' && (e.it.m.phase || 'live') === 'live';
+    if (clock.live) {
+      const target = playheadAbs(clock);
+      let lo = 0, hi = entries.length - 1, ans = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const e = entries[mid];
+        const t = e.kind === 'msg' ? e.it.m.timestampAbs : (mid > 0 && entries[mid - 1].kind === 'msg' ? entries[mid - 1].it.m.timestampAbs : -Infinity);
+        if (t <= target) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+      }
+      while (ans >= 0 && !isMsg(entries[ans])) ans--;
+      return ans;
+    }
+    const t = clock.currentTime;
+    const pts = (o && o.points) || syncPoints(entries, o);
+    let lo = 0, hi = pts.length - 1, ans = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (pts[mid].t <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+    return ans < 0 ? -1 : pts[ans].i;
+  }
+  // VOD 同步用的（清單索引, 影片時間）序列；offset 偶有倒退時保留遞增的部分（二分搜尋的前提）
+  function syncPoints(entries, o) {
+    const out = [];
+    let last = -Infinity;
+    entries.forEach((e, i) => {
+      if (e.kind !== 'msg' || (e.it.m.phase || 'live') !== 'live') return;
+      const off = versionOffset(e.it.m, o && o.ver);
+      if (off == null) return;
+      const t = off + ((o && o.shift) || 0);
+      if (t < last) return;
+      last = t;
+      out.push({ i, t });
+    });
+    return out;
+  }
+  // F-18：依影片長度選版本（差 ≤ 2 秒）；都不符回傳 null
+  function pickVersion(versions, duration) {
+    if (!Array.isArray(versions) || typeof duration !== 'number' || !Number.isFinite(duration)) return null;
+    let best = null;
+    for (const v of versions) {
+      if (typeof v.duration !== 'number') continue;
+      const d = Math.abs(v.duration - duration);
+      if (d <= 2 && (!best || d < best.d)) best = { id: v.id, d };
+    }
+    return best ? best.id : null;
+  }
+  // 連結影片（F-18 第 6 點）：檢視中的影片是哪一場的剪輯版
+  function findLinkedStream(streams, videoId) {
+    for (const s of streams || []) {
+      const l = (s.linkedVideos || []).find((x) => x && x.videoId === videoId);
+      if (l) return { stream: s, link: l };
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------- F-12 面板說明（T5）
+  // CAPTURE_STATUS { capturing, reason, f12, viewMode } → { text, tone: 'info'|'warn', sticky } 或 null
+  function captureNote(cs) {
+    if (!cs) return null;
+    if (!cs.capturing) {
+      if (cs.reason === 'paused' || cs.reason === 'global' || cs.reason === 'channel') return { text: '已暫停收錄（可在擴充功能選單恢復）', tone: 'info', sticky: true };
+      if (cs.reason === 'disconnected') return { text: '擴充功能已重新載入，本頁暫停收錄', tone: 'warn', sticky: true };
+      if (cs.reason === 'no-video-id') return { text: '無法取得影片資訊，本聊天室不收錄', tone: 'warn', sticky: true };
+      return null;
+    }
+    const f = String(cs.f12 || '');
+    if (f === 'switched') return { text: '已自動切換為「即時聊天室」，以完整保存訊息', tone: 'info', sticky: false };
+    if (f.startsWith('failed')) return { text: '無法自動切換到「即時聊天室」：「重點聊天室訊息」模式下部分訊息不會被保存。關閉優化面板後可在聊天室頂部手動切換', tone: 'warn', sticky: true };
+    return null;
+  }
+
   // ---------------------------------------------------------------- F-07 置頂
   // 同一則（C.samePinned：作者＋正規化內容）只留最後一次置頂的那筆，依最後置頂時間新到舊。
   // T4.1：v38 以內容＋handle 為鍵，同一則的兩次擷取只要一筆缺 handle 或空白不同就會重複顯示
@@ -196,5 +301,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg,
+    versionOffset, videoTimeOf, inRange, atLiveEdge, playheadAbs, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

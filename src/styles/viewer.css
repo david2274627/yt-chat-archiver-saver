@@ -53,3 +53,28 @@ mark .emo-img { vertical-align: -5px; }
 .giftcard .gimg img { width: 40px; height: 40px; object-fit: contain; }
 .card.deleted .content, .giftcard.deleted .content { color: var(--ytcas-text-3); text-decoration: line-through; }
 .card.deleted .content { color: inherit; opacity: .6; }
+
+/* ---------- T5 內嵌面板（F-08、F-09、F-12、F-18） ---------- */
+.p-top .close-panel { flex: none; white-space: nowrap; }
+.p-sub { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px var(--ytcas-space-2);
+  border-bottom: 1px solid var(--ytcas-border); font-size: var(--ytcas-fs-xs); color: var(--ytcas-text-2); }
+.p-sub[hidden] { display: none; }
+.ver-pick { font: inherit; color: var(--ytcas-text); background: var(--ytcas-surface); border: 1px solid var(--ytcas-border);
+  border-radius: var(--ytcas-radius-pill); padding: 2px 8px; max-width: 100%; }
+.link-box { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.link-box .link-txt { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-box .shift { padding: 1px 8px; font-variant-numeric: tabular-nums; }
+.p-note { flex: none; display: flex; align-items: flex-start; gap: 6px; padding: 4px var(--ytcas-space-2) 4px var(--ytcas-space-3);
+  font-size: var(--ytcas-fs-xs); line-height: 1.4; color: var(--ytcas-text-2); background: var(--ytcas-accent-soft);
+  border-bottom: 1px solid var(--ytcas-border); }
+.p-note.warn { background: color-mix(in srgb, var(--ytcas-danger) 10%, transparent); color: var(--ytcas-text); }
+.p-note[hidden] { display: none; }
+.p-note > span { flex: 1; min-width: 0; }
+.p-note .note-x { flex: none; border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+/* F-08 目前播放位置（所有訊息類型；.msg.current 見 components.css） */
+.vrow > .current { box-shadow: inset 0 0 0 2px var(--ytcas-current-ring); border-radius: var(--ytcas-radius-sm);
+  transition: box-shadow var(--ytcas-dur) var(--ytcas-ease); }
+/* F-18 剪輯版中不存在的訊息 */
+.vrow > .cut { opacity: .5; }
+.bdg.cut { display: inline-block; margin: 2px 0 0 var(--ytcas-space-2); font-size: var(--ytcas-fs-xs); color: var(--ytcas-text-3);
+  border: 1px dashed var(--ytcas-border); border-radius: var(--ytcas-radius-pill); padding: 0 6px; }
