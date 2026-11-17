@@ -182,7 +182,7 @@
       try { const es = engine.state(); f = { f12: es.f12 || null, viewMode: es.viewMode || null }; } catch (_) { /* 引擎尚未建立 */ }
       post(FM.CAPTURE_STATUS, Object.assign({}, lastCap, f));
     }
-    if (env === 'chatframe') headerButton();
+    if (env === 'chatframe') headerButton(post); // T5.1：post 是 runChat 內的區域函式，需傳入
     if (env === 'popout') dlog('P6', 'popout-open', { urlHasV: !!urlVid }, { source, videoId: isVideoId(urlVid) ? urlVid : null });
     setTimeout(() => diag(null), 10000);
     engine.start();
@@ -264,7 +264,7 @@
   // ================================================================ T5 聊天室頂部列的開關（F-09 錨點 1，10.4）
   // ⋮ 之前、同一父層；只加 ytcas- 前綴的元素，不改原生元素。點擊 → TOGGLE_PANEL 給 top frame。
   // 面板開啟時頂部列被面板蓋住（T6 起被 clip 裁掉），按鈕主要在面板關閉與退讓（劇院模式）時看得到
-  function headerButton() {
+  function headerButton(post) {
     const BTN_ID = 'ytcas-header-btn';
     const STYLE = 'ytcas-chat-style';
     let state = { on: false, paused: false, reason: null };
