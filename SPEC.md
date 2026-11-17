@@ -39,7 +39,7 @@
 - **v37 調整**（`docs/review-2026-11-16.md` 追加八，T3.9）：重新注入擴大到**首次安裝**與 **Service Worker 每次啟動時的斷線分頁檢查**（第 7 節「權限」）；`scripting` 權限在 Chrome 不顯示額外警告，記錄為「使用者已同意」；F-20 P3 只記有聊天室的分頁；F-08 新增**長期直播**（`startDate` 遠早於 DVR 可回放範圍）的顯示備註。
 - **v38 調整**（T4 實作時確定的細節）：新增 `src/viewer-core.js`（3.1）；F-05 膠囊數字反映目前的篩選條件；F-06 比對範圍；F-07 多則置頂的呈現；時間碼規則（offset 未知、長期直播）；SC 文字色以對比度選擇；後台分頁在 T7 之前以場次下拉選單切換。
 - **v39 調整**（`docs/review-2026-11-17.md` 第 5 節，T4.1）：F-07 置頂的「同一則」改為作者＋正規化內容，寫入時合併、既有重複可整理（`pinnedLastAt`）；T4 場次選單訊息數即時更新；重新注入後新舊實例改以 DOM 事件交接（第 7 節「權限」）；SC 文字色依對比度（10.3、10.4）定為已決。
-- **v40 調整**（`docs/review-2026-11-17.md` 第 6、9 節，T4.2）：F-20 新增 **P9 記憶體**探針；第 9 節新增記憶體**對照測試**（停用／啟用本套件、關閉 DevTools）。
+- **v40 調整**（`docs/review-2026-11-17.md` 第 6、9 節，T4.2）：F-20 新增 **P9 記憶體**探針；第 9 節新增記憶體**對照測試**（停用／啟用本套件、關閉 DevTools）；F-03 頻道頁沒有 `og:title` 時以 `include` 重試一次、失敗原因統計。
 
 ---
 
@@ -142,7 +142,7 @@ yt-chat-archiver-saver/
 2. 頻道名稱解析（F-03）的待辦佇列存在 `chrome.storage.session`（含重試次數與下次可重試時間），被喚醒時（任何事件）自動接續。
 3. content script 端 `sendMessage` 失敗（SW 重啟中、無回應或回應 `ok: false` 以外的錯誤）時重試 3 次（間隔 0.5／1／2 秒）；仍失敗的批次留在 content script 端，下一批一起送（上限 2000 筆，超過時丟棄最舊的並記入診斷筆數）。回應 `ok: false` 的批次不重試（`paused` 依 F-15 停止擷取；其他錯誤丟棄並記入診斷筆數）。擴充功能重新載入後，舊頁面裡的 content script 失去連線（`chrome.runtime.id` 不存在）：停止送出，但 **DOM 修剪照常**，直到頁面重新整理。
    - **刪除通知的先後順序**（v29）：content script 偵測到訊息被刪除時，先把該訊息所在的批次送出並等待寫入完成，再送 `MESSAGE_DELETED`；回應 `found: false` 時放入待處理清單，下一批寫入完成後重送一次，仍找不到就放棄（只記筆數）。
-4. （v35）**對 YouTube 的抓取與 Cookie**：頻道頁（F-03）一律 `credentials: 'omit'`；watch 頁（F-19 `FETCH_STREAM_META`、F-14 開播／結束重新抓取）先 `omit`，取不到時間 meta 才以 `include` 重試一次。
+4. （v35）**對 YouTube 的抓取與 Cookie**：頻道頁（F-03）先 `credentials: 'omit'`（v40：頁面沒有 `og:title` 時以 `include` 重試一次，見 F-03）；watch 頁（F-19 `FETCH_STREAM_META`、F-14 開播／結束重新抓取）先 `omit`，取不到時間 meta 才以 `include` 重試一次。
 5. 長時間工作（F-11 遷移）分批進行，每批獨立交易，進度記在 `chrome.storage.local`，中斷後可重跑（以 id 去重）。
 
 **Origin 隔離原則**：`youtube.com` 頁面內的腳本（content.js）**禁止**直接開 IndexedDB 存聊天資料，一律經由 `background.js`。
@@ -326,6 +326,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 顯示：主名稱 = 頻道名稱，副標淡色 = `@Handle`。
 - （v25）直播訊息沒有作者連結，`authorChannelId` 多數情況取不到：解析與快取（`channels` store 的 `handleOrId`）**以 `@handle` 為鍵**；`authorUrl` 以 `https://www.youtube.com/@handle` 組成。
 - AC：解析失敗時退回顯示 `@Handle`，不得顯示空白。
+- （v40，T4.2，`docs/review-2026-11-17.md` 9）先以 `credentials: 'omit'` 抓頻道頁；HTTP 成功但沒有 `og:title`（例如被導向同意頁或拿到精簡頁面）時，比照 watch 頁以 `include` 重試一次；HTTP 錯誤（例如 404）不重試。成功紀錄記 `credentialsUsed`；達到重試上限的失敗紀錄記 `failReason`（ASCII 短字串）與 `failInfo`（HTTP 狀態、是否導向 consent 或其他網域、有無 `og:title`／`og:image`、頁面 KB 數、重試結果，只有數字與布林值）。統計：`await YTCAS_BG.channelStats()`（只有筆數與原因分布，不含 handle 與名稱）；失敗紀錄重新排入：`YTCAS_BG.retryFailedChannels()`（預覽）／`{ dryRun: false }`。Console 的失敗記錄只有原因與上述布林值。
 
 **F-11 v2.6.0 舊資料遷移與 JSON 匯入**（v22 新增）
 - **自動遷移**：v3 第一次啟動時（及後台手動「重新遷移」），若偵測到 v2.6.0 的 IndexedDB（`YTLiveChatArchiverDB_V6`，結構與欄位對照見 `docs/legacy-v2.6.0-data.md`），由 background **唯讀開啟並複製轉換**到 `ytcas-v3`。

@@ -124,13 +124,31 @@ function parseChannelHtml(html) {
   return { displayName, avatar };
 }
 
+// T4.2（審查十一 9）：先不帶 Cookie（omit）；頁面沒有 og:title（例如被導向同意頁或拿到精簡頁面）時，比照 watch 頁
+// 以 include 重試一次。HTTP 錯誤（例如 404 頻道不存在）不重試。失敗時附上只有狀態與布林值的原因（failInfo），
+// 存進失敗紀錄供 channelStats() 統計；成功紀錄記下用了哪一種（credentialsUsed）
+async function fetchChannelPage(url, credentials) {
+  const r = await fetch(url, { credentials, redirect: 'follow' });
+  let host = '';
+  try { host = new URL(r.url || url).hostname; } catch (_) { /* ignore */ }
+  const html = r.ok ? await r.text() : '';
+  const info = r.ok ? parseChannelHtml(html) : { displayName: '', avatar: '' };
+  return { ok: r.ok, status: r.status, info, failInfo: { status: r.status, consent: /(^|\.)consent\./.test(host), offSite: !!host && host !== 'www.youtube.com',
+    ogTitle: /property\s*=\s*["']og:title["']/i.test(html), ogImage: /property\s*=\s*["']og:image["']/i.test(html), kb: Math.round(html.length / 1024), credentials } };
+}
 async function resolveOne(handle) {
   const url = 'https://www.youtube.com/@' + encodeURIComponent(handle.slice(1));
-  const r = await fetch(url, { credentials: 'omit', redirect: 'follow' });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const info = parseChannelHtml(await r.text());
-  if (!info.displayName) throw new Error('no og:title');
-  return info;
+  let res = await fetchChannelPage(url, 'omit');
+  if (!res.ok) throw Object.assign(new Error('HTTP ' + res.status), { failInfo: res.failInfo });
+  if (!res.info.displayName) {
+    const first = res.failInfo;
+    try { res = await fetchChannelPage(url, 'include'); } catch (_) { res = null; }
+    if (!res || !res.ok || !res.info.displayName) {
+      throw Object.assign(new Error(res && !res.ok ? 'HTTP ' + res.status : 'no og:title'), { failInfo: Object.assign({}, first, { retry: res ? res.failInfo : { error: true } }) });
+    }
+    return Object.assign(res.info, { credentialsUsed: 'include' });
+  }
+  return Object.assign(res.info, { credentialsUsed: 'omit' });
 }
 
 function kickQueue() {
@@ -160,7 +178,7 @@ async function processHandle(h) {
       const it = q[h] || { attempts: 0, nextAt: 0 };
       if (info) {
         delete q[h];
-        const rec = { handleOrId: h, displayName: info.displayName, avatar: info.avatar, fetchedAt: Date.now() };
+        const rec = { handleOrId: h, displayName: info.displayName, avatar: info.avatar, fetchedAt: Date.now(), credentialsUsed: info.credentialsUsed || null };
         await DB.putChannel(rec);
         broadcast({ type: RT.CHANNEL_RESOLVED, handleOrId: h, displayName: rec.displayName, avatar: rec.avatar });
       } else {
@@ -168,7 +186,8 @@ async function processHandle(h) {
         if (it.attempts >= C.CHANNEL_MAX_ATTEMPTS) {
           delete q[h];
           // 失敗紀錄（1 天內不再重試）；檢視器退回顯示 @Handle
-          await DB.putChannel({ handleOrId: h, displayName: '', avatar: '', fetchedAt: Date.now(), failed: true });
+          await DB.putChannel({ handleOrId: h, displayName: '', avatar: '', fetchedAt: Date.now(), failed: true,
+            failReason: C.asciiOnly(String((err && err.message) || 'error')).slice(0, 40), failInfo: (err && err.failInfo) || null });
         } else {
           it.nextAt = Date.now() + Math.min(30000 * 2 ** (it.attempts - 1), 6 * 3600 * 1000); // 指數退避
           q[h] = it;
@@ -179,7 +198,11 @@ async function processHandle(h) {
   } finally {
     inflight.delete(h);
     // T3.8（CLAUDE.md 規則）：Console 不得輸出 handle → 只記失敗原因
-    if (err) console.info('[ytcas] 頻道名稱解析失敗', String(err && err.message));
+    if (err) {
+      const f = err.failInfo || {};
+      console.info('[ytcas] 頻道名稱解析失敗', C.asciiOnly(String(err.message)), { status: f.status ?? null, consent: !!f.consent, offSite: !!f.offSite,
+        ogTitle: !!f.ogTitle, retried: !!f.retry, retryStatus: f.retry ? f.retry.status ?? null : null });
+    }
     kickQueue();
   }
 }
@@ -227,6 +250,32 @@ async function dedupePinned(opts) {
   console.info('[ytcas] 置頂重複整理' + (r.dryRun ? '（預覽）' : ''), { records: r.records, streams: r.streams, groups: r.groups, removed: r.removed, diffFields: r.diffFields });
   return r;
 }
+// T4.2（審查十一 9）頻道名稱解析統計（SW Console）：await YTCAS_BG.channelStats()
+// 只有筆數與失敗原因分布（不含 handle 與名稱）。佇列中尚未解析的數量一併列出
+async function channelStats() {
+  const r = await DB.channelStats();
+  r.queued = Object.keys(await readQueue()).length;
+  r.failRate = r.ok + r.failed ? Math.round((r.failed / (r.ok + r.failed)) * 1000) / 10 : 0;
+  return r;
+}
+// 失敗紀錄重新排入解析佇列（失敗紀錄原本 1 天內不重試）。預設預覽（只回傳筆數），{ dryRun: false } 才執行
+async function retryFailedChannels(opts) {
+  const dryRun = !(opts && opts.dryRun === false);
+  const db = await DB.open();
+  const all = await new Promise((res, rej) => { const q = db.transaction('channels').objectStore('channels').getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  const handles = all.filter((c) => c.failed && !c.displayName && HANDLE_RE.test(c.handleOrId)).map((c) => c.handleOrId);
+  if (dryRun) return { dryRun, failed: handles.length };
+  const added = await withQueue(async () => {
+    const q = await readQueue();
+    let n = 0;
+    for (const h of handles) if (!q[h]) { q[h] = { attempts: 0, nextAt: 0 }; n++; }
+    if (n) await writeQueue(q);
+    return n;
+  });
+  kickQueue();
+  return { dryRun, failed: handles.length, queued: added };
+}
+
 // T4.1（審查十一 2.2）頭像網址網域分布：console.table(await YTCAS_BG.avatarHosts())（類型 × 網域 → 筆數，不含網址）
 const avatarHosts = () => DB.avatarHostStats();
 
@@ -987,4 +1036,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, channelStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

@@ -1153,6 +1153,51 @@
     }
   });
 
+  test('T4.2 F-03：不帶 Cookie 的頻道頁沒有 og:title → 以 include 重試一次；HTTP 錯誤不重試；失敗原因與統計只有筆數', async () => {
+    await resetAll();
+    await sleep(300);
+    BG._inflight.clear();
+    await chrome.storage.session.set({ channelQueue: {} });
+    const realFetch = self.fetch;
+    const calls = [];
+    self.fetch = async (url, o) => {
+      const h = decodeURIComponent(String(url).split('/@')[1]);
+      calls.push(h + ':' + (o && o.credentials));
+      if (h === 'gone') return new Response('', { status: 404 });
+      if (h === 'thin') return new Response('<html><title>YouTube</title></html>', { status: 200 });
+      if (o && o.credentials === 'include') return new Response('<meta property="og:title" content="帶 Cookie 才有">', { status: 200 });
+      return new Response('<html>consent</html>', { status: 200 });
+    };
+    try {
+      await chrome.storage.session.set({ channelQueue: { '@needcookie': { attempts: 0, nextAt: 0 }, '@gone': { attempts: 5, nextAt: 0 }, '@thin': { attempts: 5, nextAt: 0 } } });
+      BG.kickQueue();
+      await until(async () => Object.keys(await BG.readQueue()).length === 0, 3000, '佇列清空');
+      await sleep(50);
+      eq(calls.filter((c) => c.startsWith('needcookie')), ['needcookie:omit', 'needcookie:include']);
+      eq(calls.filter((c) => c.startsWith('gone')), ['gone:omit'], 'HTTP 錯誤不重試');
+      eq(calls.filter((c) => c.startsWith('thin')), ['thin:omit', 'thin:include']);
+      const ok = await DB.getChannel('@needcookie');
+      eq([ok.displayName, ok.credentialsUsed], ['帶 Cookie 才有', 'include']);
+      const thin = await DB.getChannel('@thin');
+      eq([thin.failed, thin.failReason, thin.failInfo.ogTitle, thin.failInfo.retry.status, thin.failInfo.retry.ogTitle], [true, 'no og:title', false, 200, false]);
+      await DB.putChannel({ handleOrId: '@old', displayName: '舊的', avatar: '', fetchedAt: 1 });
+      const st = await BG.channelStats();
+      eq([st.total, st.ok, st.failed, st.queued, st.failRate], [4, 2, 2, 0, 50]);
+      eq(st.byCredentials, { include: 1, 'before-T4.2': 1 });
+      eq(st.failReasons, { 'HTTP 404': 1, 'no og:title': 1 });
+      eq(st.failDetail, { 'status 404 noOgTitle': 1, 'status 200 noOgTitle retry:status 200 noOgTitle': 1 });
+      assert(!JSON.stringify(st).includes('@'), '統計不含 handle');
+      eq(await BG.retryFailedChannels(), { dryRun: true, failed: 2 });
+      self.fetch = async () => new Response('', { status: 503 }); // 重新排入後的解析一律失敗（不影響後續測試）
+      const r = await BG.retryFailedChannels({ dryRun: false });
+      eq([r.failed, r.queued], [2, 2]);
+    } finally {
+      await sleep(100);
+      self.fetch = realFetch;
+      await chrome.storage.session.set({ channelQueue: {} });
+    }
+  });
+
   test('權限：管理操作只接受擴充功能頁面，content script 被拒', async () => {
     await resetAll();
     for (const type of ['DELETE_STREAMS', 'IMPORT_DATA', 'MIGRATE_LEGACY', 'EXPORT_STREAM', 'GET_STORAGE_USAGE', 'RECLASSIFY_SYSTEM']) {

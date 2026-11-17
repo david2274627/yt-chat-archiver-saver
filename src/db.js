@@ -1206,6 +1206,30 @@
     t.objectStore('channels').put(rec);
     await done(t);
   }
+  // T4.2（審查十一 9）頻道名稱解析的成功／失敗統計：只回傳筆數與原因分布（不含 handle 與名稱）
+  async function channelStats() {
+    const db = await open();
+    const all = await req(db.transaction('channels').objectStore('channels').getAll());
+    const out = { total: all.length, ok: 0, okNoAvatar: 0, failed: 0, empty: 0, byCredentials: {}, failReasons: {}, failDetail: {} };
+    const inc = (o, k) => { o[k] = (o[k] || 0) + 1; };
+    for (const c of all) {
+      if (c.displayName) {
+        out.ok++;
+        if (!c.avatar) out.okNoAvatar++;
+        inc(out.byCredentials, c.credentialsUsed || 'before-T4.2'); // T4.2 以前解析或從 v2.6.0 遷移的沒有此欄位
+      } else if (c.failed) {
+        out.failed++;
+        inc(out.failReasons, c.failReason || 'before-T4.2');
+        const f = c.failInfo;
+        if (f) {
+          const k = ['status ' + f.status, f.consent ? 'consent' : '', f.offSite ? 'offSite' : '', f.ogTitle ? 'ogTitle' : 'noOgTitle',
+            f.retry ? 'retry:' + (f.retry.error ? 'error' : 'status ' + f.retry.status + (f.retry.ogTitle ? ' ogTitle' : ' noOgTitle')) : ''].filter(Boolean).join(' ');
+          inc(out.failDetail, k);
+        }
+      } else out.empty++;
+    }
+    return out;
+  }
   // 只在沒有紀錄或既有紀錄較舊時寫入（遷移與匯入用）
   async function putChannelIfNewer(rec) {
     const db = await open();
@@ -1490,7 +1514,7 @@
     getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
-    getChannel, getChannels, putChannel, putChannelIfNewer,
+    getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,
     exportData, importData, parseImport, migrateLegacy,
     // 純函式（測試用）
     util: { hash, normText, makeFp, fallbackId, normalizeIncoming, mergeMessage, resolveVersion, mergeIntervals, coverage,
