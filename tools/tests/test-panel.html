@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 只連本機：本頁與 panel-fixtures/ 都是同源的模擬頁 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'">
+<title>T5 優化面板（top frame）測試</title>
+<style>
+  body { margin: 16px; font: 14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; }
+  .ok { color: #0a7552; } .ng { color: #c9362f; } .mut { color: #766e8c; }
+  /* 模擬 YouTube 版面：聊天室框 360×600 */
+  #stage { display: flex; gap: 16px; align-items: flex-start; }
+  ytd-live-chat-frame { display: block; width: 360px; }
+  ytd-live-chat-frame iframe#chatframe { display: block; width: 360px; height: 600px; border: 1px solid #ccc; }
+  ytd-watch-flexy[theater] ytd-live-chat-frame iframe#chatframe { height: 152px; }
+  #show-hide-button { display: block; height: 36px; background: #eee; }
+</style>
+</head>
+<body>
+<h1>T5 優化面板（top frame）測試</h1>
+<p class="mut">以同源模擬頁驗證 <code>src/panel.js</code>：插入位置、退讓、關閉／重新開啟、YouTube 重新渲染、錨點按鈕、與面板及聊天室 iframe 的訊息。真實 YouTube 結構待實機。</p>
+<p id="summary">執行中…</p>
+<div id="stage">
+  <ytd-watch-flexy is-two-columns_>
+    <ytd-live-chat-frame id="chat"><iframe id="chatframe" src="panel-fixtures/chat.html"></iframe></ytd-live-chat-frame>
+    <ytd-watch-metadata><div id="teaser-carousel"></div></ytd-watch-metadata>
+    <video class="html5-main-video"></video>
+  </ytd-watch-flexy>
+  <ol id="list"></ol>
+</div>
+<script src="../../src/constants.js"></script>
+<script src="../../src/selectors.js"></script>
+<script src="../../src/panel.js"></script>
+<script src="test-panel.js"></script>
+</body>
+</html>

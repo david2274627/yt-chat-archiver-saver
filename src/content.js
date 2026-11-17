@@ -168,11 +168,21 @@
     };
     const engine = CAP.createEngine({
       doc: document, source, send, isConnected: connected,
-      onStatus: (s) => post(FM.CAPTURE_STATUS, s),
-      onF12: (r) => diag(r),
+      onStatus: (s) => postStatus(s),
+      onF12: (r) => { diag(r); postStatus(null); }, // T5：F-12 結果也告訴 top（面板說明文字）
       // F-20 P1／P2／P7：引擎的統計、節點分類、結構探針（記錄中才轉送）
       onDiag: (probe, kind, data) => { if (diagOn(probe)) dlog(probe, kind, data, { source, videoId: engine.state().videoId }); },
     });
+    // T5：收錄狀態＋F-12 結果（viewMode、f12）→ top frame → 面板（F-12 說明文字、收錄狀態）
+    let lastCap = null;
+    function postStatus(s) {
+      if (s) lastCap = s;
+      if (!lastCap) return;
+      let f = {};
+      try { const es = engine.state(); f = { f12: es.f12 || null, viewMode: es.viewMode || null }; } catch (_) { /* 引擎尚未建立 */ }
+      post(FM.CAPTURE_STATUS, Object.assign({}, lastCap, f));
+    }
+    if (env === 'chatframe') headerButton();
     if (env === 'popout') dlog('P6', 'popout-open', { urlHasV: !!urlVid }, { source, videoId: isVideoId(urlVid) ? urlVid : null });
     setTimeout(() => diag(null), 10000);
     engine.start();
@@ -249,6 +259,78 @@
     // T3.8（審查十追加七 D）：結束時的「收錄統計（結束）」也寫入 P1（彈出式聊天室開不到 1 分鐘時也有紀錄）→ stop 之後再送出診斷
     window.addEventListener('pagehide', () => { engine.stop(); dflush(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') engine.flush(); });
+  }
+
+  // ================================================================ T5 聊天室頂部列的開關（F-09 錨點 1，10.4）
+  // ⋮ 之前、同一父層；只加 ytcas- 前綴的元素，不改原生元素。點擊 → TOGGLE_PANEL 給 top frame。
+  // 面板開啟時頂部列被面板蓋住（T6 起被 clip 裁掉），按鈕主要在面板關閉與退讓（劇院模式）時看得到
+  function headerButton() {
+    const BTN_ID = 'ytcas-header-btn';
+    const STYLE = 'ytcas-chat-style';
+    let state = { on: false, paused: false, reason: null };
+    let warned = false;
+    const t0 = Date.now();
+    const label = () => (state.on && state.paused ? (state.reason === 'theater' ? '劇院模式下無法使用優化面板' : '聊天室太小，無法使用優化面板')
+      : state.on ? '關閉優化面板' : '開啟優化面板');
+    function ensureStyle() {
+      if (document.getElementById(STYLE)) return;
+      const st = document.createElement('style');
+      st.id = STYLE;
+      st.textContent = `
+        #${BTN_ID} { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin: 0 2px; padding: 0;
+          border: 0; border-radius: 50%; background: transparent; color: var(--yt-spec-icon-inactive, #606060); cursor: pointer; flex: none; }
+        #${BTN_ID}:hover { background: var(--yt-spec-badge-chip-background, rgba(0,0,0,.05)); }
+        #${BTN_ID}:focus-visible { outline: 2px solid #3ea6ff; outline-offset: 1px; }
+        #${BTN_ID}:active { transform: translateY(1px); }
+        #${BTN_ID}.ytcas-on { color: #cc0000; }
+        #${BTN_ID}.ytcas-paused { opacity: .45; cursor: default; }
+        #${BTN_ID} svg { width: 22px; height: 22px; display: block; }`;
+      (document.head || document.documentElement).appendChild(st);
+    }
+    function render(b) {
+      const l = label();
+      b.title = l; b.setAttribute('aria-label', l);
+      b.setAttribute('aria-pressed', String(!!state.on));
+      b.classList.toggle('ytcas-on', !!state.on && !state.paused);
+      b.classList.toggle('ytcas-paused', !!state.on && !!state.paused);
+    }
+    function mount() {
+      if (retired) return;
+      let anchor = null;
+      for (const sel of S.chat.headerOverflow) { anchor = document.querySelector(sel); if (anchor) break; }
+      let b = document.getElementById(BTN_ID);
+      if (!anchor) {
+        const hdr = document.querySelector(S.chat.header);
+        if (hdr && !warned && Date.now() - t0 > 10000) { warned = true; S.warnOnce('panel:header', S.chat.headerOverflow.join(', '), 'info'); }
+        return;
+      }
+      if (!b || b.nextElementSibling !== anchor) {
+        if (b) b.remove();
+        ensureStyle();
+        b = document.createElement('button');
+        b.type = 'button';
+        b.id = BTN_ID;
+        // 固定的 SVG 圖示（面板＋列表）
+        b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7.5 9h9M7.5 12h9M7.5 15h5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+        b.addEventListener('click', (e) => {
+          e.preventDefault(); e.stopPropagation();
+          if (state.on && state.paused) return;
+          post(FM.TOGGLE_PANEL, {});
+        });
+        anchor.parentElement.insertBefore(b, anchor);
+        post(FM.PANEL_STATE, { headerMounted: true });
+      }
+      render(b);
+    }
+    window.addEventListener('message', (e) => {
+      if (retired || e.origin !== YT || e.source !== window.parent || !e.data || e.data.__ytcas !== true || e.data.type !== FM.PANEL_STATE) return;
+      state = { on: !!e.data.on, paused: !!e.data.paused, reason: e.data.reason || null };
+      const b = document.getElementById(BTN_ID);
+      if (b) render(b);
+    });
+    const iv = setInterval(mount, 1000);
+    retireHooks.push(() => { clearInterval(iv); const b = document.getElementById(BTN_ID); if (b) b.remove(); });
+    mount();
   }
 
   function str(v) { return typeof v === 'string' ? v.slice(0, 500) : ''; }
@@ -460,5 +542,29 @@
     }
 
     bindVideo();
+
+    // ================================================================ T5 優化面板（F-08、F-09、6.2；src/panel.js）
+    const PANEL = globalThis.YTCAS_PANEL;
+    if (PANEL && myRuntime) {
+      let viewerBase = '';
+      try { viewerBase = myRuntime.getURL('src/viewer.html'); } catch (_) { /* ignore */ }
+      const panel = PANEL.create({
+        doc: document, win: window, C, S, ytOrigin: YT, extOrigin: 'chrome-extension://' + myRuntime.id,
+        viewerUrl: (vid) => viewerBase + '?embed=1&v=' + encodeURIComponent(vid),
+        currentVideoId: () => { const v = currentVideoId(); return isVideoId(v) ? v : null; },
+        streamInfo,
+        warnOnce: (k, d, lv) => S.warnOnce(k, d, lv),
+        // 只記原因與版面（不含任何內容）
+        onLog: (reason, data) => {
+          if (['panel-open', 'panel-close', 'panel-pause', 'panel-resume', 'reinit', 'chat-reload', 'expand-timeout', 'expand-failed'].includes(reason)) {
+            console.info('[ytcas] 優化面板：' + reason, data);
+          }
+          dlog('P4', 'panel-' + reason, data, { videoId: currentVideoId() });
+        },
+      }).start();
+      retireHooks.push(() => panel.destroy());
+      // 擴充功能被關閉或重新載入（本實例斷線）而沒有新實例接手：移除面板，原生聊天室完全還原
+      const dc = setInterval(() => { if (!connected()) { clearInterval(dc); panel.destroy(); } }, 2000);
+    }
   }
 })();

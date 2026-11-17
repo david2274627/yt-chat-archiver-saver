@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>模擬 chat frame</title>
+<style>body { margin: 0; font: 12px system-ui; } yt-live-chat-header-renderer { display: flex; height: 40px; align-items: center; }</style>
+</head>
+<body>
+<yt-live-chat-header-renderer><span>聊天室</span><yt-live-chat-button id="live-chat-header-context-menu">⋮</yt-live-chat-button></yt-live-chat-header-renderer>
+<div id="item-list"><div id="items"></div></div>
+<script>
+  // 測試頁呼叫：以本 frame 的身分送訊息給 top（e.source === iframe.contentWindow）
+  window.got = [];
+  window.sendTop = (type, extra) => parent.postMessage(Object.assign({ __ytcas: true, type }, extra || {}), location.origin);
+  window.addEventListener('message', (e) => { if (e.source === parent && e.data && e.data.__ytcas) window.got.push(e.data); });
+</script>
+</body>
+</html>

@@ -126,6 +126,20 @@
       STREAM_INFO_REQUEST: 'STREAM_INFO_REQUEST',
       STREAM_INFO: 'STREAM_INFO',
       CAPTURE_STATUS: 'CAPTURE_STATUS',
+      // v41（T5）：面板 iframe ↔ top frame。PANEL_READY：面板載入完成（top 回送 THEME、CAPTURE_STATUS、VOD_TIME）；
+      // PANEL_CLOSE：面板頂部列的「關閉優化面板」；PANEL_STATE：top → chat frame，頂部列按鈕顯示用 { on, paused, reason }
+      PANEL_READY: 'PANEL_READY',
+      PANEL_CLOSE: 'PANEL_CLOSE',
+      PANEL_STATE: 'PANEL_STATE',
+    }),
+    // v41（T5）優化面板（F-08、F-09、6.2）
+    PANEL: Object.freeze({
+      COLLAPSE_MIN_H: 200,     // iframe#chatframe 高度低於此值視為摺疊 → 退讓（6.2；T6 定案）
+      VOD_TIME_MS: 250,        // VOD_TIME 送出間隔（4.3）
+      LIVE_EDGE_SEC: 15,       // 直播中距離直播邊緣幾秒內視為「在最新」：一般跟隨到底；超過則依時間軸同步
+      ANCHOR_GRACE_MS: 8000,   // 頁面載入後多久仍找不到任何開關錨點才 warnOnce
+      EXPAND_WAIT_MS: 5000,    // 從影片下方卡片展開聊天室後，等待 iframe 出現的上限
+      SYNC_SMOOTH_MAX_PX: 1500, // 時間軸同步：距離在此以內平滑捲動，否則直接跳
     }),
     // v29：chat frame 等 STREAM_INFO 的重送間隔與上限
     STREAM_INFO_RETRY_MS: 1000,
@@ -242,6 +256,7 @@
     'chatframe:STREAM_INFO': '30 秒內沒有收到 top frame 的場次資訊，本聊天室不收錄',
     'handoff:teaser': '找不到可用的「開啟面板」，無法自動展開聊天室',
     'poc:': 'PoC 錨點或結構找不到',
+    'panel:': '優化面板的開關位置找不到',
   });
   C.diagWarnText = function (key) {
     const k = String(key || '');

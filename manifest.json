@@ -35,19 +35,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["src/constants.js", "src/selectors.js", "src/capture.js", "src/content.js"],
-      "run_at": "document_idle",
-      "all_frames": true
-    },
-    {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["src/constants.js", "src/selectors.js", "src/poc/clip-path-poc.js"],
-      "run_at": "document_idle",
-      "all_frames": false
-    },
-    {
-      "matches": ["https://www.youtube.com/live_chat*", "https://www.youtube.com/live_chat_replay*"],
-      "js": ["src/constants.js", "src/selectors.js", "src/poc/poc-chat.js"],
+      "js": ["src/constants.js", "src/selectors.js", "src/capture.js", "src/panel.js", "src/content.js"],
       "run_at": "document_idle",
       "all_frames": true
     }
@@ -55,8 +43,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "src/viewer.html",
-        "src/poc/poc-panel.html"
+        "src/viewer.html"
       ],
       "matches": ["https://www.youtube.com/*"],
       "use_dynamic_url": true

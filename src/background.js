@@ -955,7 +955,7 @@ try {
 // 與新的 background 斷線（只剩修剪、不再收錄）。update 時對所有 YouTube 分頁的所有 frame 重新注入 content script；
 // 新腳本會讓同一環境裡已斷線的舊實例退場（content.js 的 __ytcasRetire）。
 // PoC（src/poc/）的腳本依 frame 有不同的 matches，無法以 allFrames 正確重現，不重新注入（PoC 需要 F5；T9 移除）。
-const REINJECT_FILES = ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/content.js'];
+const REINJECT_FILES = ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/panel.js', 'src/content.js']; // T5：加入 panel.js
 async function reinjectYouTubeTabs(tabIds) {
   const out = { tabs: 0, ok: 0, failed: [] };
   let tabs = [];

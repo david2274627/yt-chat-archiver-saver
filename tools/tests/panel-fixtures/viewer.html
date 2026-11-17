@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>模擬面板</title>
+</head>
+<body>
+<script>
+  // 面板 iframe 的替身：載入後送 PANEL_READY，記錄 top 送來的訊息
+  window.got = [];
+  window.sendTop = (type, extra) => parent.postMessage(Object.assign({ __ytcas: true, type }, extra || {}), location.origin);
+  window.addEventListener('message', (e) => { if (e.source === parent && e.data && e.data.__ytcas) window.got.push(e.data); });
+  window.sendTop('PANEL_READY');
+</script>
+</body>
+</html>
