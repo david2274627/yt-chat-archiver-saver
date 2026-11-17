@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v37**（前版：v36；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v38**（前版：v37；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -37,6 +37,7 @@
 - **v35 調整**（`docs/review-2026-11-16.md` 追加六，T3.7）：開播／結束的 meta 重新抓取加上 `chrome.alarms` 每 1 分鐘排程；重新抓取先 `credentials: 'omit'`、取不到 meta 時以 `include` 重試一次；新增 **F-20 診斷記錄模式**；`alarms`、`downloads` 權限提前加入。
 - **v36 調整**（`docs/review-2026-11-16.md` 追加七，T3.8）：Console 輸出不得含訊息文字等個資（CLAUDE.md）；F-20 P8 只記 `warnOnce` key 與預先定義的說明、其他訊息只保留 ASCII；原始診斷檔放 `docs/diag/raw/`（不進 git），只 commit 摘要；**新增 `scripting` 權限**：擴充功能更新後自動重新注入已開著的 YouTube 分頁；斷線分頁偵測；診斷控制頁改為單一切換按鈕與「記錄 N 分鐘／指定結束時間」二選一。
 - **v37 調整**（`docs/review-2026-11-16.md` 追加八，T3.9）：重新注入擴大到**首次安裝**與 **Service Worker 每次啟動時的斷線分頁檢查**（第 7 節「權限」）；`scripting` 權限在 Chrome 不顯示額外警告，記錄為「使用者已同意」；F-20 P3 只記有聊天室的分頁；F-08 新增**長期直播**（`startDate` 遠早於 DVR 可回放範圍）的顯示備註。
+- **v38 調整**（T4 實作時確定的細節）：新增 `src/viewer-core.js`（3.1）；F-05 膠囊數字反映目前的篩選條件；F-06 比對範圍；F-07 多則置頂的呈現；時間碼規則（offset 未知、長期直播）；SC 文字色以對比度選擇；後台分頁在 T7 之前以場次下拉選單切換。
 
 ---
 
@@ -96,7 +97,7 @@ yt-chat-archiver-saver/
 │   ├── capture.js    # v29：擷取引擎（解析、回溯擷取、修剪、批次、重試、刪除偵測）；嵌入式 chat frame 與彈出式聊天室共用，不依賴 chrome.*，測試頁可直接載入
 │   ├── content.js    # 三種環境：top watch 頁（按鈕、面板、clip-path、時間軸、場次資訊）／嵌入式 chat frame／彈出式聊天室（v28 F-19）
 │   ├── popup.html / popup.js
-│   └── viewer.html / viewer.js
+│   └── viewer.html / viewer.js / viewer-core.js  # v38：viewer-core.js 為不依賴 DOM 的分類、篩選、搜尋、時間碼邏輯（測試頁共用）
 ├── docs/
 │   ├── handover-v18.md  # 原始交接文件（保留歷史，不再修改）
 │   └── test-checklist.md
@@ -517,20 +518,25 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - （v27 改為 4 個）「全部訊息（N）」、「💰 SC／禮物」（Super Chat、超級貼圖、禮物 `gift`）、「👑 會員」（新會員、里程碑、贈送會員、收到會員）、「✨ 實況主降落」。
 - 窄面板仍為單列（D2 定稿，以 container query 依工具區寬度判斷）：面板 ≤ 376px（含 340／360px）「全部」只顯示數字並縮短間距；≤ 316px（最窄 300px）再隱藏膠囊前的圖示；仍放不下時膠囊列可水平捲動（不換行）。
 - （v27）另有「隱藏已刪除訊息」切換（F-14），放在面板 ⋯ 選單與後台篩選區，不佔膠囊列。
+- （v38，T4）各膠囊的數字為**套用目前其他條件後**（使用者、關鍵字、隱藏已刪除）各分類的筆數，搜尋時可直接看到各分類命中幾則。「隱藏已刪除」只在本頁有效，不記住。
 - 降落 = Raid 橫幅 + 帶 `verified` 徽章的其他實況主發言；**排除** `constants.js` 的 `BOT_BLOCKLIST`（至少 `Nightbot`、`StreamElements`、`Streamlabs`、`Moobot`、`Fossabot`，比對不分大小寫，同時比對名稱與 @Handle）以及本台 `owner`/`moderator`。
 
 **F-06 搜尋列順序**（v2.6.0 已驗證可行）
 - 左：「過濾使用者 (頻道名稱 / @代碼)...」；點列表中的名稱可一鍵帶入。
 - 右：「搜尋訊息關鍵字或表符...」；命中處 `<mark>` 高亮（表符以 `alt`/`shortcut` 比對）。
 - 輸入 debounce 200ms。
+- （v38，T4）使用者欄：部分比對顯示名稱（F-03 解析結果）、`@handle`、擷取到的名稱，不分大小寫；點名稱建立 chip（精確比對該作者），chip 與文字輸入二擇一。關鍵字：NFKC 正規化、不分大小寫（全形可找到半形），比對訊息文字、表符 `alt`／`shortcut` 與禮物名稱；命中的表符整個以 `<mark>` 標示。
 
 **F-07 懸浮主播置頂卡片**（v2.6.0 已驗證可行）
 - 置頂訊息去重後固定在搜尋列下方，不混入一般流；點擊展開/收合；顯示主播頭像。
+- （v38，T4）去重以「內容＋作者」為準，保留最新一次置頂；有多則不同的置頂時卡片顯示最新一則，展開後列出較早的置頂。
 - **與原生置頂列的關係**（v24）：目前 YouTube 版面把置頂訊息放在**輸入列正上方**（屬於底部互動區，F-10 必須露出，見 6.3），而不是舊版的聊天室頂部橫幅。面板內仍顯示置頂卡片（訊息列表由套件接管），但**不得與原生那條列功能衝突**，例如點擊展開時不應互相遮蓋；D1 設計稿需考量這一點。
 
 **F-08 VOD 時間軸雙向同步**（v2.6.0 已驗證可行；預設開啟，無開關）
 - 依 `VOD_TIME` 對 `videoOffsetSec` 二分搜尋定位、平滑捲動、藍框高亮當前訊息。
 - （v27）只作用於 `phase: 'live'` 的訊息；`pre`／`post` 段不參與跟隨與跳轉（F-14）。
+- （v38，T4 時間碼規則）`live` 且有 offset：`H:MM:SS`（可點）；offset 未知（開播時間尚未確認）：當地時間 `HH:mm:ss`（不可點）；`pre`：「開播前 12:34」（offset 未知時「開播前 HH:mm:ss」）；`post`：「結束後 3:05」；長期直播（開播到最後一則超過 24 小時）：一律當地時間，跨日加 `M/D`，T5 再依 DVR 範圍決定是否可點。內嵌面板點時間碼送 `SEEK_TO`；後台分頁（不在 YouTube 頁面上）則在新分頁開啟 `watch?v=…&t=…s`。
+- （v38，T4 捲動）內嵌面板與直播中場次從最底部開始並自動跟隨；往上捲即暫停，底部顯示「↓ 恢復自動捲動」。後台開啟已結束的場次從最上方開始，按鈕文字為「↓ 跳到最新」。
 - 使用者手動往上捲 → 暫停跟隨，底部出現「↓ 恢復自動捲動」。
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
 - **長期直播備註**（v37，`docs/review-2026-11-16.md` 追加八 C，T4／T5／T7 設計時處理）：24 小時不間斷直播的 `startDate` 可能是數年前（實測 `startDate` 2023-05-07，播放器 DVR 只能回放約 17 小時），`videoOffsetSec` 以年計，功能上正確但直接顯示 offset 無意義。判斷：直播中且 `videoOffsetSec` 遠大於播放器可回放長度（`video.duration`，或 offset 超過 24 小時）即視為長期直播。處理：(a) 訊息時間碼改顯示**絕對時間**（當地時間 `HH:mm:ss`，跨日時加日期）；(b) 時間軸同步與 Click-to-Seek 以「DVR 可回放範圍」換算（offset − (直播經過秒數 − DVR 長度)），落在範圍外的訊息不可點擊；(c) 後台「覆蓋範圍」以絕對時間顯示。原始 `videoOffsetSec` 不改寫（F-14）。
@@ -719,7 +725,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | D2 ✅ 通過（2026-11-15） | 將選定方向落實為 `tokens.css`、`theme.js` 與元件 CSS；更新第 10 節「已選定方向」；設計稿只保留方向 B，頂部改為正式的「自動／淺色／深色」分段按鈕（自動實際跟隨系統），並加入禮物訊息、「👑 會員」膠囊、已刪除訊息、場次收錄來源與覆蓋範圍、待機室／結束後分隔線、主題設定 UI（v27） | commit | 設計稿與 token 一致；對比度符合 10.3；使用者視覺確認 |
 | T2 | `db.js` + `background.js`：資料表、遷移、`SAVE_*`/`QUERY_*`、推播、頻道名稱解析器（F-02、F-03）；F-11 自動遷移（唯讀複製，不動舊資料庫）；（v27）`DB_VERSION` 2：`capture_sessions` 資料表、messages 新欄位與 `[videoId+fp]` 索引、v1→v2 遷移；F-14 合併規則（欄位合併、`sources` 累加、後備指紋去重、以 `videoId` 序列化寫入）、`CAPTURE_START/END`、`RESET_STREAM`、`RECLASSIFY_SYSTEM`、`MESSAGE_DELETED`；`phase` 事後重算；（v28）SW 休眠對策（3.2：立即寫入、頻道解析佇列存 `storage.session`）、F-15 設定讀取（`GET_CAPTURE_POLICY`、`SAVE_MESSAGES` 暫停判斷）、F-16 用量查詢（`GET_STORAGE_USAGE`、`DELETE_STREAMS`）、F-18 資料層（`versions`、`offsets`、`linkedVideos`、版本偵測、合併規則修正）、F-19 資料層（`source: 'popout'`、覆蓋範圍合併計算）、F-14 別名與跨來源限制、v3 匯出／匯入資料層（`formatVersion` 2） | commit | 單元測試（`tools/tests/test-db.html`）：F-14 情境表每列至少一個測試、v1→v2 遷移、F-11 遷移後舊庫筆數不變且新舊筆數一致、重複匯入無重複、SW 重啟後頻道解析佇列可接續；以 DevTools 呼叫訊息 API 可寫入/查詢（F-14 AC 1、3、5） |
 | T3 | chat frame：訊息擷取、置頂擷取、DOM 修剪、`yt-navigate-finish` 清理（F-01、F-02）；（v27）**第一步：直播／重播訊息 id 一致性驗證**（只比對 id，結果寫入 `docs/youtube-dom-notes.md`，決定後備去重的啟用條件）；`phase` 判斷來源的實機確認（`startDate`／結束訊號，只記標籤與屬性）；`gift` 擷取（標籤待實機）、`system` 保存 `rawTag`；刪除訊息偵測；（v28）數量觸發修剪與批次（F-01、F-02）、`sendMessage` 重試（3.2）、**啟動時回溯擷取**、F-15 暫停判斷、F-18 讀取 `video.duration`、**F-19 彈出式聊天室收錄**（環境判斷三種、`FETCH_STREAM_META`、彈出視窗開啟時主分頁狀態實機確認、關閉後自動接手）；（v29）擷取引擎 `src/capture.js` 與測試頁 `test-capture.html`、（v30）**F-12 開始收錄時自動切換「即時聊天室」**、彈出視窗關閉以 `chrome.tabs.onRemoved` 偵測、top frame 的 `STREAM_INFO`（4.3）、刪除通知先後順序（3.2）、寫入壓力測試（第 7 節）。T3 含實機驗證，完成後 ⏸ 停下 | commit | 直播中 IndexedDB 持續增加、DOM 節點 ≤ 50（含背景 30 分鐘）；id 一致性驗證結果已寫入筆記；F-19 AC (a)(b)(e)(g)；壓力測試達第 7 節寫入效能指標 |
-| T4 | viewer 核心：虛擬清單、訊息列、膠囊列（v27：4 個）、雙搜尋列、置頂卡片（F-04～F-07）；（v27）`pre`／`live`／`post` 分隔線、已刪除標記與隱藏切換、禮物卡片 | commit | 對既有場次資料可篩選、搜尋、高亮 |
+| T4 | viewer 核心：虛擬清單、訊息列、膠囊列（v27：4 個）、雙搜尋列、置頂卡片（F-04～F-07）；（v27）`pre`／`live`／`post` 分隔線、已刪除標記與隱藏切換、禮物卡片；（v38）後台分頁在 T7 之前以場次下拉選單切換 | commit；`tools/tests/test-viewer.html` | 對既有場次資料可篩選、搜尋、高亮；（v38）使用者以真實收錄資料確認 |
 | T5 ⏸ | top frame：「開啟/關閉優化面板」按鈕、內嵌面板、VOD 時間軸同步與 Click-to-Seek（F-08、F-09）；F-12 的面板說明文字（v30：切換本身已移到 T3 擷取端）；（v27）`THEME` 傳遞、時間軸同步排除 `pre`／`post` | commit | 使用者在 VOD 與直播實測 |
 | T6 ⏸ | F-10 完整實作：輸入區/彈窗偵測、`CHAT_INPUT_STATE`、clip 狀態機、面板底部 padding、關閉還原（第 6 節） | commit | 使用者依 6.5 AC 1～7 實測 |
 | T6-c ⏸ | （v28）F-19 彈出視窗面板 PoC：面板覆蓋在 `#item-list` 範圍、底部互動區不覆蓋 | `docs/` PoC 紀錄 | 使用者實測可打字、面板可捲動點擊 |
@@ -803,7 +809,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 }
 [data-theme="dark"] { /* 同名變數的深色值 */ }
 ```
-- Super Chat 底色**使用訊息本身的 SC 等級顏色**（`message.color`），文字色依底色自動選黑/白以符合對比。
+- Super Chat 底色**使用訊息本身的 SC 等級顏色**（`message.color`），文字色依底色自動選黑/白以符合對比。（v38，T4）以 WCAG 相對亮度計算，選與底色對比度較高者；顏色只接受 `#rgb`／`#rrggbb`／`#aarrggbb`／`rgb()`／`rgba()`，其他字串不套用（改用 `--ytcas-surface-2`）。訊息區的淡底以文字色調出（`color-mix`），不寫死色碼。
 - 對比度：本文文字 ≥ 4.5:1，次要文字 ≥ 3:1（WCAG AA）。
 
 ### 10.4 元件清單與規格
