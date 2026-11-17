@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 測試資料含白名單網域的圖片網址（驗證會顯示 <img>），以 CSP 阻止實際連線：圖片與連線只允許本機 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline'">
+
+<title>T4 檢視器測試</title>
+<link rel="stylesheet" href="../../src/styles/tokens.css">
+<link rel="stylesheet" href="../../src/styles/components.css">
+<link rel="stylesheet" href="../../src/styles/viewer.css">
+<style>
+  /* 測試頁本身的版面（viewer.css 讓 body 不捲動，這裡改回來） */
+  body { overflow: auto; margin: 16px; font: 14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; }
+  .wrap { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+  #host { width: 360px; height: 600px; flex: none; }
+  .ok { color: var(--ytcas-member); } .ng { color: var(--ytcas-danger); } .mut { color: var(--ytcas-text-3); }
+  li { margin: 2px 0; } #list { max-width: 760px; }
+</style>
+</head>
+<body>
+<h1>T4 檢視器測試</h1>
+<p class="mut">檢視器核心（<code>viewer-core.js</code>）的純函式與 <code>viewer.js</code> 的實際渲染。資料為虛構內容，寫入本頁 origin 的測試資料庫；chrome.* 為假物件，對外連線一律攔截。</p>
+<p id="summary">執行中…</p>
+<div class="wrap">
+  <div id="host"></div>
+  <ol id="list"></ol>
+</div>
+<script src="mock-chrome.js"></script>
+<script src="../../src/constants.js"></script>
+<script src="../../src/db.js"></script>
+<script src="../../src/viewer-core.js"></script>
+<script src="../../src/viewer.js"></script>
+<script src="test-viewer.js"></script>
+</body>
+</html>
