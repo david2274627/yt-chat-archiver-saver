@@ -89,6 +89,17 @@
     dlog('P8', 'exception', { message: C.asciiOnly(e.message), stack: C.asciiOnly((e.error && e.error.stack) || ''), line: e.lineno || null });
   });
 
+  // T3.8（審查十追加七 C-2）：background 的連線檢查。只由頂層頁面回應（同一分頁的多個 frame 只需一個回覆）；
+  // 已斷線的舊 content script 收不到這則訊息，所以「沒有回應」= 需要重新整理或重新注入
+  if (isTop) {
+    try {
+      chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+        if (retired || !msg || msg.type !== RT.PING) return;
+        sendResponse({ ok: true, env });
+      });
+    } catch (_) { /* ignore */ }
+  }
+
   if (env === 'chatframe' || env === 'popout') runChat();
   else if (env === 'top') runTop();
 
@@ -193,7 +204,8 @@
     watchRenderer();
 
     // 離開頁面：送出剩餘訊息並結束 session（送不到時由 background 以最後寫入時間補 endedAt）
-    window.addEventListener('pagehide', () => engine.stop());
+    // T3.8（審查十追加七 D）：結束時的「收錄統計（結束）」也寫入 P1（彈出式聊天室開不到 1 分鐘時也有紀錄）→ stop 之後再送出診斷
+    window.addEventListener('pagehide', () => { engine.stop(); dflush(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') engine.flush(); });
   }
 

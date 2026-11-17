@@ -108,6 +108,8 @@
       // v35 F-20：DIAG_LOG（content → bg，記錄中才送）、DIAG_CONTROL（擴充功能頁面 → bg：start／stop／status／export／summary／clear）
       DIAG_LOG: 'DIAG_LOG',
       DIAG_CONTROL: 'DIAG_CONTROL',
+      // v36（T3.8）：bg → 分頁的 top frame，確認 content script 仍連線（無回應 = 斷線，需要重新整理或重新注入）
+      PING: 'YTCAS_PING',
     }),
 
     // capture_sessions.source（v28 加 popout，F-19）

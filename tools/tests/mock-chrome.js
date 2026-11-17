@@ -70,7 +70,13 @@
         const ok = (u) => !pats || pats.some((p) => new RegExp('^' + p.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$').test(u));
         return self.chrome.tabs._tabs.filter((t) => ok(t.url || '')).slice();
       },
-      sendMessage: async (tabId, m) => { self.chrome.tabs.sent.push({ tabId, msg: JSON.parse(JSON.stringify(m)) }); },
+      // _alive：回應 PING 的分頁（content script 仍連線）；其他分頁回 undefined（= 沒有接收端）
+      _alive: new Set(),
+      sendMessage: async (tabId, m) => {
+        self.chrome.tabs.sent.push({ tabId, msg: JSON.parse(JSON.stringify(m)) });
+        if (m && m.type === 'YTCAS_PING') return self.chrome.tabs._alive.has(tabId) ? { ok: true, env: 'top' } : undefined;
+        return undefined;
+      },
       onRemoved: { addListener: (f) => listeners.removed.push(f) },
     },
     // T3.7：alarms（只記錄，不會自動觸發；測試以 __mock.fireAlarm 觸發）、action（徽章）、downloads（只記錄）

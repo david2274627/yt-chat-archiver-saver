@@ -805,7 +805,19 @@ const handlers = {
   // F-20：擴充功能頁面（tools/diag.html、之後的後台）控制
   async [RT.DIAG_CONTROL](msg) {
     const op = msg.op;
-    if (op === 'start') return { status: await diagStart(msg.opts || {}) };
+    if (op === 'start') {
+      // T3.8 C-2：開始時檢查斷線分頁（這些分頁的探針不會送出，控制頁提示重新整理）
+      const status = await diagStart(msg.opts || {});
+      const staleTabs = await findStaleTabs();
+      diagLog('P6', 'stale-tabs', { count: staleTabs.length, kinds: staleTabs.map((t) => t.kind) });
+      return { status, staleTabs };
+    }
+    if (op === 'staleTabs') return { staleTabs: await findStaleTabs() };
+    if (op === 'reinject') {
+      const r = await reinjectYouTubeTabs(Array.isArray(msg.tabIds) ? msg.tabIds.filter((x) => typeof x === 'number') : undefined);
+      await new Promise((res) => setTimeout(res, 500));
+      return { reinject: r, staleTabs: await findStaleTabs() };
+    }
     if (op === 'stop') return { status: await diagStop('manual') };
     if (op === 'status') return { status: await diagStatus() };
     if (op === 'export') return { data: await diagExport() };
@@ -893,6 +905,24 @@ async function reinjectYouTubeTabs(tabIds) {
   return out;
 }
 
+// T3.8（審查十追加七 C-2）斷線分頁偵測：對每個 YouTube 分頁的 top frame 送 PING，1.5 秒內沒有回應 = 斷線
+//（例如注入失敗、在 T3.8 以前的版本更新後沒有重新整理）。回傳只有分頁 id、種類、videoId 前 4 碼
+async function findStaleTabs() {
+  let tabs = [];
+  try { tabs = await chrome.tabs.query({ url: 'https://www.youtube.com/*' }); } catch (_) { return []; }
+  const kindOf = (u) => { try { const x = new URL(u); return x.pathname.startsWith('/live_chat') ? 'popout' : (x.pathname === '/watch' || x.pathname.startsWith('/live/') ? 'watch' : 'other'); } catch (_) { return 'other'; } };
+  const vid4 = (u) => { try { const v = new URL(u).searchParams.get('v'); return v ? v.slice(0, 4) + '…' : null; } catch (_) { return null; } };
+  const checks = tabs.filter((t) => !t.discarded).map(async (t) => {
+    let ok = false;
+    try {
+      const r = await Promise.race([chrome.tabs.sendMessage(t.id, { type: RT.PING }), new Promise((res) => setTimeout(() => res(null), 1500))]);
+      ok = !!(r && r.ok);
+    } catch (_) { ok = false; }
+    return ok ? null : { tabId: t.id, kind: kindOf(t.url), video: vid4(t.url) };
+  });
+  return (await Promise.all(checks)).filter(Boolean);
+}
+
 chrome.runtime.onInstalled.addListener((details) => {
   console.info('[ytcas] installed', details.reason, chrome.runtime.getManifest().version_name);
   autoMigrateLegacy(false).catch((e) => console.warn('[ytcas] 舊資料遷移失敗', e));
@@ -911,4 +941,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

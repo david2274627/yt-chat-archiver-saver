@@ -480,6 +480,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - **限制**：MV3 禁止執行動態程式碼（也不應該），**不能執行任意貼上的指令**；目前手動執行的每段診斷改寫為內建探針，新增探針 = 更新程式碼。抓不到 YouTube 自己的 Console 訊息（如 `[Violation]`），只收本套件的輸出與錯誤。
 - **控制**：T4／T7 之前以 Service Worker Console（`YTCAS_BG.diag.start({ probes, hours, startAt, endAt })`、`.stop()`、`.status()`、`.download()`、`.summary()`、`.clear()`）與擴充功能內頁面 `tools/diag.html`（不在 YouTube 頁面上）控制；T7 移到後台「設定 → 進階 → 診斷記錄」，popup 顯示狀態。runtime 訊息 `DIAG_CONTROL`（只接受擴充功能頁面）、`DIAG_LOG`（content script → bg，記錄中才送，bg 再檢查一次）。
 - **時段**：(a) 立即開始、手動停止；(b) 指定開始與結束時間（`chrome.alarms`）。**一律有最長時限**：預設 6 小時，可設 1～24 小時；Service Worker 被喚醒時也會檢查時限。開始新的一段記錄時清除上一段（請先匯出）。
+- **斷線分頁**（v36，追加七 C-2）：開始記錄時（及控制頁要求時），background 對每個 YouTube 分頁的 top frame 送 `YTCAS_PING`，1.5 秒內沒有回應即為斷線（content script 與 background 失聯，探針不會送出）。控制頁列出這些分頁（分頁 id、種類、`videoId` 前 4 碼），提供「重新接上」（`scripting` 重新注入）與「請按 F5」提示；開始時的檢查結果記入 P6（`stale-tabs`）。
+- **結束時的統計**（v36，追加七 D）：chat frame 關閉（`pagehide`）時，先送出「收錄統計（結束）」再送出診斷，開不到 1 分鐘的彈出式聊天室也有 P1 紀錄。
 - **指示**：記錄中套件圖示顯示紅色「REC」標記；**不在 YouTube 頁面或影片上顯示任何東西**（10.1 原則 6）。
 - **探針**（可勾選，預設全部）：
   | 探針 | 內容 | 時機 |

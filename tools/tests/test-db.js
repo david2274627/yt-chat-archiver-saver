@@ -948,6 +948,35 @@
     } finally { chrome.tabs._tabs = []; chrome.scripting._fail = new Set(); }
   });
 
+  test('T3.8 C-2：斷線分頁偵測（PING 無回應）；開始記錄時一併回傳並記入 P6；重新接上後重新檢查', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    chrome.tabs._tabs = [
+      { id: 20, url: 'https://www.youtube.com/watch?v=' + V },
+      { id: 21, url: 'https://www.youtube.com/live_chat?is_popout=1&v=' + V2 },
+      { id: 22, url: 'https://www.youtube.com/' },
+      { id: 23, url: 'https://example.com/' },
+    ];
+    chrome.tabs._alive = new Set([22]);
+    chrome.tabs.sent.length = 0;
+    chrome.scripting._calls.length = 0;
+    try {
+      const stale = await BG.findStaleTabs();
+      eq(stale, [{ tabId: 20, kind: 'watch', video: V.slice(0, 4) + '…' }, { tabId: 21, kind: 'popout', video: V2.slice(0, 4) + '…' }]);
+      const r = await send({ type: 'DIAG_CONTROL', op: 'start', opts: { probes: ['P6'] } }, PAGE);
+      eq([r.ok, r.staleTabs.length], [true, 2]);
+      await BG.diag.flush();
+      const rec = (await DB.diagAll()).find((x) => x.kind === 'stale-tabs');
+      eq(rec.data, { count: 2, kinds: ['watch', 'popout'] });
+      // 重新接上：注入後分頁開始回應
+      chrome.scripting.executeScript = ((orig) => async (o) => { chrome.tabs._alive.add(o.target.tabId); return orig(o); })(chrome.scripting.executeScript);
+      const rr = await send({ type: 'DIAG_CONTROL', op: 'reinject', tabIds: [20, 21] }, PAGE);
+      eq([rr.reinject.ok, rr.staleTabs.length], [2, 0]);
+      eq(chrome.scripting._calls.map((c) => c.target.tabId), [20, 21]);
+      eq((await send({ type: 'DIAG_CONTROL', op: 'staleTabs' })).error, 'forbidden', 'content script 不可呼叫');
+    } finally { chrome.tabs._tabs = []; chrome.tabs._alive = new Set(); await BG.diag.stop(); }
+  });
+
   test('F-20：最長時限自動停止；指定開始時間（排程）；停止 30 天後自動清除；控制只接受擴充功能頁面', async () => {
     await resetAll();
     await BG.diag.clear();
