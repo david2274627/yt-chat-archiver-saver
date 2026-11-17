@@ -2,12 +2,12 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v36**（前版：v35；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v37**（前版：v36；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
 | 專案代號 | `yt-chat-archiver-saver` |
-| 最後更新 | 2026-11-15 |
+| 最後更新 | 2026-11-17 |
 
 > **給 Claude Code 的閱讀順序**：第 0 節 → 第 1 節（目標）→ 第 4 節（資料模型與訊息協定）→ 第 6 節（F-10 技術設計）→ **第 10 節（UI 視覺設計）** → 第 8 節（任務清單，依序執行）。共通規則見 `CLAUDE.md`，本機操作流程見 `docs/HANDOFF.md`。
 
@@ -36,6 +36,7 @@
 - **v34 調整**（`docs/review-2026-11-16.md` 追加五，T3.6）：**F-13 禮物元件 `yt-gift-message-view-model`**；清除規則白名單優先、只清 T3.4 部署前的子元件紀錄；欄位完整度統計；**開播／結束判斷改為 background 重新抓取 watch 頁 meta**，`startedAt` 依來源等級可被覆蓋（`startedAtSource`），`startPending` 期間不得以預定時間寫入；`recomputeStream` 維護函式。
 - **v35 調整**（`docs/review-2026-11-16.md` 追加六，T3.7）：開播／結束的 meta 重新抓取加上 `chrome.alarms` 每 1 分鐘排程；重新抓取先 `credentials: 'omit'`、取不到 meta 時以 `include` 重試一次；新增 **F-20 診斷記錄模式**；`alarms`、`downloads` 權限提前加入。
 - **v36 調整**（`docs/review-2026-11-16.md` 追加七，T3.8）：Console 輸出不得含訊息文字等個資（CLAUDE.md）；F-20 P8 只記 `warnOnce` key 與預先定義的說明、其他訊息只保留 ASCII；原始診斷檔放 `docs/diag/raw/`（不進 git），只 commit 摘要；**新增 `scripting` 權限**：擴充功能更新後自動重新注入已開著的 YouTube 分頁；斷線分頁偵測；診斷控制頁改為單一切換按鈕與「記錄 N 分鐘／指定結束時間」二選一。
+- **v37 調整**（`docs/review-2026-11-16.md` 追加八，T3.9）：重新注入擴大到**首次安裝**與 **Service Worker 每次啟動時的斷線分頁檢查**（第 7 節「權限」）；`scripting` 權限在 Chrome 不顯示額外警告，記錄為「使用者已同意」；F-20 P3 只記有聊天室的分頁；F-08 新增**長期直播**（`startDate` 遠早於 DVR 可回放範圍）的顯示備註。
 
 ---
 
@@ -494,7 +495,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   |---|---|---|
   | P1 | 收錄統計（各聊天室） | 每分鐘 |
   | P2 | `#items` 節點分類（標籤 × 已存／未存） | 每分鐘 |
-  | P3 | 場次資訊（`startDate`／`endDate`／`isLiveBroadcast`）＋播放器長度 | 變化時＋每 5 分鐘 |
+  | P3 | 場次資訊（`startDate`／`endDate`／`isLiveBroadcast`）＋播放器長度。（v37）只記有聊天室的分頁 | 變化時＋每 5 分鐘 |
   | P4 | 聊天室 iframe 狀態、`ytd-watch-flexy`／聊天室屬性變化 | 事件 |
   | P5 | background：`fieldStats`、有分頁開著的場次的 phase 分布與 `capture_sessions` 摘要 | 每 10 分鐘 |
   | P6 | 彈出視窗開啟／關閉／接手 | 事件 |
@@ -532,6 +533,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - （v27）只作用於 `phase: 'live'` 的訊息；`pre`／`post` 段不參與跟隨與跳轉（F-14）。
 - 使用者手動往上捲 → 暫停跟隨，底部出現「↓ 恢復自動捲動」。
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
+- **長期直播備註**（v37，`docs/review-2026-11-16.md` 追加八 C，T4／T5／T7 設計時處理）：24 小時不間斷直播的 `startDate` 可能是數年前（實測 `startDate` 2023-05-07，播放器 DVR 只能回放約 17 小時），`videoOffsetSec` 以年計，功能上正確但直接顯示 offset 無意義。判斷：直播中且 `videoOffsetSec` 遠大於播放器可回放長度（`video.duration`，或 offset 超過 24 小時）即視為長期直播。處理：(a) 訊息時間碼改顯示**絕對時間**（當地時間 `HH:mm:ss`，跨日時加日期）；(b) 時間軸同步與 Click-to-Seek 以「DVR 可回放範圍」換算（offset − (直播經過秒數 − DVR 長度)），落在範圍外的訊息不可點擊；(c) 後台「覆蓋範圍」以絕對時間顯示。原始 `videoOffsetSec` 不改寫（F-14）。
 
 ### C. YouTube 頁面整合（`content.js`）
 
@@ -699,7 +701,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | 隱私 | 資料只存本機；外部網路請求僅限：頻道頁抓取（`www.youtube.com`）、匯出 HTML 時抓取上列白名單網域的圖片轉 data URL（v21） |
 | 版面侵入 | 同 10.1 原則 6：所有套件 UI 只在聊天室區域內或 popup／後台分頁，影片與頁面主體上不得有任何套件元素；**每個 ⏸ 關卡都要檢查此項**（v23） |
 | 網頁可存取資源 | `web_accessible_resources` 只開放 `src/viewer.html`（PoC 期間另加 `src/poc/poc-panel.html`），並設 `use_dynamic_url: true`，降低網頁偵測擴充功能的可能；viewer 的 js/css 由擴充功能頁面自行載入，不需開放（v22） |
-| 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions：`https://www.youtube.com/*`，以及匯出內嵌圖片用的 `https://*.ggpht.com/*`、`https://*.ytimg.com/*`、`https://*.googleusercontent.com/*`、`https://fonts.gstatic.com/*`、`https://www.gstatic.com/*`（v21 經使用者同意）。（v28）F-17 自動備份需 `alarms`、`downloads`、`notifications`、`offscreen`（使用者 2026-11-15 要求此功能，視為同意；T7 加入 manifest，之前不加）。（v35）`alarms`、`downloads` 依 `docs/review-2026-11-16.md` 追加六 B.4 **提前於 T3.7 加入**（開播輪詢、F-20 診斷記錄的排程與匯出）；`notifications`、`offscreen` 仍於 T7 加入。（v36，`docs/review-2026-11-16.md` 追加七 C-1、E）**`scripting`**（使用者 2026-11-16 22:36 同意）：擴充功能更新（`onInstalled` 的 `reason: 'update'`，含開發中按 🔄 與 Chrome 自動更新）後，對所有 `https://www.youtube.com/*` 分頁的所有 frame 重新注入 content script（`constants.js`、`selectors.js`、`capture.js`、`content.js`；PoC 腳本不重新注入），已斷線的舊實例由新實例讓其退場；舊實例仍連線時新實例不啟動。注入失敗的分頁由「斷線分頁」偵測提示使用者重新整理。再新增權限需先徵得使用者同意 |
+| 權限 | 僅 `storage`、`unlimitedStorage`、`tabs`；host_permissions：`https://www.youtube.com/*`，以及匯出內嵌圖片用的 `https://*.ggpht.com/*`、`https://*.ytimg.com/*`、`https://*.googleusercontent.com/*`、`https://fonts.gstatic.com/*`、`https://www.gstatic.com/*`（v21 經使用者同意）。（v28）F-17 自動備份需 `alarms`、`downloads`、`notifications`、`offscreen`（使用者 2026-11-15 要求此功能，視為同意；T7 加入 manifest，之前不加）。（v35）`alarms`、`downloads` 依 `docs/review-2026-11-16.md` 追加六 B.4 **提前於 T3.7 加入**（開播輪詢、F-20 診斷記錄的排程與匯出）；`notifications`、`offscreen` 仍於 T7 加入。（v36，`docs/review-2026-11-16.md` 追加七 C-1、E）**`scripting`**（使用者 2026-11-16 22:36 同意）：擴充功能更新（`onInstalled` 的 `reason: 'update'`，含開發中按 🔄 與 Chrome 自動更新）後，對所有 `https://www.youtube.com/*` 分頁的所有 frame 重新注入 content script（`constants.js`、`selectors.js`、`capture.js`、`content.js`；PoC 腳本不重新注入），已斷線的舊實例由新實例讓其退場；舊實例仍連線時新實例不啟動。注入失敗的分頁由「斷線分頁」偵測提示使用者重新整理。（v37，追加八 B-1）**首次安裝**（`reason: 'install'`）同樣全部重新注入（安裝前就開著的分頁）；另外 **Service Worker 每個實例啟動時檢查一次**（啟動 3 秒後，install／update 已全部注入時略過）：以 `YTCAS_PING` 檢查 YouTube 分頁，只對沒有回應且已載入完成的分頁重新注入（涵蓋在 `chrome://extensions` 關閉再開啟擴充功能，此時不觸發 `onInstalled`），結果記入 F-20 P6 `wake-check`。（v37，追加八 B-2）`scripting` 權限在 Chrome **不會顯示額外的權限警告**，安裝或更新時使用者可能看不到任何提示；同意紀錄以本列與 `CHANGELOG.md` 為準。再新增權限需先徵得使用者同意 |
 | 打包範圍 | （v28）`tools/`、`design/`、`docs/` 不被 manifest 引用，不進正式版；T9 移除 `src/poc/` |
 | 相容 | YouTube 改版時只需修改 `selectors.js`；所有選擇器找不到時須 graceful degrade（`warnOnce` 記一次，不拋錯）。（v31，`docs/review-2026-11-16.md`）**診斷輸出分級**：Chrome 會把 content script 的 `console.warn`／`console.error` 收進擴充功能「錯誤」頁，跨頁面累積、不會自動清除，因此 `console.warn` **只用於預期應該存在卻找不到、且會影響功能**的情況（該頁確定有聊天室，例如 `ytd-watch-flexy[live-chat-present-and-expanded]`、chat frame 已載入，但錨點或選擇器仍找不到）；沒有聊天室的頁面、可退回的情況、PoC 一般提示用 `console.info`；診斷細節與舊版相容錨點用 `console.debug`。`warnOnce(key, detail, level)` 的 `level` 預設 `info`。沒有聊天室的頁面不嘗試掛載錨點、不輸出任何東西 |
 
