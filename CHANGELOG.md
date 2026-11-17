@@ -88,7 +88,21 @@
   - **F-20 診斷記錄模式**：`diag_log`（`DB_VERSION` 3）、控制、時限、REC、消毒、P5／P6／P8；`downloads` 權限提前加入（commit `aa1dcce`）。
   - F-20 頁面端探針 P1～P4、P6～P8（含 P7 結構探針）（commit `79cb73e`）。
   - 控制頁 `tools/diag.html`、分析工具 `tools/diag-report.js`（commit `f61d9e8`）。
-  - T3 報告追加「T3.7」、測試清單（T3.5／T3.6 實機 ✅、T3.7 項目）（本段落所在的 commit）。
+  - T3 報告追加「T3.7」、測試清單（T3.5／T3.6 實機 ✅、T3.7 項目）（commit `775a316`）。
+- v36／T3.8（`docs/review-2026-11-16.md` 追加七）：
+  - `.gitignore` 排除 `docs/diag/raw/`、F-20 第二次試錄摘要（審查端產生）（commit `0148a36`）。
+  - Console 不得輸出個資（CLAUDE.md、移除頻道解析失敗時的 handle）；P8 只記 `warnOnce` key 與預先定義說明、其他訊息只保留 ASCII；規格 v36（commit `184fa4d`）。
+  - `diag-report.js` 摘要 `videoId` 只留前 4 碼（commit `5d67c8b`）。
+  - HANDOFF 加入診斷控制頁網址（commit `affb291`）。
+  - **`scripting` 權限**：擴充功能更新後自動重新注入已開著的 YouTube 分頁，舊實例退場（commit `47564c8`）。
+  - 斷線分頁偵測與重新接上；收錄結束統計寫入 P1（commit `5b2a640`）。
+  - 控制頁：單一切換按鈕、結束方式二選一、進階、尚未匯出提示；`test-diag-page.html`（commit `5f4f3af`）。
+  - T3 報告追加「T3.8」、測試清單（本段落所在的 commit）。
+
+### 規格 v36（2026-11-17，依 `docs/review-2026-11-16.md` 追加七）
+- 第 7 節權限：新增 `scripting`（使用者 2026-11-16 22:36 同意）——擴充功能更新後重新注入 content script。
+- F-20：P8 只記 `warnOnce` key＋預先定義說明、其他訊息只保留 ASCII；原始匯出檔放 `docs/diag/raw/`（不進 git），摘要 `videoId` 只留 4 碼；斷線分頁偵測（`YTCAS_PING`）；結束時統計寫入 P1；控制頁版面（單一切換按鈕、二選一、進階、尚未匯出提示）。
+- CLAUDE.md：Console 輸出（任何等級）不得包含訊息文字、使用者名稱、handle、頻道名稱、影片標題。
 
 ### 規格 v35（2026-11-16，依 `docs/review-2026-11-16.md` 追加六）
 - F-14／3.2：meta 重新抓取加上 `chrome.alarms` 每 1 分鐘（只限有分頁開著的場次），3 小時上限以預定開播時間起算；watch 頁先 `omit`、取不到才 `include`。

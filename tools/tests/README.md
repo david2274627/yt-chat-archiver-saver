@@ -7,6 +7,9 @@
 | `test-db.html` | 資料層與 background 單元測試（真實 IndexedDB，`chrome.*` 以 `mock-chrome.js` 假物件替代） |
 | `test-capture.html` | 擷取引擎（`src/capture.js`）測試：解析、回溯擷取、修剪、批次、重試、刪除通知順序。模擬聊天室的結構**只依 `docs/youtube-dom-notes.md` 建構**，結果只代表「模擬頁：邏輯檢查通過；真實結構待實機」 |
 | `test-stress.html` | 寫入壓力測試（SPEC 第 7 節「寫入效能」）：每批 50 則的處理時間分布、10 萬則連續寫入 |
+| `test-diag-page.html` | F-20 診斷控制頁（`tools/diag.html`／`diag.js`）：載入真正的頁面內容與 background 處理函式，測按鈕三種狀態、結束方式互斥、時限提示、尚未匯出提示 |
+
+- `keep-fetch.js`：需要讀取 repo 內同一來源檔案（例如 `tools/diag.html`）的測試頁，在 `mock-chrome.js` 之前載入，改用 `__sameOriginFetch`；其他來源一律拒絕。
 
 ## 執行方式
 以本機靜態伺服器提供 repo 根目錄（只綁 `127.0.0.1`），用 Chrome 開 `http://127.0.0.1:<port>/tools/tests/<頁面>.html`。測試使用 `test-` 開頭的獨立資料庫名稱，不會碰到擴充功能本身的資料（擴充功能的 IndexedDB 屬於 `chrome-extension://` 來源，與測試頁的 `http://127.0.0.1` 來源完全隔離）。
