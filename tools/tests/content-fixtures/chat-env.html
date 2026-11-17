@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<!-- 只連本機；constants.js 以 blob 載入（把 YT_ORIGIN 換成本機測試 origin） -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+<title>模擬 chat frame 環境（載入真實 content.js）</title>
+</head>
+<body>
+<yt-live-chat-app>
+  <yt-live-chat-renderer>
+    <yt-live-chat-header-renderer><span>聊天室</span><yt-live-chat-button id="live-chat-header-context-menu">⋮</yt-live-chat-button></yt-live-chat-header-renderer>
+    <div id="item-list"><div id="items"></div></div>
+    <div id="input-panel"></div>
+  </yt-live-chat-renderer>
+</yt-live-chat-app>
+<script>
+  // 未捕捉的例外與 Promise rejection（審查十一第 12 節：post is not defined 這類錯誤）
+  window.__errors = [];
+  window.addEventListener('error', (e) => window.__errors.push(String(e.message) + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno));
+  window.addEventListener('unhandledrejection', (e) => window.__errors.push('rejection: ' + String(e.reason && (e.reason.stack || e.reason.message) || e.reason)));
+  // content.js 依 location.pathname 判斷環境：改成 /live_chat（同源，只改網址列，不重新載入）。之後的資源一律用絕對路徑
+  history.replaceState(null, '', '/live_chat?continuation=test-fixture');
+  window.__sent = []; // content.js → background 的訊息
+  // 以本 frame 自己的身分送訊息給自己（e.source = 本 frame，不是 parent）：驗證只接受 parent 的訊息
+  window.__selfPost = (m) => window.postMessage(m, location.origin);
+  const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('載入失敗 ' + src)); document.body.appendChild(s); });
+  const realFetch = window.fetch.bind(window); // mock-chrome.js 會把 fetch 換成一律 404（攔截對外連線）
+  (async () => {
+    const src = await (await realFetch('/src/constants.js')).text();
+    await load('/tools/tests/mock-chrome.js');
+    // background 的回應（只模擬 content.js 用到的）
+    chrome.runtime.sendMessage = (m) => {
+      window.__sent.push(m && m.type);
+      if (m && m.type === 'CAPTURE_START') return Promise.resolve({ ok: true, allowed: true, captureSessionId: 'cs-test', versionId: 'v1' });
+      return Promise.resolve({ ok: true });
+    };
+    const patched = src.replace("YT_ORIGIN: 'https://www.youtube.com'", "YT_ORIGIN: " + JSON.stringify(location.origin));
+    if (patched === src) throw new Error('constants.js 的 YT_ORIGIN 格式改變，測試需要更新');
+    await load(URL.createObjectURL(new Blob([patched], { type: 'text/javascript' })));
+    for (const f of ['/src/selectors.js', '/src/capture.js', '/src/panel.js', '/src/content.js']) await load(f);
+    window.__loaded = true;
+  })().catch((e) => { window.__errors.push('fixture: ' + e.message); window.__loaded = true; });
+</script>
+</body>
+</html>

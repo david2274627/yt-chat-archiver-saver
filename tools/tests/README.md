@@ -9,6 +9,10 @@
 | `test-stress.html` | 寫入壓力測試（SPEC 第 7 節「寫入效能」）：每批 50 則的處理時間分布、10 萬則連續寫入 |
 | `test-viewer.html` | T4 檢視器：`viewer-core.js` 純函式（分類、篩選、高亮、時段分隔、時間碼、SC 顏色、置頂去重）與 `viewer.js` 實際渲染（訊息類型、注入字串不執行、圖片白名單、膠囊／chip／搜尋／選單互動、推播更新）、**10 萬則效能**（首屏 ≤ 2 秒、搜尋 ≤ 300ms）。頁面以 CSP 禁止載入外部圖片（測試資料含白名單網域的圖片網址） |
 | `test-diag-page.html` | F-20 診斷控制頁（`tools/diag.html`／`diag.js`）：載入真正的頁面內容與 background 處理函式，測按鈕三種狀態、結束方式互斥、時限提示、尚未匯出提示 |
+| `test-panel.html` | T5 優化面板 top frame 控制器（`src/panel.js`）：以同源模擬頁（`panel-fixtures/`）驗證插入位置、退讓、重新插入、開關錨點、與面板及聊天室 iframe 的訊息與來源檢查 |
+| `test-content-chat.html` | T5.1（審查十一第 12 節）：iframe 以 `history.replaceState` 改成 `/live_chat` 網址後**載入真實的 `content.js`**（含 `capture.js`、`panel.js`；`YT_ORIGIN` 換成本機 origin），本頁扮演 top frame：頂部列按鈕位置、`PANEL_STATE`／`TOGGLE_PANEL`／`STREAM_INFO`／`CAPTURE_STATUS` 訊息、只接受 parent 的訊息、**沒有未捕捉的例外**。修正前的 `content.js` 會 0／5（重現 `post is not defined`） |
+
+另有靜態檢查 `node tools/check-scope.js`（不帶參數檢查 `src/*.js`）：IIFE 內最外層函式使用了只宣告在另一個最外層函式內的識別字（例：`headerButton()` 使用 `runChat()` 的 `post`）。近似檢查、沒有相依套件；修改 `content.js`、`panel.js` 等之後執行，結果應為「沒有跨最外層函式引用區域識別字」。
 
 - `keep-fetch.js`：需要讀取 repo 內同一來源檔案（例如 `tools/diag.html`）的測試頁，在 `mock-chrome.js` 之前載入，改用 `__sameOriginFetch`；其他來源一律拒絕。
 

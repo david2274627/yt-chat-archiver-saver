@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'">
+<title>T5.1 chat frame 環境載入 content.js 測試</title>
+<style>
+  body { margin: 16px; font: 14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; }
+  .ok { color: #0a7552; } .ng { color: #c9362f; } .mut { color: #766e8c; }
+  iframe { width: 360px; height: 300px; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h1>T5.1 chat frame 環境載入 content.js 測試</h1>
+<p class="mut">本頁扮演 top frame；iframe 以 <code>/live_chat</code> 網址載入真實的 <code>content.js</code>（審查十一第 12 節：頂部列按鈕與 frame 訊息）。只連本機，chrome.* 為假物件。</p>
+<p id="summary">執行中…</p>
+<iframe id="chatframe" src="content-fixtures/chat-env.html"></iframe>
+<ol id="list"></ol>
+<script src="test-content-chat.js"></script>
+</body>
+</html>
