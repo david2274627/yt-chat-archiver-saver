@@ -55,12 +55,14 @@
 
     // ---------------------------------------------------------------- 樣式
     function panelCss() {
+      // T5.1（審查十一 13.1 (D)，P1）：退讓（劇院模式、太矮）時，ytd-live-chat-frame／iframe#chatframe 上不得留下任何
+      // 套件的定位樣式。v41 的 position: relative !important 在退讓時仍套用，窄視窗劇院模式下 YouTube 以自己的定位排版
+      // 聊天室框 → 被改成 relative 後影片縮到左上、聊天室框偏出視窗。所有規則都只在「未退讓」時生效
       return `
-        .ytcas-frame { position: relative !important; }
-        .ytcas-chatframe { position: relative !important; z-index: 20 !important;
+        .ytcas-frame:not(.ytcas-paused) { position: relative !important; }
+        .ytcas-frame:not(.ytcas-paused) > .ytcas-chatframe { position: relative !important; z-index: 20 !important;
           clip-path: var(--ytcas-clip, inset(100% 0 0 0)); transition: clip-path 120ms ease-out; }
-        .ytcas-frame.ytcas-paused .ytcas-chatframe { clip-path: none !important; }
-        @media (prefers-reduced-motion: reduce) { .ytcas-chatframe { transition: none; } }
+        @media (prefers-reduced-motion: reduce) { .ytcas-frame:not(.ytcas-paused) > .ytcas-chatframe { transition: none; } }
         #${PANEL_ID} { position: absolute; inset: 0 0 auto 0; z-index: 10; box-sizing: border-box; overflow: hidden;
           border-radius: 12px; background: #fff; }
         html[dark] #${PANEL_ID} { background: #0f0f0f; }

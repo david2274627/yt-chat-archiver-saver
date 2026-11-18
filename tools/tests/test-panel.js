@@ -121,10 +121,13 @@
     eq(ctl.state().pauseReason, 'theater');
     eq(getComputedStyle(chat()).clipPath, 'none');
     eq(getComputedStyle(panelEl()).display, 'none');
+    // T5.1（13.1 (D)，P1）：退讓時 ytd-live-chat-frame／iframe 不得留下套件的定位樣式（與沒有套件時相同）
+    eq([getComputedStyle(frame()).position, getComputedStyle(chat()).position, getComputedStyle(chat()).zIndex], ['static', 'static', 'auto'], '退讓時沒有定位樣式');
     await until(() => chat().contentWindow.got.some((m) => m.type === FM.PANEL_STATE && m.paused && m.reason === 'theater'), 2000, 'PANEL_STATE');
     flexy.removeAttribute('theater');
     await until(() => !ctl.state().paused, 2500, '恢復');
     eq(getComputedStyle(chat()).clipPath, 'inset(100% 0px 0px)');
+    eq([getComputedStyle(frame()).position, getComputedStyle(chat()).position], ['relative', 'relative'], '恢復後才套用定位');
     chat().style.height = '150px';
     await until(() => ctl.state().paused && ctl.state().pauseReason === 'small', 2500, '太矮');
     chat().style.height = '';
