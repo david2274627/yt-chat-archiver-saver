@@ -118,6 +118,13 @@
         schedule();
         return;
       }
+      // T5.1：只有最近 1.2 秒內有使用者操作（滾輪、觸控、指標、按鍵）才算使用者捲動。內容高度改變時瀏覽器自己夾住
+      // scrollTop 也會觸發 scroll 事件，v41 把它當成使用者捲動而關掉「跟隨到底」（載入、篩選、重繪時偶發）
+      if (Math.abs(t - progTop) > 1 && Date.now() - lastInput > 1200) {
+        if (follow) setTop(maxTop());
+        schedule();
+        return;
+      }
       if (Math.abs(t - progTop) > 1) { // 使用者捲動
         const atBottom = t >= maxTop() - 24;
         if (atBottom !== follow) { follow = atBottom; if (onFollow) onFollow(follow); }
@@ -127,7 +134,8 @@
       schedule();
     }, { passive: true });
     // 使用者主動操作時立即結束平滑捲動的忽略期（之後的捲動視為使用者捲動）
-    for (const ev of ['wheel', 'touchstart', 'pointerdown', 'keydown']) scroller.addEventListener(ev, () => { smoothUntil = 0; }, { passive: true });
+    let lastInput = 0;
+    for (const ev of ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown']) scroller.addEventListener(ev, () => { smoothUntil = 0; lastInput = Date.now(); }, { passive: true });
     if (root.ResizeObserver) {
       new ResizeObserver(() => {
         const w = scroller.clientWidth;

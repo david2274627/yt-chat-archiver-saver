@@ -112,7 +112,8 @@
     await viewerLoaded(LIVE);
     await until(() => viewer().state.clock && viewer().state.clock.live, 3000, () => '直播 clock ' + diag());
     eq(viewer().state.mode, 'tail');
-    assert(viewer().state.vl.follow, '跟隨到底');
+    const fs = () => { const l = vd().querySelector('.list'); return JSON.stringify({ follow: viewer().state.vl.follow, loading: viewer().state.loading, items: viewer().state.items.length, top: l.scrollTop, max: l.scrollHeight - l.clientHeight, loads: viewer().state.diag.loads }); };
+    await until(() => viewer().state.vl.follow, 1500, () => '跟隨到底 ' + fs());
     video.currentTime = 3000; // 倒轉 600 秒
     await until(() => viewer().state.mode === 'sync' && cur(), 4000, () => '倒轉後 ' + diag());
     const m = liveMsgs.find((x) => x.id === cur());
