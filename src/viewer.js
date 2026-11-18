@@ -1024,9 +1024,12 @@
 
     // T5.1（13.1 (B)）推播的後備：收錄中的場次（直播中）超過 15 秒沒有收到推播時，每 5 秒比對資料庫筆數，
     // 有新訊息就以 offset 索引只讀新的部分（offset 未知時才讀整場，最多每 30 秒一次）
+    // v43（審查十一 15 節第 2 點）：退讓中（劇院模式，top 的 PANEL_STATE）或分頁隱藏時暫停；比對改用實際筆數（count，只讀索引鍵）；
+    // offset 未知只能讀整場時，間隔拉長為 FULL_POLL_MS（messages 沒有 videoId＋timestampAbs 索引，記入 F-20）
     let pollBusy = false, lastFullPoll = 0;
     async function pollNew() {
       if (pollBusy || S.loading || !S.stream || !S.videoId) return;
+      if (S.hostPaused || (root.document && document.hidden)) return;
       const s0 = S.stream;
       if (!(s0.isLive && s0.endedAt == null) || Date.now() - S.lastPushAt < 15000) return;
       pollBusy = true;
@@ -1035,14 +1038,16 @@
         const s = await DB.getStream(vid);
         if (!s) return;
         const known = S.items.length;
-        if ((s.messageCount || 0) <= known && (s.lastMessageAt || 0) <= (S.items.length ? S.items[S.items.length - 1].m.timestampAbs : 0)) return;
+        const real = DB.countMessages ? await DB.countMessages(vid) : (s.messageCount || 0);
+        S.diag.dbReal = real;
+        if (real <= known && (s.lastMessageAt || 0) <= (S.items.length ? S.items[S.items.length - 1].m.timestampAbs : 0)) return;
         S.diag.polls++;
         let fresh;
         let maxOff = null;
         for (let i = S.items.length - 1; i >= 0 && i >= S.items.length - 200; i--) { const o = S.items[i].m.videoOffsetSec; if (typeof o === 'number') { maxOff = maxOff == null ? o : Math.max(maxOff, o); } }
         if (maxOff != null) fresh = await DB.queryMessagesFromOffset(vid, maxOff - 120);
         else {
-          if (Date.now() - lastFullPoll < 30000) return;
+          if (Date.now() - lastFullPoll < C.PANEL.FULL_POLL_MS) return;
           lastFullPoll = Date.now();
           fresh = await DB.queryMessages(vid);
         }
@@ -1050,7 +1055,7 @@
         const before = S.items.length;
         upsert(fresh);
         S.diag.pollAdded += S.items.length - before;
-        S.diag.dbCount = s.messageCount;
+        S.diag.dbCount = real;
         if (S.items.length !== before) { setCurrentCount(); scheduleApply(false); }
       } catch (_) { /* 下次再試 */ } finally { pollBusy = false; }
     }
@@ -1063,6 +1068,7 @@
       if (!d || d.__ytcas !== true) return;
       if (d.type === C.FM.VOD_TIME) { S.diag.vodTime++; onClock(d); }
       else if (d.type === C.FM.THEME) S.diag.theme++;
+      else if (d.type === C.FM.PANEL_STATE) S.hostPaused = !!d.paused;
       else if (d.type === C.FM.CAPTURE_STATUS) {
         S.diag.capture++;
         S.capture = { capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null };

@@ -203,6 +203,7 @@
           st.paused = !!r; st.pauseReason = r;
           if (st.frame) st.frame.classList.toggle('ytcas-paused', st.paused);
           log(st.paused ? 'panel-pause' : 'panel-resume', { reason: r, layout: layoutInfo() });
+          toViewer({ type: FM.PANEL_STATE, paused: st.paused }); // v43：退讓中面板暫停補讀
         }
         sizePanel();
       } else if (st.mounted) unmount(why);
@@ -416,6 +417,7 @@
           st.ready = true;
           sendTheme(true);
           if (st.capture) toViewer(Object.assign({ type: FM.CAPTURE_STATUS }, st.capture));
+          toViewer({ type: FM.PANEL_STATE, paused: st.paused });
           sendVodTime(true);
         } else if (d.type === FM.SEEK_TO) seekTo(d.seconds);
         else if (d.type === FM.PANEL_CLOSE) close('panel-button');
