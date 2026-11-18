@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v41**（前版：v40；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v42**（前版：v41；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -41,6 +41,7 @@
 - **v39 調整**（`docs/review-2026-11-17.md` 第 5 節，T4.1）：F-07 置頂的「同一則」改為作者＋正規化內容，寫入時合併、既有重複可整理（`pinnedLastAt`）；T4 場次選單訊息數即時更新；重新注入後新舊實例改以 DOM 事件交接（第 7 節「權限」）；SC 文字色依對比度（10.3、10.4）定為已決。
 - **v40 調整**（`docs/review-2026-11-17.md` 第 6、9 節，T4.2）：F-20 新增 **P9 記憶體**探針；第 9 節新增記憶體**對照測試**（停用／啟用本套件、關閉 DevTools）；F-03 頻道頁沒有 `og:title` 時以 `include` 重試一次、失敗原因統計。
 - **v41 調整**（T5 實作時確定的細節）：新增 `src/panel.js`（3.1）；frame 訊息 `PANEL_READY`／`PANEL_CLOSE`／`PANEL_STATE`、`VOD_TIME` 帶直播 DVR 範圍、`CAPTURE_STATUS` 帶 F-12 結果（4.3）；F-08 直播中以 DVR 範圍換算、直播邊緣 15 秒內維持跟隨到底；F-09 T5 的裁切為全隱藏（動態露出輸入區在 T6）；F-18 連結影片的 `offsetShift` 定義；PoC content script 自 T5 起不再載入。
+- **v42 調整**（`docs/review-2026-11-17.md` 第 10、13 節，T5.1）：top → 面板訊息同時送往兩個可能的 origin（`use_dynamic_url`，4.3）；面板的推播後備（資料庫補讀）、計數口徑、使用者捲動的判定（F-08）；直播訊息以到達時間記錄（`tsSource`，F-02）；頭像延遲載入、同場次同作者補頭像、`fillAvatars`（F-02）；退讓時不留任何定位樣式（6.2）；窄面板的「全部」保留文字（F-05）。
 
 ---
 
@@ -283,6 +284,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | `THEME` | top → viewer iframe | `{ theme: 'light'|'dark' }`（v27：top frame 監看 `html[dark]` 的實際外觀，開啟面板時送一次、變更時再送；面板依 `themeMode` 決定是否採用，見 10.2） |
 | `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`）。（v41）實際送出 `{ currentTime, paused, duration, seekStart, seekEnd, live, at }`：`seekStart`／`seekEnd` 為 `video.seekable` 範圍（直播的 DVR 可回放範圍），`live` 為 `isLiveBroadcast` meta 為 true 且沒有 `endDate`，`at` 為取樣時間（ms）；另在 `seeked` 時立即送出，暫停中且沒有變化時不重送 |
 | `SEEK_TO` | viewer iframe → top | `{ seconds }`（v41：影片時間；top 限制在 `seekable` 範圍內） |
+| （v42 說明） | top → viewer iframe 的送出方式 | `web_accessible_resources` 設 `use_dynamic_url` 時，面板 iframe 的 `src` 是動態 ID 的網址，面板文件的實際 origin 可能是擴充功能 ID。top 一律以 `src` 的 origin 與 `'chrome-extension://' + runtime.id` **兩者**為 targetOrigin 各送一次（不符的被瀏覽器丟棄，面板只收到一次）。v41 只用 `src` 的 origin，實機上 top → 面板的訊息全部被丟棄（審查十一 13.1 (A)） |
 | `PANEL_READY` | viewer iframe → top | `{}`（v41：面板載入完成；top 回送 `THEME`、最近的 `CAPTURE_STATUS` 與 `VOD_TIME`） |
 | `PANEL_CLOSE` | viewer iframe → top | `{}`（v41：面板頂部列的「關閉優化面板」） |
 | `PANEL_STATE` | top → chat frame；chat frame → top | top → chat：`{ on, paused, reason: null|'theater'|'small' }`（頂部列按鈕的狀態與停用樣式）；chat → top：`{ headerMounted: true }`（頂部列按鈕已掛上，供錨點檢查） |
@@ -314,6 +316,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - **清除已寫入的垃圾紀錄**（一次性資料庫維護）：Service Worker Console 執行 `YTCAS_BG.cleanupJunkSystem({ dryRun })`（未指定時為預覽 `dryRun: true`，只回傳各 `rawTag` 筆數；v33：`keptByTag` 另列出保留的 `system` 紀錄各 `rawTag` 筆數，方便檢查是否還有漏網的子元件；`dryRun: false` 才刪除並重算場次 `messageCount`）。對象：`type: 'system'`，`rawTag` 不以 `yt-live-chat-`／`ytd-sponsorships-` 開頭或屬於 `selectors.js` 的 `nonMessageTags` 子元件清單（v33：另以規則判斷，`yt-live-chat-*` 中以 `-view-model`、`-badge-renderer`、`-chip` 結尾或含 `-button-` 者一律視為子元件；直接子節點的訊息元件都是 `*-renderer`），`sources` 只含 `live`／`popout`／`replay`，且 `firstSeenAt` ≥ T3 部署時間（`T3_DEPLOYED_AT`，2026-11-15 23:00 +08:00）。舊資料遷移與匯入的紀錄一律不動。（v34，追加五 A-2）**白名單優先**：`messageTypeByTag` 與 `knownMessageTags`（歡迎提示、佔位、跑馬燈）的標籤一律不視為子元件；子元件垃圾只清 `firstSeenAt` 在 T3 部署與 **T3.4 部署（`T34_DEPLOYED_AT`，2026-11-16 01:51 +08:00）** 之間的紀錄（T3.4 起只擷取直接子節點，之後的 `system` 都是真訊息）。
   - （v33，T3.5）**聊天室歡迎／守則提示**（`yt-live-chat-viewer-engagement-message-renderer`）每次重新整理元素 id 都不同：收錄時改以 `constants.js` 的 `viewerEngagementId(videoId, runs)`（`ytcas-ve-` ＋ 場次與正規化內容的雜湊）作為 id，同一場同內容只存一筆。`cleanupJunkSystem` 一併合併既有重複：同一場同內容保留 `firstSeenAt` 最早的一筆、改用內容 id（原 id 記入 `aliasIds`），其餘刪除；範圍限制同上（收錄來源、T3 部署後）。
 - 置頂訊息擷取（v25 確認）：新版面置頂列位於輸入列上方，來源仍是 `yt-live-chat-banner-manager`（`chat.bannerContainer`）＞ `yt-live-chat-banner-renderer` ＞ `#contents` 內的 `yt-live-chat-text-message-renderer#<訊息 id>`（結構同一般訊息），見 `docs/youtube-dom-notes.md` 2.4。
+- （v42，T5.1，審查十一 13.1 (C)）**直播訊息時間精度**：`#timestamp` 只到分鐘。observer 即時擷取的訊息，若擷取時間與顯示的分鐘（取中點）相差 ≤ 90 秒，`timestampAbs` 用**到達時間**（`tsSource: 'arrival'`）；回溯、補掃、修剪前補擷取的歷史訊息與相差太多的，用顯示時間（`'clock'`：擷取時間落在該分鐘內時為擷取時間，否則為該分鐘的開頭或最後一刻）；解析失敗用擷取時間（`'capture'`）。重播不變。`timestampUsec` 等元件的 JavaScript 屬性由頁面設定，content script 的隔離環境讀不到，不採用。
+- （v42，T5.1，審查十一第 10 節）**頭像延遲載入**：擷取當下 `yt-img-shadow` 的 `img` 可能還沒有 https 網址（空的或 `data:` 佔位圖）。擷取端監看該 `img` 的 `src` 最多 10 秒，取得後補送同一則（F-14 只補空欄位）；節點被修剪或逾時就放棄，同時監看上限 60。background 寫入時，沒有頭像的訊息以**同場次同作者**（`@handle` 或頻道 id，**不用名稱**）已知的頭像補上。檢視器顯示順序：訊息本身 → 同場次同作者 → `channels`（F-03）→ 首字圓點。既有紀錄：`YTCAS_BG.fillAvatars()`（預覽）／`{ dryRun: false }`。
 - **時間戳**（v25）：直播訊息的 `span#timestamp` **有值**，`yt-live-chat-renderer[hide-timestamps]` 只是以 CSS 隱藏。擷取時直接讀 `#timestamp` 文字（當地時間字串；實機長度約 7 字元，確切格式待 T3 實作時確認，解析需容許上午／下午與 AM／PM 兩種寫法），配合擷取當下的日期還原 `timestampAbs`；還原結果比擷取時間晚超過 12 小時時視為前一天（跨日校正）；解析失敗時以擷取時間為準。`videoOffsetSec` 仍以 `startDate` 推算（4.3）。（v29）`#timestamp` 只到分鐘：`timestampAbs` 取「擷取時間夾在該分鐘範圍內」的值（`clamp(擷取時間, 該分鐘起點, 起點 + 59.999 秒)`），即時訊息因此保有秒級精度，回溯擷取的舊訊息則落在該分鐘的最後一刻。
 - **身分**（v25）：以 `yt-live-chat-text-message-renderer[author-type]`（`owner`／`moderator`／`member`…）為主，`#chat-badges` 內的徽章為輔（例如 `verified`）。
 - **未知訊息元件**（v25）：`#items` 下出現不認識的元件標籤時，`console.info('[ytcas] 未知訊息元件', tagName)`（每種標籤一次），並以 `type: 'system'` 保存，不丟棄。尚未在實機出現的類型（SC 文字版、禮物購買、降落、里程碑、投票內部元件）在 `selectors.js` 標「待實機確認」。
@@ -525,7 +529,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 
 **F-05 快速分類膠囊列**（v2.6.0 已驗證可行）
 - （v27 改為 4 個）「全部訊息（N）」、「💰 SC／禮物」（Super Chat、超級貼圖、禮物 `gift`）、「👑 會員」（新會員、里程碑、贈送會員、收到會員）、「✨ 實況主降落」。
-- 窄面板仍為單列（D2 定稿，以 container query 依工具區寬度判斷）：面板 ≤ 376px（含 340／360px）「全部」只顯示數字並縮短間距；≤ 316px（最窄 300px）再隱藏膠囊前的圖示；仍放不下時膠囊列可水平捲動（不換行）。
+- 窄面板仍為單列（D2 定稿，以 container query 依工具區寬度判斷）：~~面板 ≤ 376px（含 340／360px）「全部」只顯示數字並縮短間距；≤ 316px（最窄 300px）再隱藏膠囊前的圖示~~；仍放不下時膠囊列可水平捲動（不換行）。（v42，審查十一 13.1 (E)）**文字與數字一律保留**：面板 ≤ 376px 隱藏膠囊前的圖示並縮短內距與間距，≤ 316px 內距再縮小；300／340／360px 實測「全部 8,780」單列放得下。
 - （v27）另有「隱藏已刪除訊息」切換（F-14），放在面板 ⋯ 選單與後台篩選區，不佔膠囊列。
 - （v38，T4）各膠囊的數字為**套用目前其他條件後**（使用者、關鍵字、隱藏已刪除）各分類的筆數，搜尋時可直接看到各分類命中幾則。「隱藏已刪除」只在本頁有效，不記住。
 - 降落 = Raid 橫幅 + 帶 `verified` 徽章的其他實況主發言；**排除** `constants.js` 的 `BOT_BLOCKLIST`（至少 `Nightbot`、`StreamElements`、`Streamlabs`、`Moobot`、`Fossabot`，比對不分大小寫，同時比對名稱與 @Handle）以及本台 `owner`/`moderator`。
@@ -549,6 +553,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - （v38，T4 捲動）內嵌面板與直播中場次從最底部開始並自動跟隨；往上捲即暫停，底部顯示「↓ 恢復自動捲動」。後台開啟已結束的場次從最上方開始，按鈕文字為「↓ 跳到最新」。
 - 使用者手動往上捲 → 暫停跟隨，底部出現「↓ 恢復自動捲動」。
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
+- （v42，T5.1）**使用者捲動的判定**：只有最近 1.2 秒內在清單上有使用者操作（`wheel`、`touchstart`／`touchmove`、`pointerdown`、`keydown`）的捲動才算使用者捲動；內容高度改變時瀏覽器自己夾住 `scrollTop` 的捲動不算（v41 會因此誤關「跟隨到底」）。
+- （v42，T5.1，審查十一 13.1 (B)、13.3）**面板的即時更新與計數口徑**：載入期間（含重新載入）收到的推播先暫存，載入完成後補上；清單以 id 與 `aliasIds` 對應位置，同一則以不同 id 送來時更新既有那筆。直播中（收錄中的場次）超過 15 秒沒有推播時，每 5 秒比對資料庫筆數，有新訊息就以 `videoId_offset` 索引只讀新的部分（offset 未知時讀整場，最多每 30 秒）。**口徑**：標頭「N 則」＝面板清單筆數＝本場資料庫 `messages` 筆數（含系統訊息、已刪除標記、各 phase；不含置頂）；「全部」膠囊＝套用使用者／關鍵字／隱藏已刪除後的筆數（沒有篩選時與標頭相同）。⋯ 選單「連線狀態」列出訊息與資料庫筆數、各 frame 訊息數、推播（套用、載入中暫存）、補讀與載入次數（只有數字）。
 - （v41，T5 實作）**影片時間換算**：VOD（`live: false`）＝該版本的 offset（v1 為 `videoOffsetSec`，F-18）＋連結影片的 `offsetShift`；直播中（`live: true`）一律以 DVR 可回放範圍換算：`seekEnd − (VOD_TIME.at − timestampAbs) / 1000`，可點條件為落在 `[seekStart, seekEnd]` 內（一般直播與長期直播相同；長期直播的時間碼文字仍為當地時間）。直播中距離直播邊緣 `PANEL.LIVE_EDGE_SEC`（15 秒）以內維持一般「跟隨到底」、不加框；倒轉 DVR 超過 15 秒才依時間軸同步。目前訊息＝影片時間 ≤ 播放位置的最後一則，捲到可視範圍底部（距離 ≤ 1500px 平滑捲動，否則直接跳）。同步中使用者自己捲動 → 暫停同步，按鈕文字為「↓ 回到播放位置」（直播跟隨到底時仍為「↓ 恢復自動捲動」）；暫停期間目前訊息的框仍會更新。
 - **長期直播備註**（v37，`docs/review-2026-11-16.md` 追加八 C，T4／T5／T7 設計時處理）：24 小時不間斷直播的 `startDate` 可能是數年前（實測 `startDate` 2023-05-07，播放器 DVR 只能回放約 17 小時），`videoOffsetSec` 以年計，功能上正確但直接顯示 offset 無意義。判斷：直播中且 `videoOffsetSec` 遠大於播放器可回放長度（`video.duration`，或 offset 超過 24 小時）即視為長期直播。處理：(a) 訊息時間碼改顯示**絕對時間**（當地時間 `HH:mm:ss`，跨日時加日期）；(b) 時間軸同步與 Click-to-Seek 以「DVR 可回放範圍」換算（offset − (直播經過秒數 − DVR 長度)），落在範圍外的訊息不可點擊；(c) 後台「覆蓋範圍」以絕對時間顯示。原始 `videoOffsetSec` 不改寫（F-14）。
 
@@ -607,6 +613,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
    - 優化面板插入 **`ytd-live-chat-frame` 內**，作為 `iframe#chatframe` 的前一個兄弟；`position: absolute; inset: 0 0 auto 0; height: <iframe 高度>`，`z-index: 10`（下層）。YouTube 搬移聊天室（劇院模式、窄版面）時面板自然跟著走，**不得**用 `getBoundingClientRect()` 換算座標或 `setInterval` 輪詢重排。
    - `ytd-live-chat-frame` 設 `position: relative`；`iframe#chatframe` 設 `position: relative; z-index: 20`（上層），**`clip-path` 套在 `iframe#chatframe` 本身**（T1 步驟 8 實測與套在外層效果相同）。舊版面 iframe 下方的「隱藏聊天室」列不在 iframe 內，自然維持可見；F-09 開關位置見 5.C（v24 多重錨點）。
    - 面板高度以 `ResizeObserver` 監看 iframe；以 `MutationObserver` 監看 `ytd-live-chat-frame` 的 childList，YouTube 重新渲染移除面板時重新插入。
+   - （v42，T5.1，審查十一 13.1 (D)）`position: relative`、`z-index`、`clip-path` **只在未退讓時**套用；退讓（劇院模式、太矮）時 `ytd-live-chat-frame`／`iframe#chatframe` 上不得留下任何套件的定位樣式（v41 在退讓時仍保留 `position: relative !important`，窄視窗劇院模式下影片縮到左上、聊天室框偏出視窗）。
 4. **裁切狀態**（由 top frame 依 `CHAT_INPUT_STATE` 與 top frame 彈窗偵測設定在 `iframe#chatframe` 上；座標皆相對 iframe）：
 
 | 狀態 | 條件 | clip-path（套在 `iframe#chatframe`） |

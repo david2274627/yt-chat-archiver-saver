@@ -130,6 +130,26 @@
   - 檢視器內嵌面板：時間軸同步、Click-to-Seek、關閉按鈕、F-12 說明、版本切換與連結影片（commit `8b180ab`）。
   - 規格 v41、測試清單、HANDOFF、T5 報告（本段落所在的 commit）。
 
+- v42／T5.1（`docs/review-2026-11-17.md` 第 10～14 節；報告為 T5 報告的「T5.1」）：
+  - ⚠ **收錄空窗**：T5 安裝（`73814c1`，2026-11-17）到 `7ebdb52`（2026-11-18）之間，`content.js` 的 `headerButton()` 在 chat frame 啟動時拋出 `post is not defined`，例外發生在送出場次資訊請求與 `engine.start()` 之前，**嵌入式聊天室完全沒有收錄**（彈出式聊天室不受影響）。這段期間觀看的直播，聊天紀錄只有更新前、更新後的部分。
+  - chat frame 阻斷錯誤修正（commit `7ebdb52`）；跨函式引用檢查 `tools/check-scope.js`（commit `6cd5a91`）；chat frame 載入真實 `content.js` 的測試（commit `fd407b1`）；T5 報告第一部分（commit `349fd81`）。
+  - 測試清單依 T5 實測更新（commit `3a0600c`）；審查文件第 10～14 節（commit `ab8f322`）。
+  - (A) top → 面板訊息同時送往兩個 origin（`use_dynamic_url`），端對端測試 `test-e2e-panel.html`（commit `6d1beee`）。
+  - (B)／計數口徑：重新載入期間的推播不遺失、別名不重複計數、推播的資料庫補讀、⋯ 選單連線狀態（commit `c106ecc`）。
+  - 測試頁加上 CSP，只連本機（commit `2b1fbef`）。
+  - 頭像延遲載入補送、同場次同作者補頭像、檢視器後備、`fillAvatars`（commit `7ac3584`）。
+  - (C) 直播訊息改用到達時間、`tsSource`（commit `d09cdbf`）。
+  - (D) 退讓時不留定位樣式（commit `d79afed`）；使用者捲動的判定（commit `a8511e9`）。
+  - (E) 窄面板保留「全部」（commit `ef7654e`）。
+  - 規格 v42、測試清單、T5 報告「T5.1」（本段落所在的 commit）。
+
+### 規格 v42（2026-11-18，T5.1）
+- 4.3：top → 面板訊息同時送往 `src` 的 origin 與擴充功能 ID 的 origin。
+- F-02：直播訊息時間以到達時間記錄（`tsSource`）；頭像延遲載入補送、同場次同作者補頭像、`fillAvatars`。
+- F-05：窄面板「全部」保留文字，改為隱藏圖示。
+- F-08：使用者捲動的判定；面板的推播後備與計數口徑。
+- 6.2：退讓時不留任何定位樣式。
+
 ### 規格 v41（2026-11-17，T5 實作細節）
 - 3.1：新增 `src/panel.js`。
 - 4.3：`PANEL_READY`／`PANEL_CLOSE`／`PANEL_STATE`；`VOD_TIME` 帶直播 DVR 範圍；`CAPTURE_STATUS` 帶 F-12 結果。
