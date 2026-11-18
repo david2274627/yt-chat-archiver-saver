@@ -523,7 +523,7 @@ async function reclassifySystem(opts) {
 // 只有擴充功能頁面（viewer、popup）可以執行破壞性或管理操作；content script（https 頁面）不行
 const isExtensionPage = (sender) => !!sender && sender.id === chrome.runtime.id && !String(sender.url || '').startsWith('https://');
 const ADMIN = new Set([RT.DELETE_STREAM, RT.DELETE_STREAMS, RT.RESET_STREAM, RT.RECLASSIFY_SYSTEM, RT.MIGRATE_LEGACY,
-  RT.IMPORT_DATA, RT.EXPORT_STREAM, RT.SET_VERSION_LABEL, RT.LINK_VIDEO, RT.UNLINK_VIDEO, RT.GET_STORAGE_USAGE, RT.DIAG_CONTROL]);
+  RT.IMPORT_DATA, RT.EXPORT_STREAM, RT.SET_VERSION_LABEL, RT.LINK_VIDEO, RT.UNLINK_VIDEO, RT.GET_STORAGE_USAGE, RT.DIAG_CONTROL, RT.OPEN_VIEWER]);
 
 function vid(msg) {
   if (typeof msg.videoId !== 'string' || !/^[\w-]{6,20}$/.test(msg.videoId)) throw new Error('invalid videoId');
@@ -825,6 +825,18 @@ const handlers = {
     try { const e = await navigator.storage.estimate(); usage = e.usage; quota = e.quota; } catch (_) { /* ignore */ }
     const warnBytes = s.storageWarnBytes;
     return { usage, quota, warnBytes, warn: usage != null && usage > warnBytes, streams: await DB.storageSummary() };
+  },
+
+  // v43（T5.2 (I)）面板的「在後台開啟此場次」：由 background 開新分頁（擴充功能發起的導覽不受 use_dynamic_url 限制）。
+  // 只接受擴充功能頁面（ADMIN）；網址固定為本擴充功能的 viewer.html，只帶通過檢查的 videoId
+  async [RT.OPEN_VIEWER](msg, sender) {
+    const url = chrome.runtime.getURL('src/viewer.html') + '?v=' + encodeURIComponent(vid(msg));
+    const opt = { url };
+    const tab = sender && sender.tab;
+    if (tab && typeof tab.index === 'number') { opt.index = tab.index + 1; if (typeof tab.windowId === 'number') opt.windowId = tab.windowId; }
+    if (tab && typeof tab.id === 'number') opt.openerTabId = tab.id;
+    await chrome.tabs.create(opt);
+    return {};
   },
 
   async [RT.DELETE_STREAM](msg) {

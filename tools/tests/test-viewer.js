@@ -501,6 +501,27 @@
     assert(c.els.menu.hidden, '關閉選單');
   });
 
+  test('T5.2 (I)「在後台開啟此場次」：請 background 開分頁（OPEN_VIEWER），不自己開', async () => {
+    await resetDb();
+    await put({ videoId: VID, title: 't', versions: [], linkedVideos: [] }, [mk({ id: 'o1' })]);
+    await DB.close();
+    const sent = [];
+    const realSend = chrome.runtime.sendMessage, realOpen = window.open;
+    const opened = [];
+    chrome.runtime.sendMessage = (m) => { sent.push(m); return Promise.resolve({ ok: true }); };
+    window.open = (u) => { opened.push(u); return null; };
+    try {
+      const c = V.mount(host, { embed: true, videoId: VID });
+      await c.ready; await frame();
+      c.els.moreBtn.click();
+      const item = Array.from(c.els.menu.querySelectorAll('button')).find((b) => b.textContent.includes('在後台開啟此場次'));
+      item.click();
+      await sleep(50);
+      eq(sent.filter((m) => m.type === 'OPEN_VIEWER').map((m) => m.videoId), [VID]);
+      eq(opened.length, 0, '沒有自己開新分頁');
+    } finally { chrome.runtime.sendMessage = realSend; window.open = realOpen; }
+  });
+
   test('T5 F-18：版本切換（依影片長度自動選、剪輯版中不存在的訊息淡色標示）；連結影片以時間差同步並可微調', async () => {
     await resetDb();
     const VO = 'vidVERSION1', VN = 'vidLINKED01';

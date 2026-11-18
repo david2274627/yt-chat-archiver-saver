@@ -1234,6 +1234,18 @@
     eq(await send({ type: 'LIST_STREAMS' }, { id: 'other-ext', url: 'chrome-extension://other/' }), undefined, '其他擴充功能不回應');
   });
 
+  test('T5.2 (I) OPEN_VIEWER：嵌入面板（擴充功能頁面）請 background 開後台分頁，開在該分頁右邊；content script 被拒；videoId 檢查', async () => {
+    const created = self.chrome.tabs._created;
+    created.length = 0;
+    eq((await send({ type: 'OPEN_VIEWER', videoId: V }, CONTENT)).error, 'forbidden', 'content script 不可開');
+    const EMBED = { id: 'testextid', url: 'chrome-extension://dynamic-id/src/viewer.html?embed=1&v=' + V, tab: { id: 7, index: 3, windowId: 2 } };
+    eq((await send({ type: 'OPEN_VIEWER', videoId: V }, EMBED)).ok, true);
+    eq(created.length, 1);
+    eq(created[0], { url: 'chrome-extension://testextid/src/viewer.html?v=' + V, index: 4, windowId: 2, openerTabId: 7 });
+    eq((await send({ type: 'OPEN_VIEWER', videoId: 'x"><script>' }, EMBED)).ok, false, '不合法的 videoId');
+    eq(created.length, 1);
+  });
+
   // ---------------------------------------------------------------- 舊資料庫測試資料
   function createLegacyDb() {
     return new Promise((resolve, reject) => {

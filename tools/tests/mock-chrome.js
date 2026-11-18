@@ -78,6 +78,9 @@
         return undefined;
       },
       onRemoved: { addListener: (f) => listeners.removed.push(f) },
+      // v43：create（只記錄）
+      _created: [],
+      create: async (o) => { self.chrome.tabs._created.push(JSON.parse(JSON.stringify(o))); return { id: 1000 + self.chrome.tabs._created.length }; },
     },
     // T3.7：alarms（只記錄，不會自動觸發；測試以 __mock.fireAlarm 觸發）、action（徽章）、downloads（只記錄）
     alarms: {
