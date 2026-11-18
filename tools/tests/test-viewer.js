@@ -436,6 +436,58 @@
     eq(d.state.currentId, 'v11', '時間差改為 −110 → 710 → 第 11 則');
   });
 
+  // ================================================================ T5.1（審查十一 13.1 (B)、13.3）
+  test('T5.1 計數：以別名送來的同一則不重複計數；重新載入期間收到的推播不遺失；標頭＝「全部」＝清單筆數；⋯ 選單顯示連線狀態', async () => {
+    await resetDb();
+    const VC = 'vidCOUNT001';
+    const msgs = [];
+    for (let i = 0; i < 20; i++) msgs.push(mk({ id: 'c' + i, videoId: VC, timestampAbs: T0 + i * 1000, videoOffsetSec: i, aliasIds: i === 5 ? ['old-id-5'] : [] }));
+    await put({ videoId: VC, title: '計數', isLive: true, startedAt: T0, lastMessageAt: T0 + 19000, messageCount: 20, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VC });
+    await c.ready; await frame();
+    const meta = () => c.els.meta.textContent;
+    const all = () => c.els.pills.all.querySelector('.num').textContent;
+    // 以舊 id（別名）送來的同一則：更新，不新增
+    c._onRuntime({ type: 'NEW_MESSAGES', videoId: VC, messages: [mk({ id: 'old-id-5', videoId: VC, timestampAbs: T0 + 5000, videoOffsetSec: 5, deleted: true })] });
+    c._onRuntime({ type: 'NEW_MESSAGES', videoId: VC, messages: [mk({ id: 'c7', videoId: VC, aliasIds: ['dup-7'], timestampAbs: T0 + 7000, videoOffsetSec: 7 })] });
+    c._onRuntime({ type: 'NEW_MESSAGES', videoId: VC, messages: [mk({ id: 'dup-7', videoId: VC, timestampAbs: T0 + 7000, videoOffsetSec: 7 })] });
+    await sleep(400); await frame();
+    eq(c.state.items.length, 20, '別名不重複計數');
+    assert(meta().includes('20 則') && all() === '20', '標頭 ' + meta() + '／全部 ' + all());
+    // 重新載入期間收到的推播：資料庫快照沒有它 → 載入完成後補上（v41 以前遺失）
+    const p = c.load(VC);
+    eq(c.state.loading, true, '重新載入時 loading 為 true');
+    c._onRuntime({ type: 'NEW_MESSAGES', videoId: VC, messages: [mk({ id: 'late1', videoId: VC, timestampAbs: T0 + 30000, videoOffsetSec: 30 })] });
+    await p; await sleep(400); await frame();
+    assert(c.state.byId.has('late1'), '載入中收到的推播已補上');
+    eq(c.state.items.length, 21);
+    assert(meta().includes('21 則') && all() === '21', '標頭 ' + meta() + '／全部 ' + all());
+    eq(c.state.diag.pushBuffered, 1);
+    c.els.moreBtn.click();
+    const dl = c.els.menu.querySelector('.diag-line').textContent;
+    assert(dl.includes('推播 4') && dl.includes('暫存 1') && dl.includes('載入 2 次'), '連線狀態：' + dl);
+    document.body.click();
+  });
+
+  test('T5.1 推播的後備：直播中超過 15 秒沒有推播 → 讀資料庫的新訊息（offset 索引，只讀新的部分）', async () => {
+    await resetDb();
+    const VP = 'vidPOLL0001';
+    const msgs = [];
+    for (let i = 0; i < 30; i++) msgs.push(mk({ id: 'p' + i, videoId: VP, timestampAbs: T0 + i * 1000, videoOffsetSec: 100 + i }));
+    await put({ videoId: VP, title: '補讀', isLive: true, startedAt: T0, lastMessageAt: T0 + 29000, messageCount: 30, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VP });
+    await c.ready; await frame();
+    // background 寫入了 3 則，但面板沒收到推播
+    await put({ videoId: VP, title: '補讀', isLive: true, startedAt: T0, lastMessageAt: T0 + 32000, messageCount: 33, versions: [], linkedVideos: [] },
+      [0, 1, 2].map((k) => mk({ id: 'q' + k, videoId: VP, timestampAbs: T0 + 30000 + k * 1000, videoOffsetSec: 130 + k })));
+    await DB.close();
+    await until(() => c.state.items.length === 33, 8000, '補讀 ' + c.state.items.length);
+    assert(c.state.diag.polls >= 1 && c.state.diag.pollAdded === 3, JSON.stringify(c.state.diag));
+    await until(() => c.els.meta.textContent.includes('33 則'), 2000, '標頭更新'); // 重繪合併 300ms
+  });
+
   test('空狀態：沒有資料的場次、沒有任何場次（後台）', async () => {
     await resetDb();
     const a = V.mount(host, { embed: true, videoId: 'nothing' });

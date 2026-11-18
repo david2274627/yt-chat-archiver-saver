@@ -753,6 +753,16 @@
     return opts.limit ? list.slice(start, start + opts.limit) : list.slice(start);
   }
 
+  // T5.1（審查十一 13.1 (B)）面板的補讀：offset ≥ minOffset 的訊息（videoId_offset 索引，不讀整場）。
+  // offset 為 null 的訊息不在這個索引裡（開播時間未確認時），呼叫端需改用 queryMessages
+  async function queryMessagesFromOffset(videoId, minOffset) {
+    const db = await open();
+    const range = IDBKeyRange.bound([videoId, minOffset], [videoId, Infinity]);
+    const list = await req(db.transaction('messages').objectStore('messages').index('videoId_offset').getAll(range));
+    list.sort((a, b) => (a.timestampAbs - b.timestampAbs) || ((a.videoOffsetSec ?? 0) - (b.videoOffsetSec ?? 0)));
+    return list;
+  }
+
   async function queryPinned(videoId) {
     const db = await open();
     return req(db.transaction('pinned_messages').objectStore('pinned_messages').index('videoId').getAll(videoId));
@@ -1511,7 +1521,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,

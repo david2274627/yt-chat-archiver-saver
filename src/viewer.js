@@ -185,6 +185,9 @@
       // T5（F-08、F-18）：clock＝top 的 VOD_TIME；mode：tail（跟隨到底）／sync（依播放位置）；ver：同步用的版本；link：連結影片
       clock: null, mode: 'tail', syncPaused: false, currentId: null, entries: [], points: null,
       ver: 'v1', verManual: false, link: null, capture: null, noteKey: '', noteDismissed: null,
+      // T5.1（審查十一 13.1 (A)(B)、13.3）：連線診斷計數（只有數字）、載入期間暫存的推播、最後一次推播時間
+      diag: { vodTime: 0, theme: 0, capture: 0, pushRecv: 0, pushApplied: 0, pushBuffered: 0, pushOther: 0, polls: 0, pollAdded: 0, loads: 0, dbCount: null },
+      pendingPush: [], lastPushAt: 0,
     };
 
     // ---------------- 版面
@@ -251,7 +254,9 @@
     const miDel = el('button'); miDel.type = 'button'; miDel.setAttribute('role', 'menuitemcheckbox');
     const miDelChk = el('span', 'chk');
     miDel.append('隱藏已刪除訊息', miDelChk);
-    menu.append(miTheme, miDel);
+    // T5.1：連線狀態（實機排查用，只有計數）
+    const miDiag = el('div', 'diag-line'); miDiag.setAttribute('role', 'note');
+    menu.append(miTheme, miDel, miDiag);
     if (embed) {
       menu.appendChild(el('hr'));
       const miOpen = el('button'); miOpen.type = 'button'; miOpen.setAttribute('role', 'menuitem');
@@ -343,7 +348,15 @@
 
     // ---------------- ⋯ 選單（只在面板內，10.1 原則 6）
     const THEME_NAME = { auto: '自動', light: '淺色', dark: '深色' };
+    function diagText() {
+      const d = S.diag;
+      const parts = ['訊息 ' + fmtN(S.items.length) + (d.dbCount != null ? '／資料庫 ' + fmtN(d.dbCount) : ''),
+        '推播 ' + d.pushRecv + '（套用 ' + d.pushApplied + '、載入中暫存 ' + d.pushBuffered + '）', '補讀 ' + d.polls + ' 次 +' + d.pollAdded, '載入 ' + d.loads + ' 次'];
+      if (embed) parts.splice(1, 0, '播放時間 ' + d.vodTime + '、主題 ' + d.theme + '、收錄狀態 ' + d.capture);
+      return parts.join(' · ');
+    }
     function syncMenu() {
+      miDiag.textContent = '連線狀態：' + diagText();
       const th = root.YTCAS_THEME && root.YTCAS_THEME.current;
       miThemeVal.textContent = th ? THEME_NAME[th.mode] || '' : '';
       miDelChk.textContent = S.f.hideDeleted ? '✓' : '';
@@ -722,6 +735,10 @@
     let loadSeq = 0;
     async function load(videoId) {
       const my = ++loadSeq;
+      // T5.1（13.3）：載入期間 S.loading 必須為 true。v41 以前重新載入時沒有設，載入中收到的推播寫進即將被覆蓋的清單而遺失
+      if (S.videoId !== (videoId || '')) S.pendingPush = [];
+      S.loading = true;
+      S.diag.loads++;
       S.videoId = videoId || '';
       S.items = []; S.byId = new Map(); S.pinned = []; S.stream = null; S.pinOpen = false;
       S.currentId = null; S.syncPaused = false; S.entries = []; S.points = null;
@@ -755,15 +772,19 @@
         if (my !== loadSeq) return;
         const t1 = performance.now();
         S.items = msgs.map((m) => CORE.indexMessage(m, S.channels));
-        S.items.forEach((it, i) => S.byId.set(it.m.id, i));
+        S.items.forEach((it, i) => indexIds(it.m, i));
         S.timings.indexMs = performance.now() - t1;
         S.pinned = CORE.dedupePinned(pinned);
         renderPin();
         S.ver = 'v1'; S.verManual = false; S.points = null;
         renderSub();
         S.loading = false;
+        S.diag.dbCount = msgs.length;
+        // 載入期間收到的推播：資料庫快照之後的才補上（upsert 以 id／別名去重，不會重複計數）
+        if (S.pendingPush.length) { const pend = S.pendingPush; S.pendingPush = []; upsert(pend); }
         const liveNow = S.stream.isLive && S.stream.endedAt == null;
-        resume.textContent = embed || liveNow ? '↓ 恢復自動捲動' : '↓ 跳到最新';
+        // T5.1：時間軸同步中（播放器時間比資料先到）不覆寫「↓ 回到播放位置」
+        if (S.mode !== 'sync') resume.textContent = embed || liveNow ? '↓ 恢復自動捲動' : '↓ 跳到最新';
         apply({ reset: true, toBottom: embed || liveNow, toTop: !(embed || liveNow) });
         setCurrentCount();
         S.timings.firstScreenMs = performance.now() - t0;
@@ -834,26 +855,41 @@
         apply({ toBottom: S.vl.follow, reset: r });
       }, 300);
     }
+    // id 與別名（F-14 aliasIds）都對應到清單位置：同一則訊息以不同 id 送來時更新既有那筆，不重複計數（13.3）
+    function indexIds(m, i) {
+      S.byId.set(m.id, i);
+      for (const a of m.aliasIds || []) if (a) S.byId.set(a, i);
+    }
+    function findIndex(m) {
+      let i = S.byId.get(m.id);
+      if (i == null) for (const a of m.aliasIds || []) { i = S.byId.get(a); if (i != null) break; }
+      return i == null ? null : i;
+    }
     function upsert(messages) {
       let added = false;
       for (const m of messages) {
-        if (!m || !m.id || m.videoId !== S.videoId) continue;
+        if (!m || !m.id || m.videoId !== (S.link ? S.link.orig : S.videoId)) continue;
         const it = CORE.indexMessage(m, S.channels);
-        const i = S.byId.get(m.id);
-        if (i != null) { S.items[i] = it; continue; }
+        const i = findIndex(m);
+        if (i != null) { S.items[i] = it; indexIds(m, i); continue; }
         // 通常是最新的訊息：從尾端往前找插入位置
         let j = S.items.length;
         while (j > 0 && S.items[j - 1].m.timestampAbs > m.timestampAbs) j--;
         S.items.splice(j, 0, it);
         added = true;
-        if (j !== S.items.length - 1) S.items.forEach((x, k) => S.byId.set(x.m.id, k)); else S.byId.set(m.id, j);
+        if (j !== S.items.length - 1) { S.byId = new Map(); S.items.forEach((x, k) => indexIds(x.m, k)); } else indexIds(m, j);
       }
       return added;
     }
     function onRuntime(msg) {
       if (!msg || typeof msg !== 'object') return;
-      if (msg.type === RT.NEW_MESSAGES && msg.videoId === S.videoId && !S.loading && Array.isArray(msg.messages)) {
-        const changed = msg.messages.some((m) => m && S.byId.has(m.id)); // 既有訊息更新（例如被刪除）
+      if (msg.type === RT.NEW_MESSAGES && Array.isArray(msg.messages)) {
+        S.diag.pushRecv++;
+        if (msg.videoId !== (S.link ? S.link.orig : S.videoId)) { S.diag.pushOther++; return; }
+        S.lastPushAt = Date.now();
+        if (S.loading) { S.diag.pushBuffered++; S.pendingPush.push(...msg.messages); return; }
+        S.diag.pushApplied++;
+        const changed = msg.messages.some((m) => m && findIndex(m) != null); // 既有訊息更新（例如被刪除）
         if (upsert(msg.messages)) setCurrentCount();
         scheduleApply(changed);
         maybeRefreshStream();
@@ -879,13 +915,49 @@
     }
     if (root.chrome && chrome.runtime && chrome.runtime.onMessage) chrome.runtime.onMessage.addListener(onRuntime);
 
+    // T5.1（13.1 (B)）推播的後備：收錄中的場次（直播中）超過 15 秒沒有收到推播時，每 5 秒比對資料庫筆數，
+    // 有新訊息就以 offset 索引只讀新的部分（offset 未知時才讀整場，最多每 30 秒一次）
+    let pollBusy = false, lastFullPoll = 0;
+    async function pollNew() {
+      if (pollBusy || S.loading || !S.stream || !S.videoId) return;
+      const s0 = S.stream;
+      if (!(s0.isLive && s0.endedAt == null) || Date.now() - S.lastPushAt < 15000) return;
+      pollBusy = true;
+      try {
+        const vid = S.link ? S.link.orig : S.videoId;
+        const s = await DB.getStream(vid);
+        if (!s) return;
+        const known = S.items.length;
+        if ((s.messageCount || 0) <= known && (s.lastMessageAt || 0) <= (S.items.length ? S.items[S.items.length - 1].m.timestampAbs : 0)) return;
+        S.diag.polls++;
+        let fresh;
+        let maxOff = null;
+        for (let i = S.items.length - 1; i >= 0 && i >= S.items.length - 200; i--) { const o = S.items[i].m.videoOffsetSec; if (typeof o === 'number') { maxOff = maxOff == null ? o : Math.max(maxOff, o); } }
+        if (maxOff != null) fresh = await DB.queryMessagesFromOffset(vid, maxOff - 120);
+        else {
+          if (Date.now() - lastFullPoll < 30000) return;
+          lastFullPoll = Date.now();
+          fresh = await DB.queryMessages(vid);
+        }
+        if (S.loading || vid !== (S.link ? S.link.orig : S.videoId)) return;
+        const before = S.items.length;
+        upsert(fresh);
+        S.diag.pollAdded += S.items.length - before;
+        S.diag.dbCount = s.messageCount;
+        if (S.items.length !== before) { setCurrentCount(); scheduleApply(false); }
+      } catch (_) { /* 下次再試 */ } finally { pollBusy = false; }
+    }
+    setInterval(pollNew, 5000);
+
     // ---------------- T5：top frame 的訊息（只接受 youtube.com 的 parent；THEME 由 theme.js 處理）
     function onFrame(e) {
       if (!embed || e.source !== root.parent || e.origin !== C.YT_ORIGIN) return;
       const d = e.data;
       if (!d || d.__ytcas !== true) return;
-      if (d.type === C.FM.VOD_TIME) onClock(d);
+      if (d.type === C.FM.VOD_TIME) { S.diag.vodTime++; onClock(d); }
+      else if (d.type === C.FM.THEME) S.diag.theme++;
       else if (d.type === C.FM.CAPTURE_STATUS) {
+        S.diag.capture++;
         S.capture = { capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null };
         renderNote();
       }

@@ -78,3 +78,6 @@ mark .emo-img { vertical-align: -5px; }
 .vrow > .cut { opacity: .5; }
 .bdg.cut { display: inline-block; margin: 2px 0 0 var(--ytcas-space-2); font-size: var(--ytcas-fs-xs); color: var(--ytcas-text-3);
   border: 1px dashed var(--ytcas-border); border-radius: var(--ytcas-radius-pill); padding: 0 6px; }
+/* T5.1 ⋯ 選單的連線狀態（只有計數，實機排查用） */
+.menu .diag-line { padding: 6px 10px 4px; font-size: var(--ytcas-fs-xs); line-height: 1.4; color: var(--ytcas-text-3);
+  border-top: 1px solid var(--ytcas-border); margin-top: 4px; font-variant-numeric: tabular-nums; max-width: 300px; white-space: normal; }
