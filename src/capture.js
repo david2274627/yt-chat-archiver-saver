@@ -49,6 +49,18 @@
     return Math.min(Math.max(now, base), base + span);
   }
 
+  // 顯示時間所在分鐘的開頭（ms）；解析失敗回傳 null（與 parseClock 同一套規則，只是不夾到擷取時間）
+  function clockMinute(text, now) {
+    const m = CLOCK_RE.exec(String(text || ''));
+    if (!m) return null;
+    const v = parseClock(text, now);
+    if (v == null) return null;
+    const d = new Date(v);
+    d.setSeconds(0, 0);
+    if (m[4] != null) return null; // 有秒數的格式：parseClock 已經精確
+    return d.getTime();
+  }
+
   // 重播 #timestamp（影片時間，如 1:23、1:02:03、-0:05）→ 秒；解析失敗回傳 null
   function parseOffset(text) {
     const m = /^\s*(-)?(?:(\d+):)?(\d{1,2}):(\d{2})\s*$/.exec(String(text || ''));
@@ -189,8 +201,19 @@
       m.timestampAbs = ctx.startedAt != null && off != null ? ctx.startedAt + off * 1000 : ctx.now;
       m.phase = 'live';
     } else {
+      // T5.1（審查十一 13.1 (C)）聊天室顯示的時間只到分鐘：parseClock 只有在擷取時間落在該分鐘內才有秒數，
+      // 其餘一律落在分鐘的開頭或最後一刻 → 同一分鐘的訊息時間相同、offset 的秒數全部一樣。
+      // 即時到達（observer 擷取）的訊息改用到達時間，只要與顯示的分鐘相差 ≤ 90 秒（時鐘誤差、傳遞延遲）；
+      // 進入頁面時的歷史訊息（回溯、補掃、修剪前補擷取）維持用顯示時間。tsSource 記錄來源
       const ts = parseClock(tsText, ctx.now);
-      m.timestampAbs = ts == null ? ctx.now : ts;
+      const minute = ts == null ? null : clockMinute(tsText, ctx.now);
+      if (ctx.arrival && (ts == null || (minute != null && Math.abs(ctx.now - (minute + 30000)) <= 90000))) {
+        m.timestampAbs = ctx.now;
+        m.tsSource = 'arrival';
+      } else {
+        m.timestampAbs = ts == null ? ctx.now : ts;
+        m.tsSource = ts == null ? 'capture' : 'clock';
+      }
       if (ctx.startedAt != null) {
         m.videoOffsetSec = Math.round((m.timestampAbs - ctx.startedAt) / 100) / 10;
         m.phase = m.timestampAbs < ctx.startedAt ? 'pre' : (ctx.endedAt != null && m.timestampAbs > ctx.endedAt ? 'post' : 'live');
@@ -427,7 +450,7 @@
       if (!st.items || el.parentElement !== st.items) return; // T3.4 防呆：只擷取 #items 的直接子節點
       if (st.mode !== 'capturing' && !(force && st.mode === 'pending')) return;
       let m = null;
-      try { m = parseMessage(el, ctxNow()); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
+      try { m = parseMessage(el, Object.assign(ctxNow(), { arrival: how === 'observer' })); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
       if (!m) { el.dataset[SAVED] = 'skip'; return; }
       el.dataset[SAVED] = '1';
       // F-20 P7：未知元件、禮物元件 → 結構紀錄（同一標籤每場最多 3 次）

@@ -822,6 +822,36 @@
     e.stop();
   });
 
+  test('T5.1 直播時間精度（審查十一 13.1 (C)）：即時到達的訊息用到達時間（與顯示的分鐘差 ≤ 90 秒）；歷史訊息與差太多的維持顯示時間；tsSource 記錄來源', async () => {
+    const mkEl = (ts) => textMsg({ ts });
+    // NOW = 22:23:41
+    let m = CAP.parseMessage(mkEl('下午10:23'), { source: 'live', now: NOW, startedAt: NOW - 3600e3, arrival: true });
+    eq([m.timestampAbs, m.tsSource], [NOW, 'arrival']);
+    m = CAP.parseMessage(mkEl('下午10:22'), { source: 'live', now: NOW, startedAt: NOW - 3600e3, arrival: true });
+    eq([m.timestampAbs, m.tsSource], [NOW, 'arrival'], '顯示的分鐘比到達早 1 分鐘（傳遞延遲、時鐘誤差）');
+    m = CAP.parseMessage(mkEl('下午10:15'), { source: 'live', now: NOW, startedAt: NOW - 3600e3, arrival: true });
+    eq([m.timestampAbs, m.tsSource], [new Date(2026, 10, 15, 22, 15, 59, 999).getTime(), 'clock'], '差太多：用顯示時間');
+    m = CAP.parseMessage(mkEl('下午10:22'), { source: 'live', now: NOW, startedAt: NOW - 3600e3 });
+    eq([m.timestampAbs, m.tsSource], [new Date(2026, 10, 15, 22, 22, 59, 999).getTime(), 'clock'], '歷史訊息（非即時到達）：顯示時間');
+    // 同一分鐘內到達的兩則：秒數不同，offset 也不同
+    const a = CAP.parseMessage(mkEl('下午10:23'), { source: 'live', now: NOW + 5000, startedAt: NOW - 3600e3, arrival: true });
+    const b = CAP.parseMessage(mkEl('下午10:23'), { source: 'live', now: NOW + 12000, startedAt: NOW - 3600e3, arrival: true });
+    assert(b.videoOffsetSec - a.videoOffsetSec === 7, 'offset 差 7 秒：' + a.videoOffsetSec + ' / ' + b.videoOffsetSec);
+    // 引擎：開始收錄時既有的（回溯）＝ clock；之後 observer 收到的 ＝ arrival
+    const { items } = buildChat();
+    items.append(textMsg({ id: 'TS-OLD', ts: '下午10:20' }));
+    const send = mockSend();
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidTsrc', startDate: NOW - 60000, channelHandle: '@ch' });
+    await until(() => savedIds(send).includes('TS-OLD'), 3000, '回溯');
+    items.append(textMsg({ id: 'TS-NEW', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('TS-NEW'), 3000, '即時');
+    const all = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    eq([all.find((x) => x.id === 'TS-OLD').tsSource, all.find((x) => x.id === 'TS-NEW').tsSource], ['clock', 'arrival']);
+    e.stop();
+  });
+
   test('T5.1 頭像延遲載入（審查十一第 10 節）：擷取時還是佔位圖 → src 變成 https 後補送同一則（帶頭像）；10 秒內沒有就放棄', async () => {
     const { items } = buildChat();
     const send = mockSend();
