@@ -2,6 +2,8 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
+<!-- 只連本機（tools/tests/README.md）：測試資料含 YouTube 網域的圖片網址，以 CSP 阻止實際連線 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline'; frame-src 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>寫入壓力測試</title>
 <style>
