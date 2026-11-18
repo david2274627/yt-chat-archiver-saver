@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v42**（前版：v41；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v43**（前版：v42；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -42,6 +42,7 @@
 - **v40 調整**（`docs/review-2026-11-17.md` 第 6、9 節，T4.2）：F-20 新增 **P9 記憶體**探針；第 9 節新增記憶體**對照測試**（停用／啟用本套件、關閉 DevTools）；F-03 頻道頁沒有 `og:title` 時以 `include` 重試一次、失敗原因統計。
 - **v41 調整**（T5 實作時確定的細節）：新增 `src/panel.js`（3.1）；frame 訊息 `PANEL_READY`／`PANEL_CLOSE`／`PANEL_STATE`、`VOD_TIME` 帶直播 DVR 範圍、`CAPTURE_STATUS` 帶 F-12 結果（4.3）；F-08 直播中以 DVR 範圍換算、直播邊緣 15 秒內維持跟隨到底；F-09 T5 的裁切為全隱藏（動態露出輸入區在 T6）；F-18 連結影片的 `offsetShift` 定義；PoC content script 自 T5 起不再載入。
 - **v42 調整**（`docs/review-2026-11-17.md` 第 10、13 節，T5.1）：top → 面板訊息同時送往兩個可能的 origin（`use_dynamic_url`，4.3）；面板的推播後備（資料庫補讀）、計數口徑、使用者捲動的判定（F-08）；直播訊息以到達時間記錄（`tsSource`，F-02）；頭像延遲載入、同場次同作者補頭像、`fillAvatars`（F-02）；退讓時不留任何定位樣式（6.2）；窄面板的「全部」保留文字（F-05）。
+- **v43 調整**（`docs/review-2026-11-17.md` 第 15、16 節，T5.2）：直播的「在最新」判定（播放器徽章→延遲基準）、DVR 換算扣掉基準、播放器 seek 時解除同步暫停、範圍外提示、直播同步的容許誤差（F-08）；`VOD_TIME` 加 `seeks`／`liveHead`／`badge`、`PANEL_STATE` 也送給面板（4.3）；連線狀態的實際筆數與每秒刷新；補讀後備在退讓／分頁隱藏時暫停、整場讀取間隔 2 分鐘；「在後台開啟此場次」由 background 開啟（`RT.OPEN_VIEWER`）。
 
 ---
 
@@ -287,7 +288,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | （v42 說明） | top → viewer iframe 的送出方式 | `web_accessible_resources` 設 `use_dynamic_url` 時，面板 iframe 的 `src` 是動態 ID 的網址，面板文件的實際 origin 可能是擴充功能 ID。top 一律以 `src` 的 origin 與 `'chrome-extension://' + runtime.id` **兩者**為 targetOrigin 各送一次（不符的被瀏覽器丟棄，面板只收到一次）。v41 只用 `src` 的 origin，實機上 top → 面板的訊息全部被丟棄（審查十一 13.1 (A)） |
 | `PANEL_READY` | viewer iframe → top | `{}`（v41：面板載入完成；top 回送 `THEME`、最近的 `CAPTURE_STATUS` 與 `VOD_TIME`） |
 | `PANEL_CLOSE` | viewer iframe → top | `{}`（v41：面板頂部列的「關閉優化面板」） |
-| `PANEL_STATE` | top → chat frame；chat frame → top | top → chat：`{ on, paused, reason: null|'theater'|'small' }`（頂部列按鈕的狀態與停用樣式）；chat → top：`{ headerMounted: true }`（頂部列按鈕已掛上，供錨點檢查） |
+| （v43）`VOD_TIME` 追加欄位 | top → viewer iframe | `seeks`：`video` 的 `seeked` 事件累計次數（面板看到變化就視為使用者跳轉）；`liveHead`：播放器「直播」徽章判定在最新 `true`／不在最新 `false`／讀不到 `null`；`badge`：判定依據（`class`／`disabled`／`behind`／`missing`／`hidden`，只供連線狀態顯示）。徽章選擇器在 `selectors.js`（`top.liveBadge`、`top.liveHeadClass`），**待實機確認** |
+| `PANEL_STATE` | top → chat frame；chat frame → top | top → chat：`{ on, paused, reason: null|'theater'|'small' }`（頂部列按鈕的狀態與停用樣式）；chat → top：`{ headerMounted: true }`（頂部列按鈕已掛上，供錨點檢查）。（v43）top → viewer iframe：`{ paused }`（握手時與退讓狀態改變時送出；退讓中面板暫停補讀） |
 | `STREAM_INFO_REQUEST` | chat frame → top | `{}`（v29：chat frame 啟動時向 top frame 要場次資訊；收到前每秒重送，最多 30 秒） |
 | `STREAM_INFO` | top → chat frame | `{ videoId, title, channelName, channelHandle, channelUrl, startDate, endDate, isLiveBroadcast, duration }`（v29：`startDate`／`endDate` 為 ms 或 `null`；`duration` 為秒（四捨五入）或 `null`，直播中為 `null`。收到 `STREAM_INFO_REQUEST`、`yt-navigate-finish`、`durationchange` 時送出；只送給 `iframe#chatframe.contentWindow`） |
 | `CAPTURE_STATUS` | chat frame → top；top → viewer iframe | `{ videoId, capturing: boolean, reason: null|'paused'|'no-items'|'no-video-id'|'disconnected' }`（v29：狀態變化時送出；top frame 用於 F-19 自動接手與之後 popup 狀態）。（v41）另帶 F-12 結果 `f12`、`viewMode`（F-12 結果出來時也送一次）；top 轉送給面板，作為 F-12 說明文字 |
@@ -554,7 +556,15 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 使用者手動往上捲 → 暫停跟隨，底部出現「↓ 恢復自動捲動」。
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
 - （v42，T5.1）**使用者捲動的判定**：只有最近 1.2 秒內在清單上有使用者操作（`wheel`、`touchstart`／`touchmove`、`pointerdown`、`keydown`）的捲動才算使用者捲動；內容高度改變時瀏覽器自己夾住 `scrollTop` 的捲動不算（v41 會因此誤關「跟隨到底」）。
-- （v42，T5.1，審查十一 13.1 (B)、13.3）**面板的即時更新與計數口徑**：載入期間（含重新載入）收到的推播先暫存，載入完成後補上；清單以 id 與 `aliasIds` 對應位置，同一則以不同 id 送來時更新既有那筆。直播中（收錄中的場次）超過 15 秒沒有推播時，每 5 秒比對資料庫筆數，有新訊息就以 `videoId_offset` 索引只讀新的部分（offset 未知時讀整場，最多每 30 秒）。**口徑**：標頭「N 則」＝面板清單筆數＝本場資料庫 `messages` 筆數（含系統訊息、已刪除標記、各 phase；不含置頂）；「全部」膠囊＝套用使用者／關鍵字／隱藏已刪除後的筆數（沒有篩選時與標頭相同）。⋯ 選單「連線狀態」列出訊息與資料庫筆數、各 frame 訊息數、推播（套用、載入中暫存）、補讀與載入次數（只有數字）。
+- （v42，T5.1，審查十一 13.1 (B)、13.3）**面板的即時更新與計數口徑**：載入期間（含重新載入）收到的推播先暫存，載入完成後補上；清單以 id 與 `aliasIds` 對應位置，同一則以不同 id 送來時更新既有那筆。直播中（收錄中的場次）超過 15 秒沒有推播時，每 5 秒比對資料庫筆數，有新訊息就以 `videoId_offset` 索引只讀新的部分（offset 未知時讀整場，最多每 30 秒）。（v43）比對改用 `videoId` 索引的 `count`（不讀紀錄內容）；**退讓中（`PANEL_STATE.paused`）或分頁隱藏時暫停**；整場讀取的最短間隔改為 `FULL_POLL_MS`（2 分鐘）——`messages` 沒有 `videoId`＋`timestampAbs` 索引，加索引需升級 `DB_VERSION`，先記入 F-20 觀察（24 小時直播的記憶體與 CPU）。**口徑**：標頭「N 則」＝面板清單筆數＝本場資料庫 `messages` 筆數（含系統訊息、已刪除標記、各 phase；不含置頂）；「全部」膠囊＝套用使用者／關鍵字／隱藏已刪除後的筆數（沒有篩選時與標頭相同）。⋯ 選單「連線狀態」列出訊息與資料庫筆數、各 frame 訊息數、推播（套用、載入中暫存）、補讀與載入次數（只有數字）。（v43，16.1 (G)(H)）「資料庫」為實際筆數（`countMessages`，選單開著時每秒查詢；v42 只在載入／補讀時更新，推播進來後顯示過時，造成「面板筆數多於資料庫」）；另列出清單重複數、其他場次的推播數、模式、延遲與基準、徽章、seeked／跳轉次數、目標時間 → 對應訊息的時間；**選單開著時每秒刷新**。
+- （v43，T5.2 (I)）**在後台開啟此場次**：內嵌面板送 `RT.OPEN_VIEWER { videoId }`，background 驗證後以 `chrome.tabs.create` 開在原分頁右邊（只接受擴充功能頁面）。面板自己開新分頁時，導覽被當成網頁發起、存取 `use_dynamic_url` 的資源 → `ERR_BLOCKED_BY_CLIENT`。
+- （v43，T5.2，審查十一 16.1 (F)、16.3）**直播的「在最新」與 DVR 換算**：YouTube 一般延遲模式下，在最新時 `seekEnd − currentTime`（延遲）本來就有數十秒，v42 以固定 15 秒判斷，面板在直播中永遠是 sync。改為：
+  - **在最新**：`VOD_TIME.liveHead` 為 `true`／`false` 時以它為準；為 `null`（讀不到徽章）時，延遲 ≤ **基準** ＋ `LIVE_EDGE_SEC`（15 秒）。
+  - **基準**＝在最新時量到的延遲：徽章說在最新 → 直接採用；讀不到徽章時，第一個樣本或比基準小的值直接採用，在範圍內但較大時每個樣本只往上追 `BASELINE_DRIFT`（5%），超出範圍（倒轉中）、暫停中、徽章說不在最新時不更新。
+  - **換算**：播放位置對應的實際時間＝`at − max(0, 延遲 − 基準) × 1000`；時間碼的影片時間＝`seekEnd − 基準 − (at − timestampAbs) / 1000`。
+  - **播放器 seek 時解除同步暫停**：`seeks` 有變化，或播放位置與預期（上一次＋經過時間）差超過 `SEEK_JUMP_SEC`（3 秒，`seeked` 沒觸發時的後備）→ 視為使用者要求重新跟隨：解除暫停並捲到新位置；跳回最新 → 恢復跟隨到底。v42 在直播 sync 中只要捲動過一次清單，之後所有倒轉都不再捲動。
+  - **範圍外**：播放位置早於最早收錄的 live 訊息時，清單上方顯示「此時間點之前沒有收錄（最早 hh:mm:ss）」。
+  - **容許誤差**（審查十一 15 節第 3 點）：訊息時間是到達時間（送出＋聊天延遲，F-02 v42），畫面還有直播延遲；以基準扣除後，藍框與畫面仍可能差 **±10 秒**左右，屬預期。實測時以連線狀態的「目標 → 訊息」與畫面內容記錄實際差距，超過 ±30 秒視為錯誤。
 - （v41，T5 實作）**影片時間換算**：VOD（`live: false`）＝該版本的 offset（v1 為 `videoOffsetSec`，F-18）＋連結影片的 `offsetShift`；直播中（`live: true`）一律以 DVR 可回放範圍換算：`seekEnd − (VOD_TIME.at − timestampAbs) / 1000`，可點條件為落在 `[seekStart, seekEnd]` 內（一般直播與長期直播相同；長期直播的時間碼文字仍為當地時間）。直播中距離直播邊緣 `PANEL.LIVE_EDGE_SEC`（15 秒）以內維持一般「跟隨到底」、不加框；倒轉 DVR 超過 15 秒才依時間軸同步。目前訊息＝影片時間 ≤ 播放位置的最後一則，捲到可視範圍底部（距離 ≤ 1500px 平滑捲動，否則直接跳）。同步中使用者自己捲動 → 暫停同步，按鈕文字為「↓ 回到播放位置」（直播跟隨到底時仍為「↓ 恢復自動捲動」）；暫停期間目前訊息的框仍會更新。
 - **長期直播備註**（v37，`docs/review-2026-11-16.md` 追加八 C，T4／T5／T7 設計時處理）：24 小時不間斷直播的 `startDate` 可能是數年前（實測 `startDate` 2023-05-07，播放器 DVR 只能回放約 17 小時），`videoOffsetSec` 以年計，功能上正確但直接顯示 offset 無意義。判斷：直播中且 `videoOffsetSec` 遠大於播放器可回放長度（`video.duration`，或 offset 超過 24 小時）即視為長期直播。處理：(a) 訊息時間碼改顯示**絕對時間**（當地時間 `HH:mm:ss`，跨日時加日期）；(b) 時間軸同步與 Click-to-Seek 以「DVR 可回放範圍」換算（offset − (直播經過秒數 − DVR 長度)），落在範圍外的訊息不可點擊；(c) 後台「覆蓋範圍」以絕對時間顯示。原始 `videoOffsetSec` 不改寫（F-14）。
 
