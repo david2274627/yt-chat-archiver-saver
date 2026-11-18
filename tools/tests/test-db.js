@@ -1198,6 +1198,34 @@
     }
   });
 
+  test('T5.1 頭像（審查十一第 10 節）：寫入時以同場次同作者的頭像補上（不跨場次、不用名稱比對）；fillAvatars 預覽與補齊既有紀錄', async () => {
+    await resetAll();
+    const A = 'https://yt4.ggpht.com/author-a=s64';
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [msg({ id: 'a1', authorHandle: '@aa', authorAvatar: A })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [msg({ id: 'a2', authorHandle: '@aa', authorAvatar: '' }),
+      msg({ id: 'b1', authorHandle: '', authorName: '同名', authorAvatar: '' })] });
+    await DB.saveMessages({ videoId: V2, source: 'live', messages: [msg({ id: 'x1', videoId: V2, authorHandle: '@aa', authorAvatar: '' })] });
+    const get = async (id) => (await DB.queryMessages(id.startsWith('x') ? V2 : V)).find((m) => m.id === id);
+    eq((await get('a2')).authorAvatar, A, '同場次同作者補上');
+    eq((await get('b1')).authorAvatar, '', '沒有 handle／頻道 id：不以名稱比對');
+    eq((await get('x1')).authorAvatar, '', '不跨場次');
+    // 既有紀錄：直接寫入缺頭像的資料（模擬 T5.1 以前收錄的）
+    const a1 = await get('a1'); // 先讀，交易內不能 await 其他查詢
+    const db = await DB.open();
+    const t = db.transaction('messages', 'readwrite');
+    t.objectStore('messages').put(Object.assign({}, a1, { id: 'old1', authorAvatar: '' }));
+    t.objectStore('messages').put(Object.assign({}, a1, { id: 'old2', authorHandle: '@zz', authorAvatar: '' }));
+    await new Promise((r) => { t.oncomplete = r; });
+    const pre = await BG.fillAvatars();
+    eq([pre.dryRun, pre.fillable, pre.filled], [true, 1, 0]);
+    eq((await get('old1')).authorAvatar, '', '預覽不改資料');
+    const r = await BG.fillAvatars({ dryRun: false });
+    eq(r.filled, 1);
+    eq((await get('old1')).authorAvatar, A);
+    eq((await get('old2')).authorAvatar, '', '沒有其他頭像的作者不補');
+    eq((await BG.fillAvatars()).fillable, 0, '再跑一次沒有可補的');
+  });
+
   test('權限：管理操作只接受擴充功能頁面，content script 被拒', async () => {
     await resetAll();
     for (const type of ['DELETE_STREAMS', 'IMPORT_DATA', 'MIGRATE_LEGACY', 'EXPORT_STREAM', 'GET_STORAGE_USAGE', 'RECLASSIFY_SYSTEM']) {

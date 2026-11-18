@@ -23,6 +23,7 @@
   }
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const httpsOnly = (u) => (typeof u === 'string' && u.startsWith('https://') ? u : '');
+  const httpsOnlyUrl = httpsOnly; // T5.1：頭像補送用（同一規則）
 
   // 直播 #timestamp（當地時間，只到分鐘；例「下午10:23」「10:23 PM」「22:23」）→ ms。
   // 擷取時間夾在該分鐘範圍內（SPEC F-02 v29）；比擷取時間晚超過 12 小時視為前一天；解析失敗回傳 null。
@@ -254,7 +255,7 @@
       queue: [], unflushed: new Set(), sending: null, batchTimer: 0, trimTimer: 0, pollTimer: 0, statsTimer: 0,
       pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
-        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0 },
+        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0 },
       seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
@@ -436,12 +437,40 @@
       if (m.deleted && m.id) st.deletedReported.add(m.id);
       st.stats.captured++;
       if (how && how !== 'observer') st.stats[how === 'backfill' ? 'backfillCaptured' : 'lateCaptured']++;
+      if (!m.authorAvatar && m.type !== T.SYSTEM) watchAvatar(el, m);
       // 同一頁已擷取過的 id 再次出現（YouTube 重新插入節點）：只計數供診斷，去重由 background 負責
       if (m.id) {
         if (st.seenIds.has(m.id)) st.stats.dupCaptured++;
         else { if (st.seenIds.size > 20000) st.seenIds.clear(); st.seenIds.add(m.id); }
       }
       enqueue(m);
+    }
+
+    // T5.1（審查十一第 10 節）頭像延遲載入：擷取當下 yt-img-shadow 的 img 還沒有 https 的 src（空的或 data: 佔位圖）。
+    // 監看該 img 的 src 最多 10 秒，取得 https 網址就送出同一則訊息的補充（background 依 F-14「只補空欄位」合併）。
+    // 節點在這之前被修剪或逾時就放棄；同時監看的數量有上限
+    const AVATAR_WAIT_MS = 10000, AVATAR_MAX_WATCH = 60;
+    let avatarWatch = 0;
+    function watchAvatar(el, m) {
+      const img = el.querySelector(S.chat.author.photo);
+      if (!img || avatarWatch >= AVATAR_MAX_WATCH || typeof MutationObserver === 'undefined') return;
+      avatarWatch++;
+      const vid = st.videoId; // 擷取時的場次（訊息物件本身不一定帶 videoId）
+      let done = false;
+      const finish = () => { if (done) return; done = true; avatarWatch--; mo.disconnect(); clearTimeout(timer); };
+      const check = () => {
+        if (done) return;
+        const u = httpsOnlyUrl(img.getAttribute('src') || img.src);
+        if (!u) return;
+        finish();
+        if (!el.isConnected || st.mode !== 'capturing' || vid !== st.videoId) return;
+        st.stats.avatarLate++;
+        enqueue(Object.assign({}, m, { authorAvatar: u }));
+      };
+      const mo = new MutationObserver(check);
+      mo.observe(img, { attributes: true, attributeFilter: ['src'] });
+      const timer = setTimeout(() => { if (!done) { st.stats.avatarMissing++; finish(); } }, AVATAR_WAIT_MS);
+      check();
     }
 
     function capturePinned() {

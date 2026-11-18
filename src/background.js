@@ -250,6 +250,13 @@ async function dedupePinned(opts) {
   console.info('[ytcas] 置頂重複整理' + (r.dryRun ? '（預覽）' : ''), { records: r.records, streams: r.streams, groups: r.groups, removed: r.removed, diffFields: r.diffFields });
   return r;
 }
+// T5.1（審查十一第 10 節 4）既有紀錄的頭像補齊（同場次同作者）。用法：await YTCAS_BG.fillAvatars()（預覽）→ { dryRun: false }
+async function fillAvatars(opts) {
+  const r = await DB.fillAvatars({ dryRun: !(opts && opts.dryRun === false) });
+  console.info('[ytcas] 頭像補齊' + (r.dryRun ? '（預覽）' : ''), r);
+  return r;
+}
+
 // T4.2（審查十一 9）頻道名稱解析統計（SW Console）：await YTCAS_BG.channelStats()
 // 只有筆數與失敗原因分布（不含 handle 與名稱）。佇列中尚未解析的數量一併列出
 async function channelStats() {
@@ -1036,4 +1043,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, channelStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, channelStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

@@ -184,7 +184,7 @@
       timings: {},
       // T5（F-08、F-18）：clock＝top 的 VOD_TIME；mode：tail（跟隨到底）／sync（依播放位置）；ver：同步用的版本；link：連結影片
       clock: null, mode: 'tail', syncPaused: false, currentId: null, entries: [], points: null,
-      ver: 'v1', verManual: false, link: null, capture: null, noteKey: '', noteDismissed: null,
+      ver: 'v1', verManual: false, link: null, capture: null, noteKey: '', noteDismissed: null, avatars: new Map(),
       // T5.1（審查十一 13.1 (A)(B)、13.3）：連線診斷計數（只有數字）、載入期間暫存的推播、最後一次推播時間
       diag: { vodTime: 0, theme: 0, capture: 0, pushRecv: 0, pushApplied: 0, pushBuffered: 0, pushOther: 0, polls: 0, pollAdded: 0, loads: 0, dbCount: null },
       pendingPush: [], lastPushAt: 0,
@@ -412,8 +412,20 @@
       if (t === T.MEMBERSHIP || t === T.MILESTONE || t === T.RAID) return 56;
       return 40;
     }
+    // T5.1（審查十一第 10 節 3）頭像後備：訊息本身 → 同場次同作者 → 頻道資料（F-03）→ 首字圓點
+    function rememberAvatar(m) {
+      const k = C.avatarAuthorKey(m);
+      if (k && m.authorAvatar && !S.avatars.has(k)) S.avatars.set(k, m.authorAvatar);
+    }
+    function avatarUrl(m) {
+      if (m.authorAvatar) return m.authorAvatar;
+      const k = C.avatarAuthorKey(m);
+      if (k && S.avatars.has(k)) return S.avatars.get(k);
+      const ch = m.authorHandle && S.channels ? S.channels.get(m.authorHandle) : null;
+      return (ch && ch.avatar) || '';
+    }
     function avatar(m, name) {
-      const src = CORE.safeImg(m.authorAvatar);
+      const src = CORE.safeImg(avatarUrl(m));
       if (src) {
         const img = el('img', 'av'); img.src = src; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.decoding = 'async';
         img.addEventListener('error', () => { img.replaceWith(initial(name)); }, { once: true });
@@ -772,7 +784,8 @@
         if (my !== loadSeq) return;
         const t1 = performance.now();
         S.items = msgs.map((m) => CORE.indexMessage(m, S.channels));
-        S.items.forEach((it, i) => indexIds(it.m, i));
+        S.avatars = new Map();
+        S.items.forEach((it, i) => { indexIds(it.m, i); rememberAvatar(it.m); });
         S.timings.indexMs = performance.now() - t1;
         S.pinned = CORE.dedupePinned(pinned);
         renderPin();
@@ -870,6 +883,7 @@
       for (const m of messages) {
         if (!m || !m.id || m.videoId !== (S.link ? S.link.orig : S.videoId)) continue;
         const it = CORE.indexMessage(m, S.channels);
+        rememberAvatar(m);
         const i = findIndex(m);
         if (i != null) { S.items[i] = it; indexIds(m, i); continue; }
         // 通常是最新的訊息：從尾端往前找插入位置
@@ -974,7 +988,7 @@
     })();
 
     return {
-      ready, load, state: S, _onRuntime: onRuntime, _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
+      ready, load, state: S, _onRuntime: onRuntime, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
       els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText },
     };
   }

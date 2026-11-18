@@ -304,5 +304,10 @@
   // 依最後一次置頂時間（pinnedLastAt，舊資料為 pinnedAt）
   C.pinnedTime = function (p) { return (p && (p.pinnedLastAt || p.pinnedAt || p.timestampAbs)) || 0; };
 
+  // T5.1（審查十一第 10 節）頭像共用的作者識別：只用 @handle 或頻道 id（名稱可能重複，不用）
+  C.avatarAuthorKey = function (m) {
+    return (m && (m.authorHandle || (m.authorChannelId ? 'ch:' + m.authorChannelId : ''))) || '';
+  };
+
   root.YTCAS_CONST = Object.freeze(C);
 })(typeof globalThis !== 'undefined' ? globalThis : self);

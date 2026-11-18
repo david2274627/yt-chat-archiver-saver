@@ -488,6 +488,28 @@
     await until(() => c.els.meta.textContent.includes('33 則'), 2000, '標頭更新'); // 重繪合併 300ms
   });
 
+  test('T5.1 頭像後備（審查十一第 10 節）：訊息沒有頭像時用同場次同作者的頭像，其次頻道資料，最後才是首字圓點', async () => {
+    await resetDb();
+    const VA = 'vidAVATAR01';
+    const A = 'https://yt4.ggpht.com/aa=s64', CH = 'https://yt3.ggpht.com/ch=s88';
+    await put({ videoId: VA, title: '頭像', isLive: false, startedAt: T0, endedAt: T0 + 60e3, messageCount: 4, versions: [], linkedVideos: [] }, [
+      mk({ id: 'h1', videoId: VA, authorHandle: '@aa', authorAvatar: '', timestampAbs: T0 + 1000 }),
+      mk({ id: 'h2', videoId: VA, authorHandle: '@aa', authorAvatar: A, timestampAbs: T0 + 2000 }),
+      mk({ id: 'h3', videoId: VA, authorHandle: '@cc', authorAvatar: '', timestampAbs: T0 + 3000 }),
+      mk({ id: 'h4', videoId: VA, authorHandle: '@none', authorAvatar: '', timestampAbs: T0 + 4000 }),
+    ], [], [{ handleOrId: '@cc', displayName: 'CC 頻道', avatar: CH, fetchedAt: T0 }]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VA });
+    await c.ready; await frame();
+    // 本頁 CSP 阻止外部圖片 → <img> 會觸發 error 改成首字圓點（正常行為），所以直接檢查後備順序的結果
+    const m = (id) => c.state.items.find((x) => x.m.id === id).m;
+    eq(c._avatarUrl(m('h1')), A, '同作者的頭像');
+    eq(c._avatarUrl(m('h2')), A, '自己的頭像');
+    eq(c._avatarUrl(m('h3')), CH, '頻道資料的頭像');
+    eq(c._avatarUrl(m('h4')), '', '都沒有 → 首字圓點');
+    eq(c.els.list.querySelector('[data-id="h4"] .av').tagName, 'SPAN');
+  });
+
   test('空狀態：沒有資料的場次、沒有任何場次（後台）', async () => {
     await resetDb();
     const a = V.mount(host, { embed: true, videoId: 'nothing' });

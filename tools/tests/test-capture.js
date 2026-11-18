@@ -822,6 +822,28 @@
     e.stop();
   });
 
+  test('T5.1 頭像延遲載入（審查十一第 10 節）：擷取時還是佔位圖 → src 變成 https 後補送同一則（帶頭像）；10 秒內沒有就放棄', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidAvat', startDate: NOW - 60000, channelHandle: '@ch' });
+    await until(() => send.of(RT.CAPTURE_START).length === 1, 2000, 'CAPTURE_START');
+    await sleep(50);
+    const el = textMsg({ id: 'AVATAR-LATE', ts: '下午10:23', avatar: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=' });
+    items.append(el);
+    await until(() => savedIds(send).includes('AVATAR-LATE'), 3000, '先送出');
+    const first = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'AVATAR-LATE');
+    eq(first.authorAvatar, '', '擷取當下沒有 https 頭像');
+    // yt-img-shadow 延遲載入：src 換成 https（本頁 CSP 阻止實際連線）
+    el.querySelector('#img').setAttribute('src', 'https://yt4.ggpht.com/late-avatar=s64');
+    await until(() => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).some((m) => m.id === 'AVATAR-LATE' && m.authorAvatar), 3000, '補送頭像');
+    const upd = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).filter((m) => m.id === 'AVATAR-LATE').pop();
+    eq(upd.authorAvatar, 'https://yt4.ggpht.com/late-avatar=s64');
+    eq(e.state().stats.avatarLate, 1);
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];

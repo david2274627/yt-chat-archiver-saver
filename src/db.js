@@ -146,6 +146,7 @@
   }
 
   async function close() {
+    avatarCache.clear(); // T5.1：關閉資料庫（測試重設）時一併清除同場次頭像快取
     if (!dbPromise) return;
     const p = dbPromise;
     dbPromise = null;
@@ -378,6 +379,13 @@
         for (const raw of p.messages || []) {
           if (!raw || typeof raw !== 'object') continue;
           const inc = normalizeIncoming(raw, ctx);
+          // T5.1（審查十一第 10 節 2）：沒有頭像時，以同場次同作者已知的頭像補上（只在同一場次內）
+          const ak = C.avatarAuthorKey(inc);
+          if (ak) {
+            const cache = avatarCacheFor(videoId);
+            if (inc.authorAvatar) cache.set(ak, inc.authorAvatar);
+            else if (cache.has(ak)) { inc.authorAvatar = cache.get(ak); stats.avatarFilled = (stats.avatarFilled || 0) + 1; }
+          }
           const ex = await findExisting(store, inc, ctx, stats);
           let rec;
           if (ex) {
@@ -751,6 +759,55 @@
     list.sort((a, b) => (a.timestampAbs - b.timestampAbs) || ((a.videoOffsetSec ?? 0) - (b.videoOffsetSec ?? 0)));
     const start = opts.offset || 0;
     return opts.limit ? list.slice(start, start + opts.limit) : list.slice(start);
+  }
+
+  // T5.1（審查十一第 10 節）同場次的作者頭像快取（Service Worker 存活期間；最多 5 場、每場 5000 位作者）。
+  // SW 重新啟動後清空：之前缺的頭像由 fillAvatars() 與檢視器的後備處理
+  const avatarCache = new Map();
+  function avatarCacheFor(videoId) {
+    let c = avatarCache.get(videoId);
+    if (!c) {
+      c = new Map();
+      avatarCache.set(videoId, c);
+      while (avatarCache.size > 5) avatarCache.delete(avatarCache.keys().next().value);
+    }
+    if (c.size > 5000) c.delete(c.keys().next().value);
+    return c;
+  }
+  // T5.1（審查十一第 10 節 4）既有紀錄的頭像補齊：同一場次同一作者（handle 或頻道 id）有任何一則有頭像，就補到其他缺頭像的訊息。
+  // dryRun：只回傳筆數；{ dryRun: false } 才寫入
+  async function fillAvatars(opts) {
+    const dryRun = !opts || opts.dryRun !== false;
+    const db = await open();
+    const all = await req(db.transaction('messages').objectStore('messages').getAll());
+    const byVid = new Map();
+    for (const m of all) { if (!byVid.has(m.videoId)) byVid.set(m.videoId, []); byVid.get(m.videoId).push(m); }
+    const out = { dryRun, messages: all.length, missing: 0, fillable: 0, filled: 0, streams: 0 };
+    for (const [videoId, list] of byVid) {
+      const known = new Map();
+      for (const m of list) { const k = C.avatarAuthorKey(m); if (k && m.authorAvatar && !known.has(k)) known.set(k, m.authorAvatar); }
+      const fix = [];
+      for (const m of list) {
+        if (m.authorAvatar || m.type === T.SYSTEM || m.type === T.RAID) continue;
+        out.missing++;
+        const k = C.avatarAuthorKey(m);
+        if (k && known.has(k)) fix.push(Object.assign({}, m, { authorAvatar: known.get(k) }));
+      }
+      if (!fix.length) continue;
+      out.fillable += fix.length;
+      out.streams++;
+      if (dryRun) continue;
+      await withLock(videoId, async () => {
+        const t = db.transaction('messages', 'readwrite');
+        const s = t.objectStore('messages');
+        for (const r of fix) {
+          const cur = await req(s.get(r.id));
+          if (cur && !cur.authorAvatar) { cur.authorAvatar = r.authorAvatar; s.put(cur); out.filled++; }
+        }
+        await done(t);
+      });
+    }
+    return out;
   }
 
   // T5.1（審查十一 13.1 (B)）面板的補讀：offset ≥ minOffset 的訊息（videoId_offset 索引，不讀整場）。
@@ -1521,7 +1578,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, fillAvatars, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,
