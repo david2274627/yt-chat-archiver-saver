@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self' http://localhost:*; connect-src 'self'">
+<title>T5.1 端對端：panel.js → 真實 viewer.js</title>
+<style>
+  body { margin: 16px; font: 14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; }
+  .ok { color: #0a7552; } .ng { color: #c9362f; } .mut { color: #766e8c; }
+  #stage { display: flex; gap: 16px; align-items: flex-start; }
+  ytd-live-chat-frame { display: block; width: 360px; }
+  ytd-live-chat-frame iframe#chatframe { display: block; width: 360px; height: 600px; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h1>T5.1 端對端：panel.js → 真實 viewer.js</h1>
+<p class="mut">審查十一 13.1 (A)(B)：top 端 <code>panel.js</code> 送出 <code>VOD_TIME</code> → 面板 iframe 的真實 <code>viewer.js</code> 收到 → 出現目前訊息框；background 推播 → 面板即時更新、標頭與「全部」數字一致。只連本機。</p>
+<p id="summary">執行中…</p>
+<div id="stage">
+  <ytd-watch-flexy is-two-columns_>
+    <ytd-live-chat-frame id="chat"><iframe id="chatframe" src="panel-fixtures/chat.html"></iframe></ytd-live-chat-frame>
+    <ytd-watch-metadata><div id="teaser-carousel"></div></ytd-watch-metadata>
+    <video class="html5-main-video"></video>
+  </ytd-watch-flexy>
+  <ol id="list"></ol>
+</div>
+<script>
+  const realFetch = window.fetch.bind(window);
+  const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('載入失敗 ' + src)); document.body.appendChild(s); });
+  (async () => {
+    const src = await (await realFetch('../../src/constants.js')).text();
+    await load(URL.createObjectURL(new Blob([src.replace("YT_ORIGIN: 'https://www.youtube.com'", 'YT_ORIGIN: ' + JSON.stringify(location.origin))], { type: 'text/javascript' })));
+    for (const f of ['../../src/selectors.js', '../../src/db.js', '../../src/panel.js', 'test-e2e-panel.js']) await load(f);
+  })().catch((e) => { document.getElementById('summary').textContent = '載入失敗：' + e.message; });
+</script>
+</body>
+</html>

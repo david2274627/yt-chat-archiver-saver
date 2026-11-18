@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 端對端測試用的面板 iframe：載入真實的 theme.js／db.js／viewer-core.js／viewer.js 與樣式；
+     constants.js 以 blob 載入（YT_ORIGIN 換成本機測試 origin）；資料庫改用測試資料庫 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'">
+<title>模擬面板 iframe（真實 viewer.js）</title>
+<link rel="stylesheet" href="/src/styles/tokens.css">
+<link rel="stylesheet" href="/src/styles/components.css">
+<link rel="stylesheet" href="/src/styles/viewer.css">
+</head>
+<body>
+<main id="app" data-autostart></main>
+<script>
+  // hop=1：以 localhost 載入後立刻轉到 127.0.0.1（iframe 的 src 屬性仍是 localhost）→ 模擬 use_dynamic_url 的
+  // 「src 的 origin（動態 ID）與面板文件實際 origin（擴充功能 ID）不同」（審查十一 13.1 (A)）
+  if (new URLSearchParams(location.search).get('hop') === '1' && location.hostname === 'localhost') {
+    location.replace(location.href.replace('//localhost:', '//127.0.0.1:'));
+    throw new Error('hop'); // 停止執行本頁其餘腳本
+  }
+  window.__errors = [];
+  window.addEventListener('error', (e) => window.__errors.push(String(e.message) + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno));
+  window.addEventListener('unhandledrejection', (e) => window.__errors.push('rejection: ' + String(e.reason && (e.reason.stack || e.reason.message) || e.reason)));
+  window.__frameMsgs = []; // 收到的 frame 訊息類型（診斷用）
+  window.addEventListener('message', (e) => { if (e.data && e.data.__ytcas) window.__frameMsgs.push(e.data.type); });
+  const realFetch = window.fetch.bind(window);
+  const load = (src, attr) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; if (attr) s.setAttribute(attr, ''); s.onload = res; s.onerror = () => rej(new Error('載入失敗 ' + src)); document.body.appendChild(s); });
+  (async () => {
+    const src = await (await realFetch('/src/constants.js')).text();
+    const patched = src.replace("YT_ORIGIN: 'https://www.youtube.com'", "YT_ORIGIN: " + JSON.stringify(location.origin));
+    if (patched === src) throw new Error('constants.js 的 YT_ORIGIN 格式改變，測試需要更新');
+    // background 推播（NEW_MESSAGES）走 chrome.runtime.onMessage：以 mock 的 listener 模擬
+    await load('/src/theme.js', 'data-auto'); // 與 viewer.html 相同：theme.js 最先載入
+    await load('/tools/tests/mock-chrome.js');
+    await load(URL.createObjectURL(new Blob([patched], { type: 'text/javascript' })));
+    await load('/src/db.js');
+    self.YTCAS_DB.configure({ dbName: new URLSearchParams(location.search).get('db') || 'test-e2e-ytcas-v3' });
+    await load('/src/viewer-core.js');
+    await load('/src/viewer.js');
+    window.__loaded = true;
+  })().catch((e) => { window.__errors.push('fixture: ' + e.message); window.__loaded = true; });
+</script>
+</body>
+</html>

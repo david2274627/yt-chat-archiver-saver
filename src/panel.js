@@ -324,11 +324,22 @@
     }
 
     // ---------------------------------------------------------------- 面板 iframe 訊息
+    // T5.1（審查十一 13.1 (A)）：web_accessible_resources 設了 use_dynamic_url，面板 iframe 的 src 是動態 ID 的網址，
+    // 但面板文件的實際 origin 可能是擴充功能本身的 ID（實機：面板讀得到擴充功能的 IndexedDB、SEEK_TO 以擴充功能 ID 的
+    // origin 通過檢查）。targetOrigin 不符時 postMessage 會被瀏覽器默默丟棄 → VOD_TIME 等全部收不到。
+    // 兩個 origin 都送：不符的那個會被丟棄，面板只會收到一次
+    function viewerTargets() {
+      const out = [];
+      try { const o = new URL(st.viewer.src).origin; if (o && o !== 'null') out.push(o); } catch (_) { /* ignore */ }
+      if (opts.extOrigin && !out.includes(opts.extOrigin)) out.push(opts.extOrigin);
+      return out;
+    }
     function toViewer(msg) {
       if (!st.viewer || !st.viewer.contentWindow || !st.ready) return;
-      let target = '*';
-      try { target = new URL(st.viewer.src).origin; } catch (_) { /* ignore */ }
-      try { st.viewer.contentWindow.postMessage(Object.assign({ __ytcas: true }, msg), target); } catch (_) { /* ignore */ }
+      const data = Object.assign({ __ytcas: true }, msg);
+      for (const target of viewerTargets()) {
+        try { st.viewer.contentWindow.postMessage(data, target); } catch (_) { /* ignore */ }
+      }
     }
     function sendTheme(force) {
       const t = ytTheme();
