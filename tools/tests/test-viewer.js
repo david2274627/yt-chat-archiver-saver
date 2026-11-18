@@ -510,6 +510,25 @@
     eq(c.els.list.querySelector('[data-id="h4"] .av').tagName, 'SPAN');
   });
 
+  test('T5.1 膠囊列（審查十一 13.1 (E)）：300／340／360px 寬「全部」兩字與數字都保留、單列放得下', async () => {
+    for (const w of [360, 340, 300]) {
+      const box = document.createElement('div');
+      box.style.cssText = 'width:' + w + 'px;height:200px;flex:none';
+      document.body.appendChild(box);
+      try {
+        const c = V.mount(box, { embed: true, videoId: 'nothing' });
+        await c.ready;
+        c.els.pills.all.querySelector('.num').textContent = '8,780';
+        c.els.pills.sc.querySelector('.num').textContent = '123';
+        await frame();
+        const lbl = c.els.pills.all.querySelector('.lbl-all');
+        assert(getComputedStyle(lbl).display !== 'none' && lbl.textContent.includes('全部'), w + 'px：「全部」被隱藏');
+        const row = c.els.pills.all.parentElement;
+        assert(row.scrollWidth <= row.clientWidth + 1, w + 'px：膠囊列放不下 ' + row.scrollWidth + '/' + row.clientWidth);
+      } finally { box.remove(); }
+    }
+  });
+
   test('空狀態：沒有資料的場次、沒有任何場次（後台）', async () => {
     await resetDb();
     const a = V.mount(host, { embed: true, videoId: 'nothing' });

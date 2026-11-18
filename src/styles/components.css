@@ -61,15 +61,16 @@ button { font: inherit; color: inherit; }
 .pill:hover { color: var(--ytcas-text); }
 .pill[aria-selected="true"] { background: var(--ytcas-accent-soft); color: var(--ytcas-accent); font-weight: 700; }
 /* 4 個膠囊在窄面板仍單列（SPEC F-05）。條件以工具區內容寬度判斷（面板寬 − 16px）：
-   - ≤ 360px（面板 ≤ 376px，含 340／360px）：「全部」只顯示數字、縮短內距與間距
-   - ≤ 300px（面板 ≤ 316px，最窄 300px）：再隱藏膠囊前的圖示
-   - 仍放不下時（字型差異）膠囊列可水平捲動，不換行 */
+   - ≤ 360px（面板 ≤ 376px，含 340／360px）：縮短內距與間距、隱藏膠囊前的圖示（v42：「全部」兩字與數字一律保留，
+     審查十一 13.1 (E)：v38 的「只顯示數字」讓第一個膠囊只剩「8,780」，看不出是什麼）
+   - ≤ 300px（面板 ≤ 316px，最窄 300px）：內距再縮小
+   - 仍放不下時（字型差異）膠囊列可水平捲動，不換行；文字與數字都不隱藏 */
 @container (max-width: 360px) {
   .pills { gap: 4px; }
   .pill { padding: 3px 8px; }
-  .pill .lbl-all { display: none; }
+  .pill .pi { display: none; }
 }
-@container (max-width: 300px) { .pill .pi { display: none; } }
+@container (max-width: 300px) { .pill { padding: 3px 6px; } }
 .search { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 @container (max-width: 340px) { .search { grid-template-columns: 1fr; } }
 .field { display: flex; align-items: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; background: var(--ytcas-surface-2);
