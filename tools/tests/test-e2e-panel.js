@@ -124,6 +124,29 @@
     assert(viewer().state.vl.follow, '恢復跟隨到底');
   });
 
+  // T5.2（審查十一 16.3）：v42 在直播 sync 中只要捲動過一次，之後的倒轉都不會再捲動（syncPaused 沒有解除）
+  test('T5.2 直播：sync 中先手動捲動、再 seek（每次倒轉 1 分鐘）→ 面板跳到新位置', async () => {
+    const near = (back) => { const m = liveMsgs.find((x) => x.id === viewer().state.currentId); return !!m && Math.abs(m.timestampAbs - (NOW - back * 1000)) <= 15e3; };
+    const visible = () => {
+      const list = vd().querySelector('.list'), row = vd().querySelector('.vrow > .current');
+      if (!row) return false;
+      const lr = list.getBoundingClientRect(), rr = row.getBoundingClientRect();
+      return rr.bottom > lr.top && rr.top < lr.bottom;
+    };
+    video.currentTime = 3599 - 300; // 倒轉 5 分鐘
+    await until(() => viewer().state.mode === 'sync' && near(300), 4000, () => '倒轉 5 分鐘 ' + diag());
+    for (const back of [360, 420]) {
+      userScrollTop(0);
+      await until(() => viewer().state.syncPaused, 3000, () => '捲動 → 暫停 ' + diag());
+      video.currentTime = 3599 - back; // 再倒轉 1 分鐘（seeked）
+      await until(() => !viewer().state.syncPaused && near(back) && visible(), 4000, () => '倒轉後應跳到新位置 ' + back + ' ' + viewer().state.currentId + ' ' + diag());
+      assert(vd().querySelector('.resume').hidden, '不再顯示「回到播放位置」');
+    }
+    assert(viewer().state.diag.seeks >= 3, 'seeked 次數 ' + viewer().state.diag.seeks);
+    video.currentTime = 3599; // 回到最新
+    await until(() => viewer().state.mode === 'tail' && viewer().state.vl.follow, 4000, () => '回到最新 ' + diag());
+  });
+
   test('(B) background 推播 NEW_MESSAGES → 面板即時出現；標頭訊息數與「全部」一致', async () => {
     const v = viewer();
     const listeners = vw().__mock.listeners.message;

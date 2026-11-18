@@ -820,6 +820,12 @@
     return list;
   }
 
+  // v43（T5.2 (G)）場次的實際訊息筆數（videoId 索引的 count，不讀紀錄內容）。streams.messageCount 是寫入時累計的值，可能與實際不同
+  async function countMessages(videoId) {
+    const db = await open();
+    return req(db.transaction('messages').objectStore('messages').index('videoId').count(videoId));
+  }
+
   async function queryPinned(videoId) {
     const db = await open();
     return req(db.transaction('pinned_messages').objectStore('pinned_messages').index('videoId').getAll(videoId));
@@ -1578,7 +1584,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, fillAvatars, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,

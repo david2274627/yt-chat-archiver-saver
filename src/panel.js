@@ -357,13 +357,25 @@
       try { if (v.seekable && v.seekable.length) { seekStart = v.seekable.start(0); seekEnd = v.seekable.end(v.seekable.length - 1); } } catch (_) { /* ignore */ }
       const dur = Number.isFinite(v.duration) ? v.duration : null;
       const live = info.isLiveBroadcast === true && info.endDate == null;
-      return { currentTime: v.currentTime, paused: !!v.paused, duration: dur, seekStart, seekEnd, live, at: Date.now() };
+      const head = live ? liveHead() : { liveHead: null, badge: 'n/a' };
+      // v43（T5.2）：seeks＝video 的 seeked 事件累計次數（面板據此解除同步暫停）；liveHead／badge＝「直播」徽章的判定（待實機確認）
+      return { currentTime: v.currentTime, paused: !!v.paused, duration: dur, seekStart, seekEnd, live, at: Date.now(),
+        seeks: st.seeks || 0, liveHead: head.liveHead, badge: head.badge };
+    }
+    // 「直播」徽章：在最新時不可點（disabled 或 liveHeadClass）。找不到或沒顯示 → null（面板改用延遲基準判斷）
+    function liveHead() {
+      const b = doc.querySelector(S.top.liveBadge);
+      if (!b) return { liveHead: null, badge: 'missing' };
+      if (!b.getClientRects().length) return { liveHead: null, badge: 'hidden' };
+      if (b.classList.contains(S.top.liveHeadClass)) return { liveHead: true, badge: 'class' };
+      if (b.hasAttribute('disabled') || b.getAttribute('aria-disabled') === 'true') return { liveHead: true, badge: 'disabled' };
+      return { liveHead: false, badge: 'behind' };
     }
     function sendVodTime(force) {
       if (!st.mounted || st.paused || !st.ready) return;
       const c = clock();
       if (!c) return;
-      const key = [Math.round(c.currentTime * 4), c.paused, Math.round(c.seekEnd || 0), c.live].join('|');
+      const key = [Math.round(c.currentTime * 4), c.paused, Math.round(c.seekEnd || 0), c.live, c.seeks, c.liveHead].join('|');
       if (!force && key === st.lastVod && c.paused) return; // 暫停中且沒有變化：不重送
       st.lastVod = key;
       toViewer(Object.assign({ type: FM.VOD_TIME }, c));
@@ -373,7 +385,7 @@
       st.vodTimer = win.setInterval(() => { bindVideo(); sendVodTime(false); }, P.VOD_TIME_MS);
     }
     function stopVodTimer() { if (st.vodTimer) { win.clearInterval(st.vodTimer); st.vodTimer = 0; } }
-    const onSeeked = () => sendVodTime(true);
+    const onSeeked = () => { st.seeks = (st.seeks || 0) + 1; sendVodTime(true); };
     function bindVideo() {
       const v = video();
       if (v === st.boundVideo) return;

@@ -141,6 +141,11 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
 
 .resume { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: var(--ytcas-accent); color: var(--ytcas-on-accent);
   border: 0; border-radius: var(--ytcas-radius-pill); padding: 5px 14px; font-weight: 700; font-size: var(--ytcas-fs-sm); box-shadow: var(--ytcas-shadow-2); cursor: pointer; white-space: nowrap; }
+/* v43（T5.2）直播倒轉到最早收錄之前的提示（面板內，absolute） */
+.sync-hint { position: absolute; left: 8px; right: 8px; top: 8px; z-index: 2; background: var(--ytcas-surface-2); color: var(--ytcas-text-2);
+  border-radius: var(--ytcas-radius-pill); padding: 4px 12px; font-size: var(--ytcas-fs-sm); text-align: center; box-shadow: var(--ytcas-shadow-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.sync-hint[hidden] { display: none; }
 .empty { display: grid; place-items: center; gap: 6px; padding: var(--ytcas-space-6); color: var(--ytcas-text-3); text-align: center; }
 .empty .ico { width: 40px; height: 40px; border-radius: 50%; background: var(--ytcas-surface-2); display: grid; place-items: center; font-size: 18px; }
 

@@ -300,6 +300,22 @@
     assert(CORE.inRange(49400, live) && !CORE.inRange(39000, live), 'DVR 範圍');
     assert(CORE.inRange(100, vod) && !CORE.inRange(3700, vod) && !CORE.inRange(-1, vod), 'VOD 範圍');
     assert(CORE.atLiveEdge(live, 15) && !CORE.atLiveEdge(Object.assign({}, live, { currentTime: 49000 }), 15), '直播邊緣');
+    // v43（16.1 (F)）：在最新時延遲本來就 40 秒 → 以基準判斷；徽章優先；換算扣掉基準
+    const lag40 = Object.assign({}, live, { currentTime: 50000 - 40 });
+    assert(!CORE.atLiveEdge(lag40, 15) && CORE.atLiveEdge(lag40, 15, 38), '基準 38 秒：延遲 40 秒仍在最新');
+    assert(!CORE.atLiveEdge(Object.assign({}, lag40, { currentTime: 50000 - 100 }), 15, 38), '倒轉 1 分鐘：不在最新');
+    assert(CORE.atLiveEdge(Object.assign({}, lag40, { currentTime: 49000, liveHead: true }), 15, 0), '徽章說在最新');
+    assert(!CORE.atLiveEdge(Object.assign({}, lag40, { liveHead: false }), 15, 40), '徽章說不在最新');
+    eq(CORE.playheadAbs(Object.assign({}, live, { currentTime: 50000 - 100 }), 40), live.at - 60e3, '倒轉 1 分鐘 → 1 分鐘前（v42 會算成 100 秒前）');
+    eq(CORE.videoTimeOf(mk({ timestampAbs: live.at - 60e3 }), live, { baseline: 40 }), 50000 - 100, '時間碼換算也扣掉基準');
+    const nb = (b, lagSec, o) => CORE.nextBaseline(b, Object.assign({}, live, { currentTime: 50000 - lagSec }, o), 15, 0.5);
+    eq(nb(null, 40), 40, '第一個樣本');
+    eq(nb(40, 30), 30, '較小 → 採用');
+    eq(nb(40, 50), 45, '在範圍內較大 → 只往上追 drift 比例');
+    eq(nb(40, 100), 40, '倒轉中 → 不變');
+    eq(nb(40, 100, { liveHead: true }), 100, '徽章說在最新 → 採用');
+    eq(nb(40, 30, { liveHead: false }), 40, '徽章說不在最新 → 不學');
+    eq(nb(40, 30, { paused: true }), 40, '暫停中不學');
     // 同步位置：VOD 依 offset、直播依實際時間；分隔線與 pre 略過
     const items = [mk({ id: 'p', phase: 'pre', videoOffsetSec: -5, timestampAbs: T0 - 5e3 }), mk({ id: 'x', videoOffsetSec: 10, timestampAbs: T0 + 10e3 }),
       mk({ id: 'y', videoOffsetSec: 20, timestampAbs: T0 + 20e3 }), mk({ id: 'z', videoOffsetSec: 30, timestampAbs: T0 + 30e3 })].map((x) => CORE.indexMessage(x, new Map()));
@@ -334,7 +350,8 @@
       const c = V.mount(host, { embed: true, videoId: VV });
       await c.ready; await frame();
       assert(c.els.closeBtn && c.els.closeBtn.textContent === '關閉優化面板', '關閉按鈕');
-      c._onClock({ currentTime: 1505, paused: false, duration: 4000, live: false, at: Date.now() });
+      const A = Date.now();
+      c._onClock({ currentTime: 1505, paused: false, duration: 4000, live: false, at: A });
       await frame(); await frame();
       eq(c.state.mode, 'sync');
       eq(c.state.currentId, 's150');
@@ -352,7 +369,8 @@
       c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame(); // 背景分頁不會自動觸發 scroll 事件
       eq(c.state.syncPaused, true);
       assert(!c.els.resume.hidden && c.els.resume.textContent.includes('回到播放位置'), '回到播放位置按鈕');
-      c._onClock({ currentTime: 2005, paused: false, duration: 4000, live: false, at: Date.now() });
+      // 正常播放 500 秒（不是跳轉：v43 起跳轉會解除暫停）
+      c._onClock({ currentTime: 2005, paused: false, duration: 4000, live: false, at: A + 500e3 });
       await frame();
       eq(c.state.currentId, 's200', '暫停捲動時仍更新目前訊息');
       assert(c.els.list.scrollTop < 50, '暫停中不捲動');
@@ -395,6 +413,92 @@
     c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
     const old = c.els.list.querySelector('[data-id="l0"] .tc');
     assert(old && old.tagName === 'SPAN', 'DVR 範圍外不可點');
+  });
+
+  // ================================================================ T5.2（審查十一 16.1 (F)(G)(H)、16.3）
+  test('T5.2 直播：在最新時延遲 40 秒仍跟隨到底；sync 中先手動捲動、再 seek → 跳到新位置（seeked 與跳轉後備）；回到最新；範圍外提示；連線狀態', async () => {
+    await resetDb();
+    const VL = 'vidLIVESEEK';
+    const now = Date.now();
+    const msgs = [];
+    for (let i = 0; i < 300; i++) msgs.push(mk({ id: 'k' + i, videoId: VL, timestampAbs: now - (300 - i) * 10e3, videoOffsetSec: 50000 + i * 10, runs: [{ text: '倒轉 ' + i }] }));
+    await put({ videoId: VL, title: '直播倒轉', isLive: true, startedAt: now - 86400e3, lastMessageAt: now - 10e3, messageCount: 300, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VL });
+    await c.ready; await frame();
+    // 播放器時鐘：每次 250ms，seekEnd 隨時間前進；lag＝seekEnd − currentTime（秒）
+    let t = now, seeks = 0;
+    const tick = (lag, o) => {
+      t += 250;
+      const seekEnd = 10000 + (t - now) / 1000;
+      c._onClock(Object.assign({ currentTime: seekEnd - lag, paused: false, duration: null, seekStart: seekEnd - 7200, seekEnd, live: true, at: t, seeks }, o));
+    };
+    const visible = (id) => {
+      const n = c.els.list.querySelector('.vrow > [data-id="' + id + '"]');
+      if (!n) return false;
+      const lr = c.els.list.getBoundingClientRect(), r = n.getBoundingClientRect();
+      return r.bottom > lr.top && r.top < lr.bottom;
+    };
+    const near = (backSec) => { // 目前訊息＝「現在 − backSec」之前的最後一則（訊息每 10 秒一則）
+      const m = msgs.find((x) => x.id === c.state.currentId);
+      return !!m && m.timestampAbs <= t - backSec * 1000 && m.timestampAbs > t - backSec * 1000 - 10e3;
+    };
+    const userScroll = async () => {
+      c.els.list.dispatchEvent(new Event('wheel'));
+      c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
+    };
+    // 在最新：延遲 40 秒（YouTube 一般延遲模式）→ 基準 40，tail
+    for (let k = 0; k < 8; k++) tick(40);
+    await frame(); await frame();
+    eq(c.state.mode, 'tail', 'v42 會判成 sync（延遲 40 > 15）');
+    assert(Math.abs(c.state.baseline - 40) < 0.01, '基準 ' + c.state.baseline);
+    // 倒轉 5 分鐘（seeked）
+    seeks++; tick(340);
+    await frame(); await frame();
+    eq(c.state.mode, 'sync');
+    assert(near(300), '同步到 5 分鐘前（扣掉基準）：' + c.state.currentId);
+    assert(visible(c.state.currentId), '目前訊息在可視範圍');
+    // 使用者手動捲動 → 同步暫停
+    await userScroll();
+    eq(c.state.syncPaused, true);
+    tick(340); await frame();
+    assert(c.els.list.scrollTop < 50, '暫停中不捲動');
+    // 再倒轉 1 分鐘（seeked）→ 解除暫停、跳到新位置（16.3 第 1 點；v42 停著不動）
+    seeks++; tick(400);
+    await frame(); await frame();
+    eq(c.state.syncPaused, false, 'seek 解除暫停');
+    assert(near(360), '同步到 6 分鐘前：' + c.state.currentId);
+    assert(visible(c.state.currentId), '跳到新位置');
+    assert(c.els.resume.hidden, '不再顯示「回到播放位置」');
+    // 再捲動、再 seek，但這次 seeked 沒觸發（seeks 不變）→ 以播放位置跳轉判定
+    await userScroll();
+    eq(c.state.syncPaused, true);
+    tick(460);
+    await frame(); await frame();
+    eq(c.state.syncPaused, false, '跳轉後備');
+    assert(near(420) && visible(c.state.currentId), '跳轉後備：跳到 7 分鐘前 ' + c.state.currentId);
+    assert(c.state.diag.seeks === 2 && c.state.diag.jumps >= 1, JSON.stringify([c.state.diag.seeks, c.state.diag.jumps]));
+    // 倒轉到最早收錄的訊息之前 → 提示
+    seeks++; tick(40 + 3600);
+    await frame();
+    const hint = c.els.list.parentElement.querySelector('.sync-hint');
+    assert(hint && !hint.hidden && hint.textContent.includes('之前沒有收錄'), '範圍外提示 ' + (hint && hint.textContent));
+    // 連線狀態：模式、延遲與基準、seeked、目標 → 訊息
+    c.els.moreBtn.click();
+    let dl = c.els.menu.querySelector('.diag-line').textContent;
+    assert(dl.includes('模式 sync') && dl.includes('延遲 3640.0 秒（基準 40.0）') && dl.includes('seeked 3') && dl.includes('目標 ') && dl.includes('→ 無'), '連線狀態：' + dl);
+    // 回到最新（seeked）→ tail、跟隨到底、提示消失
+    seeks++; tick(40);
+    await frame(); await frame();
+    eq(c.state.mode, 'tail');
+    assert(c.state.vl.follow && hint.hidden, '回到最新');
+    // 選單開著時每秒刷新（16.1 (H)）；資料庫＝實際筆數（16.1 (G)）
+    await until(() => c.els.menu.querySelector('.diag-line').textContent.includes('模式 tail'), 2500, '選單沒有刷新');
+    await put(null, [mk({ id: 'k-new', videoId: VL, timestampAbs: now, videoOffsetSec: 53000 })]);
+    await until(() => c.state.diag.dbReal === 301, 2500, '實際筆數 ' + c.state.diag.dbReal);
+    await until(() => c.els.menu.querySelector('.diag-line').textContent.includes('／資料庫 301'), 2500, '選單的資料庫筆數');
+    document.body.click();
+    assert(c.els.menu.hidden, '關閉選單');
   });
 
   test('T5 F-18：版本切換（依影片長度自動選、剪輯版中不存在的訊息淡色標示）；連結影片以時間差同步並可微調', async () => {

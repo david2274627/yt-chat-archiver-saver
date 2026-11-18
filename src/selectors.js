@@ -13,6 +13,10 @@
       showHideButton: 'ytd-live-chat-frame #show-hide-button',
       watchFlexy: 'ytd-watch-flexy',
       video: 'video.html5-main-video',
+      // v43（T5.2，審查十一 16.1 (F)）播放器的「直播」徽章：在直播最新時不可點。只讀。**待實機確認**：
+      // 在最新時帶 disabled 屬性或 liveHeadClass；面板 ⋯「連線狀態」顯示判定結果（徽章 最新／非最新／找不到）供實機核對
+      liveBadge: '.html5-video-player .ytp-live-badge',
+      liveHeadClass: 'ytp-live-badge-is-livehead',
       // 直播開始時間（推算 videoOffsetSec；筆記 1.2 確認存在）。待機室時是預定時間或不存在：待實機確認（T3 診斷）
       startDateMeta: 'meta[itemprop="startDate"]',
       endDateMeta: 'meta[itemprop="endDate"]',             // 待實機確認

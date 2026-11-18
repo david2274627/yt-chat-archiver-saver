@@ -194,8 +194,12 @@
       clock: null, mode: 'tail', syncPaused: false, currentId: null, entries: [], points: null,
       ver: 'v1', verManual: false, link: null, capture: null, noteKey: '', noteDismissed: null, avatars: new Map(),
       // T5.1（審查十一 13.1 (A)(B)、13.3）：連線診斷計數（只有數字）、載入期間暫存的推播、最後一次推播時間
-      diag: { vodTime: 0, theme: 0, capture: 0, pushRecv: 0, pushApplied: 0, pushBuffered: 0, pushOther: 0, polls: 0, pollAdded: 0, loads: 0, dbCount: null },
+      diag: { vodTime: 0, theme: 0, capture: 0, pushRecv: 0, pushApplied: 0, pushBuffered: 0, pushOther: 0, polls: 0, pollAdded: 0, loads: 0, dbCount: null,
+        // v43（T5.2）：seeked 收到次數、播放位置跳轉（後備判定）次數、直播目標時間與對應訊息的時間、實際資料庫筆數、清單重複數
+        seeks: 0, jumps: 0, target: null, targetMsg: null, dbReal: null, dups: null },
       pendingPush: [], lastPushAt: 0,
+      // v43：直播在最新時的延遲基準（秒）、上一次的 seeked 累計次數、面板是否退讓中（top 的 PANEL_STATE）
+      baseline: null, lastSeeks: null, hostPaused: false,
     };
 
     // ---------------- 版面
@@ -300,8 +304,9 @@
     list.setAttribute('role', 'log'); list.setAttribute('aria-label', '聊天訊息'); list.tabIndex = 0;
     const empty = el('div', 'empty'); empty.hidden = true;
     const resume = el('button', 'resume', '↓ 恢復自動捲動'); resume.type = 'button'; resume.hidden = true;
+    const syncHint = el('div', 'sync-hint'); syncHint.hidden = true; syncHint.setAttribute('role', 'status');
     const listWrap = el('div', 'list-wrap');
-    listWrap.append(list, empty, resume);
+    listWrap.append(list, empty, syncHint, resume);
     panel.appendChild(listWrap);
 
     S.vl = VList(list, renderEntry, estimate);
@@ -356,12 +361,47 @@
 
     // ---------------- ⋯ 選單（只在面板內，10.1 原則 6）
     const THEME_NAME = { auto: '自動', light: '淺色', dark: '深色' };
+    const BADGE_NAME = { class: '最新', disabled: '最新', behind: '非最新', missing: '找不到', hidden: '未顯示', 'n/a': '—' };
     function diagText() {
       const d = S.diag;
-      const parts = ['訊息 ' + fmtN(S.items.length) + (d.dbCount != null ? '／資料庫 ' + fmtN(d.dbCount) : ''),
-        '推播 ' + d.pushRecv + '（套用 ' + d.pushApplied + '、載入中暫存 ' + d.pushBuffered + '）', '補讀 ' + d.polls + ' 次 +' + d.pollAdded, '載入 ' + d.loads + ' 次'];
-      if (embed) parts.splice(1, 0, '播放時間 ' + d.vodTime + '、主題 ' + d.theme + '、收錄狀態 ' + d.capture);
+      // v43（16.1 (G)）資料庫＝實際筆數（選單開著時每秒以 count 查詢）；重複＝清單中 id／別名對應到其他位置的筆數
+      const db = d.dbReal != null ? d.dbReal : d.dbCount;
+      const parts = ['訊息 ' + fmtN(S.items.length) + (db != null ? '／資料庫 ' + fmtN(db) : '') + (d.dups ? '（重複 ' + d.dups + '）' : ''),
+        '推播 ' + d.pushRecv + '（套用 ' + d.pushApplied + '、載入中暫存 ' + d.pushBuffered + '、其他場次 ' + d.pushOther + '）', '補讀 ' + d.polls + ' 次 +' + d.pollAdded, '載入 ' + d.loads + ' 次'];
+      if (embed) {
+        parts.splice(1, 0, '播放時間 ' + d.vodTime + '、主題 ' + d.theme + '、收錄狀態 ' + d.capture);
+        // v43（16.1 (F)、16.3）：模式、延遲（seekEnd − currentTime）與基準、徽章、seeked／跳轉次數、目標時間 → 對應訊息的時間
+        const c = S.clock;
+        const sync = ['模式 ' + S.mode + (S.syncPaused ? '（暫停）' : '')];
+        if (c && c.live) {
+          const lag = CORE.liveLag(c);
+          sync.push('延遲 ' + (lag == null ? '—' : lag.toFixed(1) + ' 秒') + '（基準 ' + (S.baseline == null ? '—' : S.baseline.toFixed(1)) + '）');
+          sync.push('徽章 ' + (BADGE_NAME[c.badge] || '—'));
+        }
+        sync.push('seeked ' + d.seeks + '、跳轉 ' + d.jumps);
+        if (d.target != null) sync.push('目標 ' + CORE.fmtClock(d.target) + ' → ' + (d.targetMsg != null ? CORE.fmtClock(d.targetMsg) : '無'));
+        parts.splice(2, 0, sync.join('、'));
+      }
       return parts.join(' · ');
+    }
+    // 清單中重複的筆數：id 或別名在 byId 對應到別的位置（同一則以不同 id 各佔一筆）
+    function countDups() {
+      let n = 0;
+      S.items.forEach((it, i) => {
+        for (const k of [it.m.id, ...(it.m.aliasIds || [])]) { const j = S.byId.get(k); if (j != null && j !== i) { n++; break; } }
+      });
+      return n;
+    }
+    // ⋯ 選單開著時每秒刷新（16.1 (H)），並查詢實際資料庫筆數
+    let menuTimer = 0;
+    async function refreshDiag() {
+      if (!S.menuOpen) return;
+      S.diag.dups = countDups();
+      try {
+        const vid = S.link ? S.link.orig : S.videoId;
+        if (vid && DB.countMessages) S.diag.dbReal = await DB.countMessages(vid);
+      } catch (_) { /* 下次再試 */ }
+      if (S.menuOpen) miDiag.textContent = '連線狀態：' + diagText();
     }
     function syncMenu() {
       miDiag.textContent = '連線狀態：' + diagText();
@@ -370,11 +410,18 @@
       miDelChk.textContent = S.f.hideDeleted ? '✓' : '';
       miDel.setAttribute('aria-checked', String(S.f.hideDeleted));
     }
-    function closeMenu() { S.menuOpen = false; menu.hidden = true; moreBtn.setAttribute('aria-expanded', 'false'); }
+    function closeMenu() {
+      S.menuOpen = false; menu.hidden = true; moreBtn.setAttribute('aria-expanded', 'false');
+      if (menuTimer) { clearInterval(menuTimer); menuTimer = 0; }
+    }
     moreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       S.menuOpen = !S.menuOpen; menu.hidden = !S.menuOpen; moreBtn.setAttribute('aria-expanded', String(S.menuOpen));
-      if (S.menuOpen) { syncMenu(); const f = menu.querySelector('button'); if (f) f.focus(); }
+      if (S.menuOpen) {
+        syncMenu(); refreshDiag();
+        if (!menuTimer) menuTimer = setInterval(refreshDiag, C.PANEL.MENU_REFRESH_MS);
+        const f = menu.querySelector('button'); if (f) f.focus();
+      } else closeMenu();
     });
     document.addEventListener('click', (e) => { if (S.menuOpen && !menu.contains(e.target)) closeMenu(); });
     menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); moreBtn.focus(); } });
@@ -627,7 +674,12 @@
     }
 
     // ---------------- T5：時間軸同步（F-08）
-    const syncOpts = () => ({ ver: S.ver, shift: S.link ? S.link.shift : 0, points: S.points });
+    const syncOpts = () => ({ ver: S.ver, shift: S.link ? S.link.shift : 0, points: S.points, baseline: S.baseline });
+    // v43（16.1 (F)）直播倒轉到最早收錄的訊息之前：提示，不要看起來像停著不動
+    function setHint(text) {
+      if (syncHint.textContent !== text) syncHint.textContent = text;
+      syncHint.hidden = !text;
+    }
     function rowOf(id) {
       for (const n of list.querySelectorAll('.vrow > [data-id]')) if (n.dataset.id === id) return n;
       return null;
@@ -644,29 +696,53 @@
       if (!S.points && !S.clock.live) S.points = CORE.syncPoints(S.entries, { ver: S.ver, shift: S.link ? S.link.shift : 0 });
       const i = CORE.syncIndex(S.entries, S.clock, syncOpts());
       setCurrent(i >= 0 ? S.entries[i].it.m.id : null);
+      S.diag.target = S.clock.live ? CORE.playheadAbs(S.clock, S.baseline) : null;
+      S.diag.targetMsg = i >= 0 ? S.entries[i].it.m.timestampAbs : null;
+      let hint = '';
+      if (S.clock.live && i < 0 && S.entries.length) {
+        const firstLive = S.entries.find((e) => e.kind === 'msg' && (e.it.m.phase || 'live') === 'live');
+        if (firstLive) hint = '此時間點之前沒有收錄（最早 ' + CORE.fmtClock(firstLive.it.m.timestampAbs, S.refMs) + '）';
+      }
+      setHint(hint);
       if (!S.syncPaused && S.entries.length) S.vl.reveal(Math.max(0, i), smooth);
     }
     function onClock(c) {
       if (!c || typeof c.currentTime !== 'number' || !Number.isFinite(c.currentTime)) return;
       const first = !S.clock;
+      const prev = S.clock;
       const liveChanged = !!S.clock && !!S.clock.live !== !!c.live;
       const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
       S.clock = { currentTime: c.currentTime, paused: !!c.paused, duration: num(c.duration), seekStart: num(c.seekStart), seekEnd: num(c.seekEnd),
-        live: !!c.live, at: num(c.at) || Date.now() };
+        live: !!c.live, at: num(c.at) || Date.now(), liveHead: c.liveHead === true || c.liveHead === false ? c.liveHead : null,
+        badge: typeof c.badge === 'string' ? c.badge.slice(0, 16) : null };
+      // v43（T5.2，審查十一 16.3）使用者在播放器上跳轉 → 視為要求重新跟隨，解除「同步暫停」。
+      // 依據：top 的 seeked 累計次數（seeks）有變化；或播放位置與預期（上一次＋經過時間）差超過 SEEK_JUMP_SEC（seeked 沒觸發時的後備）
+      let seeked = false;
+      const seeks = num(c.seeks);
+      if (seeks != null) { if (S.lastSeeks != null && seeks !== S.lastSeeks) { seeked = true; S.diag.seeks++; } S.lastSeeks = seeks; }
+      if (!seeked && prev && !first) {
+        const expect = prev.currentTime + (prev.paused ? 0 : (S.clock.at - prev.at) / 1000);
+        if (Math.abs(S.clock.currentTime - expect) > C.PANEL.SEEK_JUMP_SEC) { seeked = true; S.diag.jumps++; }
+      }
+      if (seeked) S.syncPaused = false;
+      // v43（16.1 (F)）在最新時本來就有的延遲（基準）
+      if (S.clock.live) S.baseline = CORE.nextBaseline(S.baseline, S.clock, C.PANEL.LIVE_EDGE_SEC, C.PANEL.BASELINE_DRIFT);
+      else S.baseline = null;
       // F-18：VOD 依影片長度自動選版本（使用者手動選過就不改）
       if (!S.clock.live && !S.verManual && S.stream && Array.isArray(S.stream.versions) && S.stream.versions.length > 1) {
         const v = CORE.pickVersion(S.stream.versions, S.clock.duration);
         if (v && v !== S.ver) { S.ver = v; S.points = null; renderSub(); S.vl.refresh(); }
       }
-      const mode = S.clock.live && CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC) ? 'tail' : 'sync';
+      const mode = S.clock.live && CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline) ? 'tail' : 'sync';
       if (mode !== S.mode) {
         S.mode = mode; S.syncPaused = false;
-        if (mode === 'tail') { setCurrent(null); resume.textContent = '↓ 恢復自動捲動'; S.vl.toBottom(); }
+        if (mode === 'tail') { setCurrent(null); setHint(''); S.diag.target = null; S.diag.targetMsg = null; resume.textContent = '↓ 恢復自動捲動'; S.vl.toBottom(); }
         else resume.textContent = '↓ 回到播放位置';
         resume.hidden = true;
-      }
+      } else if (seeked && mode === 'sync') resume.hidden = true;
+      else if (seeked && mode === 'tail' && S.clock.live) S.vl.toBottom(); // 跳回最新：回到跟隨到底
       if (first || liveChanged) S.vl.refresh(); // 時間碼的可點與文字依 clock 而定：重新繪製可見列
-      if (mode === 'sync') doSync(!first);
+      if (mode === 'sync') doSync(!first && !seeked);
     }
 
     // ---------------- T5：版本（F-18）與連結影片（F-18 第 6 點）

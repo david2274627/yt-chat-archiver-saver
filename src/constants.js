@@ -105,6 +105,8 @@
       SET_VERSION_LABEL: 'SET_VERSION_LABEL',
       LINK_VIDEO: 'LINK_VIDEO',
       UNLINK_VIDEO: 'UNLINK_VIDEO',
+      // v43（T5.2 (I)）面板 → bg：以 chrome.tabs.create 開啟後台檢視器（嵌入的面板自己開會被 use_dynamic_url 擋下）
+      OPEN_VIEWER: 'OPEN_VIEWER',
       // v35 F-20：DIAG_LOG（content → bg，記錄中才送）、DIAG_CONTROL（擴充功能頁面 → bg：start／stop／status／export／summary／clear）
       DIAG_LOG: 'DIAG_LOG',
       DIAG_CONTROL: 'DIAG_CONTROL',
@@ -128,6 +130,7 @@
       CAPTURE_STATUS: 'CAPTURE_STATUS',
       // v41（T5）：面板 iframe ↔ top frame。PANEL_READY：面板載入完成（top 回送 THEME、CAPTURE_STATUS、VOD_TIME）；
       // PANEL_CLOSE：面板頂部列的「關閉優化面板」；PANEL_STATE：top → chat frame，頂部列按鈕顯示用 { on, paused, reason }
+      // （v43）PANEL_STATE 也由 top 送給面板 iframe { paused }：退讓中面板暫停補讀
       PANEL_READY: 'PANEL_READY',
       PANEL_CLOSE: 'PANEL_CLOSE',
       PANEL_STATE: 'PANEL_STATE',
@@ -140,6 +143,11 @@
       ANCHOR_GRACE_MS: 8000,   // 頁面載入後多久仍找不到任何開關錨點才 warnOnce
       EXPAND_WAIT_MS: 5000,    // 從影片下方卡片展開聊天室後，等待 iframe 出現的上限
       SYNC_SMOOTH_MAX_PX: 1500, // 時間軸同步：距離在此以內平滑捲動，否則直接跳
+      // v43（T5.2）：播放位置與預期（上一次＋經過時間）差超過此秒數視為跳轉（seeked 沒觸發時的後備）
+      SEEK_JUMP_SEC: 3,
+      BASELINE_DRIFT: 0.05,    // 直播「在最新時的延遲」基準：延遲變大（仍在最新範圍內）時每次只往上追這個比例
+      MENU_REFRESH_MS: 1000,   // ⋯ 選單開著時連線狀態的刷新間隔
+      FULL_POLL_MS: 120000,    // 補讀後備：offset 未知、只能讀整場時的最短間隔（v42 為 30 秒）
     }),
     // v29：chat frame 等 STREAM_INFO 的重送間隔與上限
     STREAM_INFO_RETRY_MS: 1000,

@@ -164,7 +164,7 @@
   // ---------------------------------------------------------------- F-08 時間軸同步（T5）
   // clock：top frame 的 VOD_TIME { currentTime, paused, duration, seekStart, seekEnd, live, at }
   //   VOD（live: false）：影片時間 = 該版本的 offset（v1 為 videoOffsetSec，F-18）＋ 連結影片的 offsetShift
-  //   直播中（live: true）：以 DVR 可回放範圍換算（F-08 v37 長期直播備註 (b)）：影片時間 = seekEnd − (取樣時間 − 訊息時間)
+  //   直播中（live: true）：以 DVR 可回放範圍換算（F-08 v37 長期直播備註 (b)）：影片時間 = seekEnd − 基準 − (取樣時間 − 訊息時間)
   //   兩者都只用 phase 'live' 的訊息（F-14：pre／post 不參與跟隨與跳轉）
   function versionOffset(m, ver) {
     const v = ver && ver !== 'v1' ? (m.offsets ? m.offsets[ver] : null) : m.videoOffsetSec;
@@ -174,7 +174,8 @@
     if (!m || !clock || (m.phase || 'live') !== 'live') return null;
     if (clock.live) {
       if (typeof clock.seekEnd !== 'number' || typeof m.timestampAbs !== 'number') return null;
-      return clock.seekEnd - (clock.at - m.timestampAbs) / 1000;
+      // v43：訊息到達時，在最新的播放位置是 seekEnd − 基準（o.baseline）
+      return clock.seekEnd - ((o && o.baseline) || 0) - (clock.at - m.timestampAbs) / 1000;
     }
     const off = versionOffset(m, o && o.ver);
     return off == null ? null : off + ((o && o.shift) || 0);
@@ -184,13 +185,34 @@
     if (clock.live) return typeof clock.seekStart === 'number' && t >= clock.seekStart - 1 && t <= clock.seekEnd + 1;
     return t >= 0 && (clock.duration == null || t <= clock.duration + 1);
   }
-  // 直播中：距離直播邊緣 LIVE_EDGE_SEC 以內 → 一般的「跟隨到底」；超過（倒轉 DVR）→ 依時間軸同步
-  function atLiveEdge(clock, edgeSec) {
-    return !!clock && clock.live && typeof clock.seekEnd === 'number' && clock.seekEnd - clock.currentTime <= edgeSec;
+  // 直播中：在最新 → 一般的「跟隨到底」；倒轉 DVR → 依時間軸同步。
+  // v43（T5.2，審查十一 16.1 (F)）：YouTube 一般延遲模式下，在最新時 seekEnd − currentTime 本來就有數十秒。
+  //   判定順序：播放器「直播」徽章（clock.liveHead：true／false；null＝讀不到）→ 延遲 ≤ 基準（在最新時量到的延遲）＋ edgeSec
+  function liveLag(clock) {
+    return clock && clock.live && typeof clock.seekEnd === 'number' ? clock.seekEnd - clock.currentTime : null;
   }
-  // 直播中目前播放位置對應的實際時間（ms）
-  function playheadAbs(clock) {
-    return clock.at - (clock.seekEnd - clock.currentTime) * 1000;
+  function atLiveEdge(clock, edgeSec, baseline) {
+    const lag = liveLag(clock);
+    if (lag == null) return false;
+    if (clock.liveHead === true || clock.liveHead === false) return clock.liveHead;
+    return lag <= (baseline || 0) + edgeSec;
+  }
+  // 基準延遲的更新：徽章說在最新 → 直接採用；徽章說不在最新、暫停中 → 不學；
+  // 讀不到徽章時：第一個樣本、或比基準小 → 採用；在最新範圍內但較大 → 每次只往上追 drift 比例（延遲慢慢變大的長時間直播）；
+  // 超出範圍（倒轉中）→ 不變
+  function nextBaseline(b, clock, edgeSec, drift) {
+    const lag = liveLag(clock);
+    if (lag == null || lag < 0 || clock.paused) return b;
+    if (clock.liveHead === true) return lag;
+    if (clock.liveHead === false) return b;
+    if (b == null || lag < b) return lag;
+    if (lag <= b + edgeSec) return b + (lag - b) * (drift == null ? 0.05 : drift);
+    return b;
+  }
+  // 直播中目前播放位置對應的實際時間（ms）：扣掉在最新時本來就有的延遲（基準）
+  function playheadAbs(clock, baseline) {
+    const behind = Math.max(0, (clock.seekEnd - clock.currentTime) - (baseline || 0));
+    return clock.at - behind * 1000;
   }
   // 清單（withPhaseDividers 的輸出）中「目前播放位置」的訊息：影片時間 ≤ t 的最後一則。
   // 直播：依 timestampAbs（清單本來就依此排序）二分搜尋；VOD：依該版本 offset，先抽出有 offset 的訊息（遞增）再二分搜尋
@@ -198,7 +220,7 @@
     if (!clock || !entries || !entries.length) return -1;
     const isMsg = (e) => e.kind === 'msg' && (e.it.m.phase || 'live') === 'live';
     if (clock.live) {
-      const target = playheadAbs(clock);
+      const target = playheadAbs(clock, o && o.baseline);
       let lo = 0, hi = entries.length - 1, ans = -1;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
@@ -301,6 +323,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg,
-    versionOffset, videoTimeOf, inRange, atLiveEdge, playheadAbs, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

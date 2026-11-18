@@ -95,6 +95,19 @@
     info = { isLiveBroadcast: true, endDate: null };
     vs.seek = [6400, 10000]; vs.t = 9990;
     await until(() => { const m = w.got.filter((x) => x.type === FM.VOD_TIME).pop(); return m && m.live && m.seekEnd === 10000; }, 2000, '直播 clock');
+    // v43（T5.2）：seeked 累計次數；「直播」徽章的判定（找不到 → null、disabled → 在最新、可點 → 不在最新）
+    const last = () => w.got.filter((x) => x.type === FM.VOD_TIME).pop();
+    eq([last().liveHead, last().badge], [null, 'missing']);
+    const n0 = last().seeks;
+    video.currentTime = 9900; // 設定 currentTime 會觸發 seeked
+    await until(() => last().seeks === n0 + 1 && last().currentTime === 9900, 2000, 'seeks +1');
+    const player = document.createElement('div'); player.className = 'html5-video-player';
+    const badge = document.createElement('button'); badge.className = 'ytp-live-badge'; badge.textContent = 'LIVE'; badge.disabled = true;
+    player.appendChild(badge); document.body.appendChild(player);
+    await until(() => last().liveHead === true && last().badge === 'disabled', 2000, '徽章：在最新');
+    badge.disabled = false;
+    await until(() => last().liveHead === false && last().badge === 'behind', 2000, '徽章：不在最新');
+    player.remove();
     info = { isLiveBroadcast: false, endDate: null }; vs.seek = null;
   });
 
