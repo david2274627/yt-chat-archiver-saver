@@ -126,9 +126,10 @@ function report(data) {
       if (!g9.has(k)) g9.set(k, []);
       g9.get(k).push(r);
     }
-    L('## P9 記憶體（每 5 分鐘）');
+    const p9Min = data.p9Minutes || (byProbe.P1 || []).map((r) => r.data && r.data.p9Minutes).find((x) => typeof x === 'number') || 5;
+    L('## P9 記憶體（每 ' + p9Min + ' 分鐘）');
     L();
-    L('同源的 top 與聊天室 iframe 通常共用同一個 V8 heap，兩邊的 heap 數字可能相同；各 frame 的差異看 DOM 節點數。`performance.memory` 的數值有量化誤差，只看趨勢。');
+    L('同源的 top 與聊天室 iframe 通常共用同一個 V8 heap，兩邊的 heap 數字可能相同；各 frame 的差異看 DOM 節點數。`panel` 是面板 viewer（擴充功能 origin，另一個程序）。`performance.memory` 的數值有量化誤差，只看趨勢。');
     L();
     L('| 分頁 | 環境 | videoId | 期間 | 筆數 | used heap 首→末（MB） | used 最大 | 每小時變化 | DOM 節點 首→末 | #items 最大 |');
     L('|---|---|---|---|---|---|---|---|---|---|');
@@ -152,11 +153,21 @@ function report(data) {
       const pick = list.length <= 24 ? list : Array.from({ length: 24 }, (_, i) => list[Math.round(i * (list.length - 1) / 23)]);
       L('### ' + env + '（分頁 ' + tab + '，' + vid + '）');
       L();
-      L('| 時間 | used（MB） | total（MB） | DOM 節點 | #items | 佇列 | 背景 |');
-      L('|---|---|---|---|---|---|---|');
-      for (const r of pick) {
-        const d = r.data;
-        L('| ' + [hm(r.ts), d.usedJSHeapMB, d.totalJSHeapMB, d.domNodes, d.itemsNodes, d.queue, d.hidden ? '是' : '否'].map(esc).join(' | ') + ' |');
+      if (env === 'panel') {
+        // v44（T5.3，18.4）面板 viewer：清單筆數（訊息／篩選後列）、虛擬列表實際繪出的列數、退讓中
+        L('| 時間 | used（MB） | total（MB） | DOM 節點 | 訊息 | 列 | 繪出列 | 頭像快取 | 模式 | 退讓 | 背景 |');
+        L('|---|---|---|---|---|---|---|---|---|---|---|');
+        for (const r of pick) {
+          const d = r.data;
+          L('| ' + [hm(r.ts), d.usedJSHeapMB, d.totalJSHeapMB, d.domNodes, d.items, d.entries, d.rendered, d.avatars, d.mode, d.hostPaused ? '是' : '否', d.hidden ? '是' : '否'].map(esc).join(' | ') + ' |');
+        }
+      } else {
+        L('| 時間 | used（MB） | total（MB） | DOM 節點 | #items | 佇列 | 背景 |');
+        L('|---|---|---|---|---|---|---|');
+        for (const r of pick) {
+          const d = r.data;
+          L('| ' + [hm(r.ts), d.usedJSHeapMB, d.totalJSHeapMB, d.domNodes, d.itemsNodes, d.queue, d.hidden ? '是' : '否'].map(esc).join(' | ') + ' |');
+        }
       }
       L();
     }

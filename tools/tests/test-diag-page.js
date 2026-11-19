@@ -55,6 +55,11 @@
     p = U.computePlan({ schedule: true, startAt: now + 60 * MIN, endMode: 'minutes', minutes: 10, hours: 6 }, now);
     eq([p.scheduled, p.opts.startAt - now, p.endAt - now], [true, 60 * MIN, 70 * MIN], '排程開始');
     eq(U.computePlan({ schedule: true, startAt: null, endMode: 'minutes', minutes: 10, hours: 6 }, now).ok, false);
+    // v44（T5.3，18.4）P9 取樣間隔：診斷頁預設 1 分鐘；1～30 的整數
+    eq(U.computePlan({ endMode: 'minutes', minutes: 10, hours: 6 }, now).opts.p9Minutes, 1, '預設 1 分鐘');
+    eq(U.computePlan({ endMode: 'minutes', minutes: 10, hours: 6, p9Minutes: '3' }, now).opts.p9Minutes, 3);
+    for (const bad of ['0', '31', '1.5', 'x']) eq(U.computePlan({ endMode: 'minutes', minutes: 10, hours: 6, p9Minutes: bad }, now).ok, false, 'P9 ' + bad);
+    assert(document.getElementById('p9Minutes') ? document.getElementById('p9Minutes').value === '1' : true, '診斷頁欄位預設 1');
   });
 
   // ---------------------------------------------------------------- 畫面整合

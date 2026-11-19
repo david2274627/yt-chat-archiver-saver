@@ -177,7 +177,9 @@
       MAX_RECORDS: 50000, MAX_BYTES: 20 * 1024 * 1024,
       RETAIN_DAYS: 30,                               // 停止 30 天後自動清除
       P5_MINUTES: 10,
-      P9_MINUTES: 5,                                 // T4.2 記憶體探針
+      P9_MINUTES: 5,                                 // T4.2 記憶體探針（start 沒指定 p9Minutes 時，例如 SW Console）
+      // v44（T5.3，審查十一 18.4）P9 取樣間隔可設定（分鐘，1～30）；診斷頁預設 1 分鐘
+      P9_MIN_MINUTES: 1, P9_MAX_MINUTES: 30, P9_PAGE_DEFAULT_MINUTES: 1,
       P7_MAX_PER_TAG: 3,                             // 結構探針：同一標籤每場最多 3 次
       FLUSH_MS: 5000, FLUSH_MAX: 50,                 // content script 端批次送出
       DOWNLOAD_DIR: 'YT聊天室診斷',

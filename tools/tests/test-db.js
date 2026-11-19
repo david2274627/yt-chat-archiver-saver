@@ -984,6 +984,27 @@
     eq(self.YTCAS_CONST.DIAG.PROBES.includes('P9'), true);
   });
 
+  test('T5.3 F-20 P9（審查十一 18.4）：取樣間隔可設定（1～30 分鐘，未指定 5）；面板 viewer（嵌入 iframe）送來的 P9 被接受並補上分頁 id', async () => {
+    await resetAll();
+    await BG.diag.clear();
+    eq((await BG.diag.start({ probes: ['P9'] })).p9Minutes, 5, '未指定');
+    await BG.diag.stop();
+    eq((await BG.diag.start({ probes: ['P9'], p9Minutes: 99 })).p9Minutes, 30, '上限');
+    await BG.diag.stop();
+    const st = await BG.diag.start({ probes: ['P9'], p9Minutes: 1 });
+    eq(st.p9Minutes, 1);
+    try {
+      const PANEL = { id: 'testextid', url: 'chrome-extension://dynamic-id/src/viewer.html?embed=1&v=vidAAAAAAA1', tab: { id: 9, index: 0, windowId: 1 } };
+      const d = { usedJSHeapMB: 40.2, totalJSHeapMB: 60, heapLimitMB: 4096, domNodes: 640, items: 8898, entries: 8898, rendered: 31, avatars: 1200, hidden: false, hostPaused: false, mode: 'tail' };
+      eq((await send({ type: 'DIAG_LOG', records: [{ probe: 'P9', kind: 'memory', ctx: { env: 'panel', videoId: 'vidAAAAAAA1' }, data: d }] }, PANEL)).accepted, 1);
+      await BG.diag.flush();
+      const recs = (await DB.diagAll()).filter((x) => x.probe === 'P9');
+      eq(recs[0].data, d);
+      eq([recs[0].ctx.env, recs[0].ctx.tab], ['panel', 9]);
+      eq((await BG.diag.export()).p9Minutes, 1, '匯出檔記下間隔（報告用）');
+    } finally { await BG.diag.stop(); }
+  });
+
   test('T3.8 C-1／T3.9 B-1：擴充功能更新或首次安裝（onInstalled: update／install）→ 對所有 YouTube 分頁的所有 frame 重新注入 content script；非 YouTube 分頁與卸載分頁不注入；失敗分頁回報', async () => {
     await resetAll();
     chrome.scripting._calls.length = 0;

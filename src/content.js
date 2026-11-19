@@ -102,7 +102,13 @@
   }
   if (env !== 'other') {
     setTimeout(p9, 30000);
-    setInterval(p9, DG.P9_MINUTES * 60000);
+    // v44（T5.3，18.4）間隔依記錄設定（diagState.p9Minutes，診斷頁預設 1 分鐘）；每次取樣後重新排程，設定改變即生效
+    //（每 15 秒檢查一次是否到了下一次取樣時間）
+    let lastP9 = Date.now();
+    setInterval(() => {
+      const every = Math.max(DG.P9_MIN_MINUTES, Number(diagSt.p9Minutes) || DG.P9_MINUTES) * 60000;
+      if (Date.now() - lastP9 >= every - 1000) { lastP9 = Date.now(); p9(); }
+    }, 15000);
     // 記錄途中才開始（或新加入 P9）時立即取樣一次
     try { chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch[DG.STATE_KEY]) setTimeout(p9, 1000); }); } catch (_) { /* ignore */ }
   }

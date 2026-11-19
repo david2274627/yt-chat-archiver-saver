@@ -423,7 +423,9 @@ async function diagStart(opts) {
   const maxEnd = startAt + hours * 3600e3;
   const endsAt = typeof opts.endAt === 'number' && opts.endAt > startAt ? Math.min(opts.endAt, maxEnd) : maxEnd;
   const scheduled = startAt > now;
-  const st = { active: !scheduled, scheduled, startAt, endsAt, probes, hours, createdAt: now, stoppedAt: null, reason: null,
+  // v44（T5.3，18.4）P9 取樣間隔（分鐘）
+  const p9Minutes = Math.min(D.P9_MAX_MINUTES, Math.max(D.P9_MIN_MINUTES, Math.round(Number(opts.p9Minutes) || D.P9_MINUTES)));
+  const st = { active: !scheduled, scheduled, startAt, endsAt, probes, hours, p9Minutes, createdAt: now, stoppedAt: null, reason: null,
     version: chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version };
   if (!scheduled) await DB.diagClear(); // 新的一段記錄：清掉上一段（匯出後才開始新的）
   await saveDiag(st);
@@ -433,7 +435,7 @@ async function diagStart(opts) {
     chrome.alarms.create('ytcas-diag-p5', { periodInMinutes: D.P5_MINUTES });
   } catch (_) { /* ignore */ }
   setRecBadge(st.active);
-  if (st.active) { diagLog('P1', 'diag-start', { probes, hours, endsAt }); runP5().catch(() => {}); }
+  if (st.active) { diagLog('P1', 'diag-start', { probes, hours, endsAt, p9Minutes }); runP5().catch(() => {}); }
   return diagStatus();
 }
 async function diagStop(reason) {
@@ -501,7 +503,7 @@ async function diagExport() {
   return { format: 'ytcas-diag', formatVersion: 1, app: C.EXPORT_APP, version: chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version,
     chrome: (/Chrome\/([\d.]+)/.exec(ua) || [])[1] || null, exportedAt: Date.now(),
     period: { startAt: st.startAt || null, endsAt: st.endsAt || null, stoppedAt: st.stoppedAt || null, reason: st.reason || null, active: !!st.active },
-    probes: st.probes || [], records: await DB.diagAll() };
+    probes: st.probes || [], p9Minutes: st.p9Minutes || D.P9_MINUTES, records: await DB.diagAll() };
 }
 function pad(n) { return String(n).padStart(2, '0'); }
 function diagFilename(t) {

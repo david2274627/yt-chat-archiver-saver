@@ -1222,6 +1222,37 @@
     }
     if (embed) { root.addEventListener('message', onFrame); toTop({ type: C.FM.PANEL_READY }); }
 
+    // ---------------- v44（T5.3，審查十一 18.4）F-20 P9：面板 viewer 本身的記憶體
+    // 面板是擴充功能 origin 的 iframe（另一個程序），top 與聊天室框架的 P9 量不到。記錄中且選了 P9 才取樣；只有數字。
+    // heap（performance.memory）、DOM 節點、清單筆數（訊息／篩選後列）、虛擬列表實際繪出的列數
+    const DG = C.DIAG;
+    let diagSt = { active: false };
+    let lastP9 = 0;
+    if (embed && root.chrome && chrome.storage && chrome.storage.local) {
+      try {
+        const p = chrome.storage.local.get(DG.STATE_KEY);
+        if (p && p.then) p.then((o) => { diagSt = (o && o[DG.STATE_KEY]) || { active: false }; lastP9 = 0; }).catch(() => {});
+        if (chrome.storage.onChanged) chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch[DG.STATE_KEY]) { diagSt = ch[DG.STATE_KEY].newValue || { active: false }; lastP9 = 0; } });
+      } catch (_) { /* 測試頁 */ }
+    }
+    const p9On = () => !!diagSt.active && Array.isArray(diagSt.probes) && diagSt.probes.includes('P9');
+    function p9Sample() {
+      const pm = (typeof performance !== 'undefined' && performance.memory) || null;
+      const mb = (v) => (typeof v === 'number' ? Math.round(v / 104857.6) / 10 : null);
+      return { usedJSHeapMB: mb(pm && pm.usedJSHeapSize), totalJSHeapMB: mb(pm && pm.totalJSHeapSize), heapLimitMB: mb(pm && pm.jsHeapSizeLimit),
+        domNodes: document.getElementsByTagName('*').length, items: S.items.length, entries: S.entries.length,
+        rendered: list.querySelectorAll('.vrow').length, avatars: S.avatars.size, hidden: !!document.hidden, hostPaused: !!S.hostPaused, mode: S.mode };
+    }
+    function p9Tick(force) {
+      if (!p9On()) return;
+      const every = Math.max(DG.P9_MIN_MINUTES, Number(diagSt.p9Minutes) || DG.P9_MINUTES) * 60000;
+      if (!force && lastP9 && Date.now() - lastP9 < every - 1000) return;
+      lastP9 = Date.now();
+      const rec = { ts: lastP9, probe: 'P9', kind: 'memory', ctx: { env: 'panel', videoId: S.link ? S.link.orig : S.videoId }, data: p9Sample() };
+      try { const p = chrome.runtime.sendMessage({ type: RT.DIAG_LOG, records: [rec] }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* ignore */ }
+    }
+    if (embed) setInterval(() => p9Tick(false), 15000);
+
     // ---------------- 啟動
     const ready = (async () => {
       if (embed) await loadLiveSync();
@@ -1233,7 +1264,7 @@
     })();
 
     return {
-      ready, load, state: S, _onRuntime: onRuntime, _shiftLatency: shiftLatency, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
+      ready, load, state: S, _onRuntime: onRuntime, _shiftLatency: shiftLatency, _p9Sample: p9Sample, _p9Tick: p9Tick, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
       els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText },
     };
   }

@@ -15,7 +15,7 @@
     P6: 'P6 彈出視窗開啟／關閉／接手、斷線分頁',
     P7: 'P7 結構探針（未知元件、禮物、降落、直播結束時自動記錄結構）',
     P8: 'P8 本套件的警告、錯誤與例外',
-    P9: 'P9 記憶體（JS heap、DOM 節點數，每 5 分鐘）',
+    P9: 'P9 記憶體（JS heap、DOM 節點數；面板另記清單筆數與繪出列數；間隔見下方）',
   };
   const pad = (n) => String(n).padStart(2, '0');
   const hhmm = (t) => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
@@ -50,6 +50,12 @@
     const opts = { hours, endAt: end };
     if (scheduled) opts.startAt = start;
     if (Array.isArray(form.probes)) opts.probes = form.probes;
+    // v44（T5.3，18.4）P9 取樣間隔（分鐘）：診斷頁預設 1 分鐘
+    const p9 = Number(form.p9Minutes);
+    if (form.p9Minutes != null && form.p9Minutes !== '' && (!Number.isFinite(p9) || p9 < D.P9_MIN_MINUTES || p9 > D.P9_MAX_MINUTES || Math.round(p9) !== p9)) {
+      return { ok: false, error: 'P9 取樣間隔請輸入 ' + D.P9_MIN_MINUTES + '～' + D.P9_MAX_MINUTES + ' 的整數（分鐘）' };
+    }
+    opts.p9Minutes = Number.isFinite(p9) && form.p9Minutes !== '' && form.p9Minutes != null ? p9 : D.P9_PAGE_DEFAULT_MINUTES;
     return { ok: true, scheduled, startAt: start, endAt: end, effectiveEnd, exceeds, hours,
       warning: exceeds ? '超過最長時限 ' + hours + ' 小時，將於上限時停止（' + hhmm(effectiveEnd) + '）' : '', opts,
       immediateFallback: !!form.schedule && !scheduled }; // 排程時間已過 → 立即開始
@@ -90,6 +96,7 @@
       endMode: $('mode-end').checked ? 'end' : 'minutes', minutes: $('minutes').value === '' ? NaN : Number($('minutes').value),
       endAt: toMs($('endAt').value), hours: Number($('hours').value),
       probes: Array.from(document.querySelectorAll('.probe:checked')).map((x) => x.value),
+      p9Minutes: $('p9Minutes') ? $('p9Minutes').value : null,
     };
   }
 
@@ -108,7 +115,8 @@
     $('limit-warn').textContent = p.warning;
     return p;
   }
-  ['schedule', 'startAt', 'mode-minutes', 'mode-end', 'minutes', 'endAt', 'hours'].forEach((id) => {
+  ['schedule', 'startAt', 'mode-minutes', 'mode-end', 'minutes', 'endAt', 'hours', 'p9Minutes'].forEach((id) => {
+    if (!$(id)) return;
     $(id).addEventListener('input', syncForm);
     $(id).addEventListener('change', syncForm);
   });

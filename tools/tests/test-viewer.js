@@ -663,6 +663,43 @@
     await DB.close();
   });
 
+  test('T5.3 F-20 P9 面板（審查十一 18.4）：記錄中且選了 P9 才送；只有數字（heap、DOM 節點、清單筆數、繪出列數）；依設定的間隔', async () => {
+    await resetDb();
+    const VP9 = 'vidP9PANEL1';
+    const msgs = [];
+    for (let i = 0; i < 500; i++) msgs.push(mk({ id: 'q' + i, videoId: VP9, timestampAbs: T0 + i * 1000, runs: [{ text: '不應出現 ' + i }] }));
+    await put({ videoId: VP9, title: '不應出現的標題', versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const sent = [];
+    const realSend = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = (m) => { sent.push(JSON.parse(JSON.stringify(m))); return Promise.resolve({ ok: true }); };
+    chrome.storage.local._reset();
+    try {
+      const c = V.mount(host, { embed: true, videoId: VP9 });
+      await c.ready; await frame();
+      c._p9Tick(true);
+      eq(sent.filter((m) => m.type === 'DIAG_LOG').length, 0, '沒有記錄中：不送');
+      await chrome.storage.local.set({ [self.YTCAS_CONST.DIAG.STATE_KEY]: { active: true, probes: ['P9'], p9Minutes: 1 } });
+      await sleep(20);
+      c._p9Tick(false);
+      const logs = sent.filter((m) => m.type === 'DIAG_LOG');
+      eq(logs.length, 1);
+      const r = logs[0].records[0];
+      eq([r.probe, r.kind, r.ctx.env, r.ctx.videoId], ['P9', 'memory', 'panel', VP9]);
+      eq([r.data.items, r.data.entries], [500, 500]);
+      assert(r.data.rendered > 0 && r.data.rendered < 200, '虛擬列表只繪出可見列 ' + r.data.rendered);
+      assert(typeof r.data.domNodes === 'number' && r.data.domNodes > 0, 'DOM 節點');
+      assert(Object.values(r.data).every((v) => typeof v === 'number' || typeof v === 'boolean' || v === null || v === 'tail' || v === 'sync'), '只有數字');
+      assert(!JSON.stringify(r).includes('不應出現'), '沒有內容與標題');
+      c._p9Tick(false);
+      eq(sent.filter((m) => m.type === 'DIAG_LOG').length, 1, '間隔未到不重送');
+      await chrome.storage.local.set({ [self.YTCAS_CONST.DIAG.STATE_KEY]: { active: true, probes: ['P1'] } });
+      await sleep(20);
+      c._p9Tick(true);
+      eq(sent.filter((m) => m.type === 'DIAG_LOG').length, 1, '沒選 P9：不送');
+    } finally { chrome.runtime.sendMessage = realSend; chrome.storage.local._reset(); }
+  });
+
   test('T5.2 (I)「在後台開啟此場次」：請 background 開分頁（OPEN_VIEWER），不自己開', async () => {
     await resetDb();
     await put({ videoId: VID, title: 't', versions: [], linkedVideos: [] }, [mk({ id: 'o1' })]);
