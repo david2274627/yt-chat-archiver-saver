@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v43**（前版：v42；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v44**（前版：v43；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -43,6 +43,7 @@
 - **v41 調整**（T5 實作時確定的細節）：新增 `src/panel.js`（3.1）；frame 訊息 `PANEL_READY`／`PANEL_CLOSE`／`PANEL_STATE`、`VOD_TIME` 帶直播 DVR 範圍、`CAPTURE_STATUS` 帶 F-12 結果（4.3）；F-08 直播中以 DVR 範圍換算、直播邊緣 15 秒內維持跟隨到底；F-09 T5 的裁切為全隱藏（動態露出輸入區在 T6）；F-18 連結影片的 `offsetShift` 定義；PoC content script 自 T5 起不再載入。
 - **v42 調整**（`docs/review-2026-11-17.md` 第 10、13 節，T5.1）：top → 面板訊息同時送往兩個可能的 origin（`use_dynamic_url`，4.3）；面板的推播後備（資料庫補讀）、計數口徑、使用者捲動的判定（F-08）；直播訊息以到達時間記錄（`tsSource`，F-02）；頭像延遲載入、同場次同作者補頭像、`fillAvatars`（F-02）；退讓時不留任何定位樣式（6.2）；窄面板的「全部」保留文字（F-05）。
 - **v43 調整**（`docs/review-2026-11-17.md` 第 15、16 節，T5.2）：直播的「在最新」判定（播放器徽章→延遲基準）、DVR 換算扣掉基準、播放器 seek 時解除同步暫停、範圍外提示、直播同步的容許誤差（F-08）；`VOD_TIME` 加 `seeks`／`liveHead`／`badge`、`PANEL_STATE` 也送給面板（4.3）；連線狀態的實際筆數與每秒刷新；補讀後備在退讓／分頁隱藏時暫停、整場讀取間隔 2 分鐘；「在後台開啟此場次」由 background 開啟（`RT.OPEN_VIEWER`）。
+- **v44 調整**（`docs/review-2026-11-17.md` 第 17、18 節，T5.3）：「在後台開啟此場次」改開不在 `web_accessible_resources` 的 `backend.html`（F-08）；VOD 同步以 replay offset 為準、live 來源依中位數差校正、清單依同步時間排序、點時間碼後藍框標在被點的那則（F-08）；直播倒轉的目標以跳轉當下為錨點、「同步微調」（直播延遲，依頻道記住）、進入頁面時已不在最新沿用記住的基準（F-08）；訊息連結保留完整網址（F-02 `runs` 的 `link`）；圖片網址正規化、超級貼圖延遲載入補送與 `stickerAlt`（F-02）；F-20 P9 補量面板、取樣間隔可設定。
 
 ---
 
@@ -190,6 +191,7 @@ yt-chat-archiver-saver/
   runs: Array<{ text } | { emoji: { src, alt, shortcut } }>,  // 富媒體內容
   amount?: string, color?: string,      // SC / 超級貼圖
   stickerSrc?: string,
+  stickerAlt?: string,                   // （v44）超級貼圖的描述（img 的 alt），沒有圖時當後備
   giftName?: string, giftImage?: string, giftCount?: number, jewels?: number,  // v27：gift（F-13），聊天室有顯示才存
   rawTag?: string,  // v27：type 為 system 時保存原始元件標籤名稱，供 RECLASSIFY_SYSTEM 重新分類（F-13）
   timestampAbs: number /*ms epoch*/, videoOffsetSec: number|null,
@@ -320,6 +322,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 置頂訊息擷取（v25 確認）：新版面置頂列位於輸入列上方，來源仍是 `yt-live-chat-banner-manager`（`chat.bannerContainer`）＞ `yt-live-chat-banner-renderer` ＞ `#contents` 內的 `yt-live-chat-text-message-renderer#<訊息 id>`（結構同一般訊息），見 `docs/youtube-dom-notes.md` 2.4。
 - （v42，T5.1，審查十一 13.1 (C)）**直播訊息時間精度**：`#timestamp` 只到分鐘。observer 即時擷取的訊息，若擷取時間與顯示的分鐘（取中點）相差 ≤ 90 秒，`timestampAbs` 用**到達時間**（`tsSource: 'arrival'`）；回溯、補掃、修剪前補擷取的歷史訊息與相差太多的，用顯示時間（`'clock'`：擷取時間落在該分鐘內時為擷取時間，否則為該分鐘的開頭或最後一刻）；解析失敗用擷取時間（`'capture'`）。重播不變。`timestampUsec` 等元件的 JavaScript 屬性由頁面設定，content script 的隔離環境讀不到，不採用。
 - （v42，T5.1，審查十一第 10 節）**頭像延遲載入**：擷取當下 `yt-img-shadow` 的 `img` 可能還沒有 https 網址（空的或 `data:` 佔位圖）。擷取端監看該 `img` 的 `src` 最多 10 秒，取得後補送同一則（F-14 只補空欄位）；節點被修剪或逾時就放棄，同時監看上限 60。background 寫入時，沒有頭像的訊息以**同場次同作者**（`@handle` 或頻道 id，**不用名稱**）已知的頭像補上。檢視器顯示順序：訊息本身 → 同場次同作者 → `channels`（F-03）→ 首字圓點。既有紀錄：`YTCAS_BG.fillAvatars()`（預覽）／`{ dryRun: false }`。
+- （v44，T5.3，審查十一 17.2）**圖片網址正規化**（表符、頭像、超級貼圖、禮物共用）：先用 `src` 屬性值、協定相對網址（`//host/…`）補 `https:`，不行再用瀏覽器已解析的 `.src`；只接受 https（`data:`、`blob:`、`javascript:`、`http:` 丟棄）。超級貼圖的 `img` 套用與頭像相同的延遲載入補送（統計 `stickerLate`／`stickerMissing`），並存 `stickerAlt`；檢視器沒有圖或圖載入失敗時顯示 alt，都沒有才顯示 🏷。既有沒有 `stickerSrc` 的紀錄無法補回。貼圖 `img` 的實際格式待實機確認（dom-notes 2.7）。
+- （v44，T5.3，審查十一 17.1）**訊息中的連結**：`runs` 的文字片段可帶 `link: { url }`（`{ text, link: { url } }`）。`#message` 內的 `<a href>`：YouTube 的 `/redirect?…&q=<網址>` 解出 `q`；站內連結（頻道、影片、`#hashtag`）保留為 `https://www.youtube.com/…` 的完整網址；只接受 `http:`／`https:`，其他協定只留文字。background 寫入時（擷取、匯入、遷移）再檢查一次。檢視器以 `<a target="_blank" rel="noopener noreferrer">` 呈現，文字照原樣（可能是截斷的），`title` 為完整網址，一律 `textContent`。匯出包含完整網址；舊版 JSON 的 link 片段一併轉入。既有紀錄只存了截斷的文字，無法補回。連結的 DOM 結構待實機確認（dom-notes 2.8）。
 - **時間戳**（v25）：直播訊息的 `span#timestamp` **有值**，`yt-live-chat-renderer[hide-timestamps]` 只是以 CSS 隱藏。擷取時直接讀 `#timestamp` 文字（當地時間字串；實機長度約 7 字元，確切格式待 T3 實作時確認，解析需容許上午／下午與 AM／PM 兩種寫法），配合擷取當下的日期還原 `timestampAbs`；還原結果比擷取時間晚超過 12 小時時視為前一天（跨日校正）；解析失敗時以擷取時間為準。`videoOffsetSec` 仍以 `startDate` 推算（4.3）。（v29）`#timestamp` 只到分鐘：`timestampAbs` 取「擷取時間夾在該分鐘範圍內」的值（`clamp(擷取時間, 該分鐘起點, 起點 + 59.999 秒)`），即時訊息因此保有秒級精度，回溯擷取的舊訊息則落在該分鐘的最後一刻。
 - **身分**（v25）：以 `yt-live-chat-text-message-renderer[author-type]`（`owner`／`moderator`／`member`…）為主，`#chat-badges` 內的徽章為輔（例如 `verified`）。
 - **未知訊息元件**（v25）：`#items` 下出現不認識的元件標籤時，`console.info('[ytcas] 未知訊息元件', tagName)`（每種標籤一次），並以 `type: 'system'` 保存，不丟棄。尚未在實機出現的類型（SC 文字版、禮物購買、降落、里程碑、投票內部元件）在 `selectors.js` 標「待實機確認」。
@@ -516,7 +520,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   | P6 | 彈出視窗開啟／關閉／接手 | 事件 |
   | P7 | 結構探針：遇到未知元件、禮物元件、降落橫幅、直播結束時，自動記錄該元件（或聊天室）的結構（同附錄 C／E：標籤、id、屬性名稱、`img` 網域、有無文字），同一標籤每場最多 3 次 | 事件 |
   | P8 | 本套件的 `warn`／`error` 與未捕捉的例外（含堆疊，去除網址參數與 handle）。（v36，追加七 B-1）`warnOnce` 只記 **key＋等級＋`constants.js` 預先定義的說明**（`DIAG_WARN_TEXT`，不取執行期字串）；其他訊息與堆疊**只保留 ASCII**（中日韓文字換成 `[…]`） | 事件 |
-  | P9 | （v40，T4.2）記憶體：top frame 與 chat frame（彈出式聊天室）各自每 5 分鐘記錄 `performance.memory` 的 `usedJSHeapSize`／`totalJSHeapSize`／`jsHeapSizeLimit`（MB，Chrome 專有 API，只有數字）、該 frame 的 DOM 節點數、是否在背景；chat frame 另記 `#items` 節點數、佇列長度、observer 數與收錄狀態；top frame 另記影片緩衝秒數。同源的 top 與聊天室 iframe 通常共用同一個 V8 heap，heap 數字只看趨勢，各 frame 的差異看 DOM 節點數。`diag-report.js` 輸出各 frame 的時間序列與每小時變化，30 分鐘以上增加超過 100 MB 且超過 50% 時列入異常 | 定時 |
+  | P9 | （v40，T4.2）記憶體：top frame 與 chat frame（彈出式聊天室）各自每 5 分鐘記錄 `performance.memory` 的 `usedJSHeapSize`／`totalJSHeapSize`／`jsHeapSizeLimit`（MB，Chrome 專有 API，只有數字）、該 frame 的 DOM 節點數、是否在背景；chat frame 另記 `#items` 節點數、佇列長度、observer 數與收錄狀態；top frame 另記影片緩衝秒數。同源的 top 與聊天室 iframe 通常共用同一個 V8 heap，heap 數字只看趨勢，各 frame 的差異看 DOM 節點數。`diag-report.js` 輸出各 frame 的時間序列與每小時變化，30 分鐘以上增加超過 100 MB 且超過 50% 時列入異常。（v44，T5.3，審查十一 18.4）**面板 viewer**（擴充功能 origin 的 iframe，另一個程序）另記 `env: 'panel'`：heap、DOM 節點、清單筆數（`items`、篩選後列 `entries`）、虛擬列表實際繪出的列數（`rendered`）、頭像快取數、模式、退讓中。**取樣間隔可設定**（`diagState.p9Minutes`，1～30 分鐘；未指定為 5，診斷頁預設 1），匯出檔帶 `p9Minutes` | 定時 |
 - **隱私**：只記筆數、元件標籤、id、屬性名稱、時間、`videoId`、圖片**網域**。**不記**訊息文字、使用者名稱或 handle、頻道名稱、影片標題、頭像網址。content script 端只組這些欄位；background 寫入前再消毒一次（字串只允許標籤／id／時間類字元，含 `@` 或中日韓文字的字串一律換成 `[removed]`，網址只留網域）。
 - **容量**：獨立資料表 `diag_log`（4.1），環狀：最多 5 萬筆或 20 MB，超過丟最舊；停止 30 天後自動清除（診斷資料不屬於聊天存檔，可自動刪除）。
 - **匯出**：單一 `ytcas-diag-YYYYMMDD-HHmm.json`（`{ format: 'ytcas-diag', formatVersion: 1, version, chrome, exportedAt, period, probes, records[] }`），下載到「下載\YT聊天室診斷\」（`downloads`）；也提供「複製摘要」（前 200 行人類可讀文字）。使用者把檔案放進 `docs/diag/raw/`（v36，追加七 B-2：匯出檔含觀看過的 `videoId` 與時間，等同觀看紀錄，**`.gitignore` 排除，不進 git**）。Claude Code 以 `tools/diag-report.js` 產生的 Markdown 摘要放在 `docs/diag/`，只 commit 摘要（摘要中的 `videoId` 只保留前 4 碼）。
@@ -557,7 +561,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 點藍色時間碼（如 `2:02:10`）→ `SEEK_TO`，播放器跳轉。
 - （v42，T5.1）**使用者捲動的判定**：只有最近 1.2 秒內在清單上有使用者操作（`wheel`、`touchstart`／`touchmove`、`pointerdown`、`keydown`）的捲動才算使用者捲動；內容高度改變時瀏覽器自己夾住 `scrollTop` 的捲動不算（v41 會因此誤關「跟隨到底」）。
 - （v42，T5.1，審查十一 13.1 (B)、13.3）**面板的即時更新與計數口徑**：載入期間（含重新載入）收到的推播先暫存，載入完成後補上；清單以 id 與 `aliasIds` 對應位置，同一則以不同 id 送來時更新既有那筆。直播中（收錄中的場次）超過 15 秒沒有推播時，每 5 秒比對資料庫筆數，有新訊息就以 `videoId_offset` 索引只讀新的部分（offset 未知時讀整場，最多每 30 秒）。（v43）比對改用 `videoId` 索引的 `count`（不讀紀錄內容）；**退讓中（`PANEL_STATE.paused`）或分頁隱藏時暫停**；整場讀取的最短間隔改為 `FULL_POLL_MS`（2 分鐘）——`messages` 沒有 `videoId`＋`timestampAbs` 索引，加索引需升級 `DB_VERSION`，先記入 F-20 觀察（24 小時直播的記憶體與 CPU）。**口徑**：標頭「N 則」＝面板清單筆數＝本場資料庫 `messages` 筆數（含系統訊息、已刪除標記、各 phase；不含置頂）；「全部」膠囊＝套用使用者／關鍵字／隱藏已刪除後的筆數（沒有篩選時與標頭相同）。⋯ 選單「連線狀態」列出訊息與資料庫筆數、各 frame 訊息數、推播（套用、載入中暫存）、補讀與載入次數（只有數字）。（v43，16.1 (G)(H)）「資料庫」為實際筆數（`countMessages`，選單開著時每秒查詢；v42 只在載入／補讀時更新，推播進來後顯示過時，造成「面板筆數多於資料庫」）；另列出清單重複數、其他場次的推播數、模式、延遲與基準、徽章、seeked／跳轉次數、目標時間 → 對應訊息的時間；**選單開著時每秒刷新**。
-- （v43，T5.2 (I)）**在後台開啟此場次**：內嵌面板送 `RT.OPEN_VIEWER { videoId }`，background 驗證後以 `chrome.tabs.create` 開在原分頁右邊（只接受擴充功能頁面）。面板自己開新分頁時，導覽被當成網頁發起、存取 `use_dynamic_url` 的資源 → `ERR_BLOCKED_BY_CLIENT`。
+- （v43，T5.2 (I)）**在後台開啟此場次**：內嵌面板送 `RT.OPEN_VIEWER { videoId }`，background 驗證後以 `chrome.tabs.create` 開在原分頁右邊（只接受擴充功能頁面）。面板自己開新分頁時，導覽被當成網頁發起、存取 `use_dynamic_url` 的資源 → `ERR_BLOCKED_BY_CLIENT`。（v44，T5.3 (J)）v43 實機仍被擋：background 改開內容相同、**不在 `web_accessible_resources`** 的 `src/backend.html`（後台獨立分頁），不設 `openerTabId`；位置參數不合法時不指定位置重試；失敗時回傳原因代碼（`bad-video-id`、`tabs-create:…`、`forbidden:<協定>`）並在 SW console `warnOnce`（只有代碼）。嵌入模式**不再退回 `window.open`**，失敗時面板顯示「無法開啟後台分頁（代碼）」。
 - （v43，T5.2，審查十一 16.1 (F)、16.3）**直播的「在最新」與 DVR 換算**：YouTube 一般延遲模式下，在最新時 `seekEnd − currentTime`（延遲）本來就有數十秒，v42 以固定 15 秒判斷，面板在直播中永遠是 sync。改為：
   - **在最新**：`VOD_TIME.liveHead` 為 `true`／`false` 時以它為準；為 `null`（讀不到徽章）時，延遲 ≤ **基準** ＋ `LIVE_EDGE_SEC`（15 秒）。
   - **基準**＝在最新時量到的延遲：徽章說在最新 → 直接採用；讀不到徽章時，第一個樣本或比基準小的值直接採用，在範圍內但較大時每個樣本只往上追 `BASELINE_DRIFT`（5%），超出範圍（倒轉中）、暫停中、徽章說不在最新時不更新。
@@ -565,6 +569,10 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - **播放器 seek 時解除同步暫停**：`seeks` 有變化，或播放位置與預期（上一次＋經過時間）差超過 `SEEK_JUMP_SEC`（3 秒，`seeked` 沒觸發時的後備）→ 視為使用者要求重新跟隨：解除暫停並捲到新位置；跳回最新 → 恢復跟隨到底。v42 在直播 sync 中只要捲動過一次清單，之後所有倒轉都不再捲動。
   - **範圍外**：播放位置早於最早收錄的 live 訊息時，清單上方顯示「此時間點之前沒有收錄（最早 hh:mm:ss）」。
   - **容許誤差**（審查十一 15 節第 3 點）：訊息時間是到達時間（送出＋聊天延遲，F-02 v42），畫面還有直播延遲；以基準扣除後，藍框與畫面仍可能差 **±10 秒**左右，屬預期。實測時以連線狀態的「目標 → 訊息」與畫面內容記錄實際差距，超過 ±30 秒視為錯誤。
+  - （v44，T5.3 (L)）**倒轉時的目標時間**：以跳轉當下（與在最新時每次取樣）為錨點 `{ ct: currentTime, abs: playheadAbs }`，之後目標＝`abs + (currentTime − ct) × 1000 − 同步微調 × 1000`，只隨播放位置前進，不依賴 `seekEnd` 之後的變化（實機 `seekEnd − currentTime` 在最新時約 3,556 秒，`seekEnd` 不是真正的直播邊緣）。時間碼的影片時間同樣加上同步微調。
+  - （v44）**同步微調**＝畫面落後真實時間的秒數（直播延遲）。播放器的直播延遲在隔離環境讀不到（「詳細統計資料」只在使用者打開時才有 DOM；播放器 API 是頁面 JS），所以由使用者校正：面板在直播倒轉時顯示「同步微調：畫面落後 N 秒」與 −10／−1／+1／+10（範圍 ±600），依頻道（handle 或頻道 id）存在 `chrome.storage.local` 的 `liveSync`（最多 200 個頻道）。沒校正過的頻道沿用最近一次校正的值；都沒有時為 `PANEL.LIVE_LATENCY_DEFAULT_SEC`（0）。藍框的訊息比畫面內容新 → 加；比畫面內容舊 → 減。
+  - （v44）**進入頁面時已不在最新**（徽章「非最新」、本頁還沒量到基準）：沿用上次記住的基準（`liveSync.baseline`，最多每 30 秒寫一次），連線狀態標示「沿用上次」；使用者回到最新後改用本頁量到的值。
+- （v44，T5.3 (K)）**VOD 同步的時間來源**：v1 的 offset 有 replay（YouTube 重播的影片時間，準確）與 live 收錄的估計值（到達時間 − 開播，含聊天延遲）兩種。已合併的訊息 offset 已改寫為 replay（F-14）；**只有 live 來源**的訊息以 `(timestampAbs − startedAt) / 1000 + 校正值` 參與同步與時間碼。校正值＝同場「live 與 replay 都收過」的訊息 `replay offset − (timestampAbs − startedAt) / 1000` 的中位數（差距超過 ±10 分鐘的略過，至少 5 筆）；沒有已合併的訊息時，以「同作者、同內容、各只出現一次」的 live／replay 配對（疑似各存一份）計算。VOD 模式（v1）的清單**依同步時間排序**，同步點因此涵蓋所有訊息；其他版本維持原本的順序。**點時間碼跳轉**後，藍框標在被點的那則，直到播放位置越過下一則或往回超過 5 秒。連線狀態列出校正值與已合併／疑似重複／只有 live 的筆數；SW Console `YTCAS_BG.sourceStats()` 列出已結束場次的來源統計（只有數字）。
 - （v41，T5 實作）**影片時間換算**：VOD（`live: false`）＝該版本的 offset（v1 為 `videoOffsetSec`，F-18）＋連結影片的 `offsetShift`；直播中（`live: true`）一律以 DVR 可回放範圍換算：`seekEnd − (VOD_TIME.at − timestampAbs) / 1000`，可點條件為落在 `[seekStart, seekEnd]` 內（一般直播與長期直播相同；長期直播的時間碼文字仍為當地時間）。直播中距離直播邊緣 `PANEL.LIVE_EDGE_SEC`（15 秒）以內維持一般「跟隨到底」、不加框；倒轉 DVR 超過 15 秒才依時間軸同步。目前訊息＝影片時間 ≤ 播放位置的最後一則，捲到可視範圍底部（距離 ≤ 1500px 平滑捲動，否則直接跳）。同步中使用者自己捲動 → 暫停同步，按鈕文字為「↓ 回到播放位置」（直播跟隨到底時仍為「↓ 恢復自動捲動」）；暫停期間目前訊息的框仍會更新。
 - **長期直播備註**（v37，`docs/review-2026-11-16.md` 追加八 C，T4／T5／T7 設計時處理）：24 小時不間斷直播的 `startDate` 可能是數年前（實測 `startDate` 2023-05-07，播放器 DVR 只能回放約 17 小時），`videoOffsetSec` 以年計，功能上正確但直接顯示 offset 無意義。判斷：直播中且 `videoOffsetSec` 遠大於播放器可回放長度（`video.duration`，或 offset 超過 24 小時）即視為長期直播。處理：(a) 訊息時間碼改顯示**絕對時間**（當地時間 `HH:mm:ss`，跨日時加日期）；(b) 時間軸同步與 Click-to-Seek 以「DVR 可回放範圍」換算（offset − (直播經過秒數 − DVR 長度)），落在範圍外的訊息不可點擊；(c) 後台「覆蓋範圍」以絕對時間顯示。原始 `videoOffsetSec` 不改寫（F-14）。
 

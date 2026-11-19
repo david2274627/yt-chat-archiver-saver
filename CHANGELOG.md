@@ -147,7 +147,21 @@
   - (F) 直播時間軸同步：播放器 seek 時解除同步暫停（16.3）、延遲基準與直播徽章判定、範圍外提示；(G)(H) 連線狀態的實際筆數、同步數據、選單開著時每秒刷新（commit `83a56cb`）。
   - (I)「在後台開啟此場次」由 background 開啟（commit `fb94a37`）。
   - 補讀後備在退讓或分頁隱藏時暫停、以實際筆數比對、整場讀取間隔 2 分鐘（commit `73c585a`）。
-  - 規格 v43、測試清單、`tools/tests/README.md` 的 CSP 規則、T5 報告「T5.2」（本段落所在的 commit）。
+  - 規格 v43、測試清單、`tools/tests/README.md` 的 CSP 規則、T5 報告「T5.2」（commit `888dfad`）。
+- v44／T5.3（`docs/review-2026-11-17.md` 第 17、18 節；報告為 T5 報告的「T5.3」）：
+  - (J)「在後台開啟此場次」改開不在 `web_accessible_resources` 的 `backend.html`、不設 `openerTabId`；嵌入模式移除 `window.open` 退回，失敗時顯示原因代碼（commit `3651f4e`）。
+  - (K) VOD 同步以 replay offset 為準、live 來源依中位數差校正、清單依同步時間排序、點時間碼後藍框標在被點的那則；`YTCAS_BG.sourceStats()`（commit `d4ec0bc`）。
+  - (L) 直播倒轉的目標以跳轉當下為錨點、「同步微調 ±秒」依頻道記住、進入頁面時已不在最新沿用記住的基準（commit `492ef83`）。
+  - 17.1 訊息連結保留完整網址並可點擊；17.2 圖片網址正規化、超級貼圖延遲載入補送與 alt 後備；dom-notes 直播徽章改為已驗證（commit `3553821`）。
+  - F-20 P9 補量面板 viewer、取樣間隔可設定（診斷頁預設 1 分鐘）（commit `a88ed41`）。
+  - 審查文件第 17～18 節、P9 診斷摘要（commit `abb3ca9`）。
+  - 規格 v44、測試清單、T5 報告「T5.3」（本段落所在的 commit）。
+
+### 規格 v44（2026-11-20，T5.3）
+- 4.1：訊息 `stickerAlt`；`runs` 的文字片段可帶 `link: { url }`。
+- F-02：圖片網址正規化（協定相對網址補 https:）；超級貼圖延遲載入補送；訊息連結（`/redirect` 解出 `q`、只接受 http／https）。
+- F-08：後台分頁改開 `backend.html`；VOD 同步的時間來源與排序、點時間碼後的藍框；直播倒轉的錨點、同步微調、沿用記住的基準。
+- F-20：P9 面板 viewer（`env: 'panel'`）、取樣間隔 `p9Minutes`。
 
 ### 規格 v43（2026-11-19，T5.2）
 - 4.3：`VOD_TIME` 加 `seeks`／`liveHead`／`badge`；`PANEL_STATE` 也由 top 送給面板 `{ paused }`。
