@@ -501,6 +501,76 @@
     assert(c.els.menu.hidden, '關閉選單');
   });
 
+  // ================================================================ T5.3（審查十一 18.1 (K)）
+  // 同一場：直播時收錄（live，offset＝到達時間 − 開播，比影片時間晚 8 秒）＋結束後看 VOD（replay，影片時間）
+  function kFixture(VK) {
+    const msgs = [];
+    for (let i = 0; i < 20; i++) { const off = 1900 + i * 10; msgs.push(mk({ id: 'mg' + i, videoId: VK, videoOffsetSec: off, offsets: { v1: off }, offsetSource: 'replay', sources: ['live', 'replay'], timestampAbs: T0 + (off + 8) * 1000, runs: [{ text: '合併 ' + i }] })); }
+    for (let j = 0; j < 10; j++) { const off = 1905 + j * 10; msgs.push(mk({ id: 'lv' + j, videoId: VK, videoOffsetSec: off + 8, offsets: { v1: off + 8 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 + (off + 8) * 1000, runs: [{ text: '只有直播 ' + j }] })); }
+    for (let j = 0; j < 10; j++) { const off = 1903 + j * 10; msgs.push(mk({ id: 'rp' + j, videoId: VK, videoOffsetSec: off, offsets: { v1: off }, offsetSource: 'replay', sources: ['replay'], timestampAbs: T0 + off * 1000, runs: [{ text: '只有重播 ' + j }] })); }
+    return msgs;
+  }
+  test('T5.3 (K) VOD 校正：已合併訊息的 replay offset − live 估計值的中位數；只有 live 的以此換算；沒有合併時以同作者同內容配對；排序', () => {
+    const msgs = kFixture('vidKCAL0001');
+    const stream = { startedAt: T0 };
+    const cal = CORE.vodCalibration(msgs, stream);
+    eq([cal.delta, cal.pairs, cal.how, cal.liveOnly, cal.replay], [-8, 20, 'merged', 10, 30]);
+    const lv2 = msgs.find((m) => m.id === 'lv2');
+    eq(CORE.versionOffset(lv2, 'v1', cal), 1925, '只有 live：到達時間 − 開播 − 8');
+    eq(CORE.versionOffset(lv2, 'v1', null), 1933, '沒有校正值：維持原本的估計值');
+    eq(CORE.versionOffset(msgs.find((m) => m.id === 'mg2'), 'v1', cal), 1920, '已合併：replay offset');
+    eq(CORE.versionOffset(lv2, 'v2', cal), null, '其他版本不套用');
+    const sorted = CORE.sortForVod(msgs.map((m) => CORE.indexMessage(m, new Map())), 'v1', cal).map((it) => CORE.vodSortKey(it.m, 'v1', cal));
+    assert(sorted.every((k, i) => i === 0 || k >= sorted[i - 1]), '依同步時間遞增');
+    // live 與 replay 沒有合併（id 不同、各存一份）：以內容配對
+    const dupe = [];
+    for (let i = 0; i < 8; i++) {
+      dupe.push(mk({ id: 'L' + i, authorHandle: '@u' + i, runs: [{ text: '同一句 ' + i }], sources: ['live'], offsetSource: 'estimated', videoOffsetSec: 100 + i * 30 + 6, timestampAbs: T0 + (100 + i * 30 + 6) * 1000 }));
+      dupe.push(mk({ id: 'R' + i, authorHandle: '@u' + i, runs: [{ text: '同一句 ' + i }], sources: ['replay'], offsetSource: 'replay', videoOffsetSec: 100 + i * 30, timestampAbs: T0 + (100 + i * 30) * 1000 }));
+    }
+    const c2 = CORE.vodCalibration(dupe, stream);
+    eq([c2.delta, c2.pairs, c2.dupPairs, c2.how], [-6, 0, 8, 'content']);
+    eq(CORE.vodCalibration(dupe, {}).delta, null, '沒有開播時間不校正');
+  });
+
+  test('T5.3 (K) VOD 嵌入面板：清單依同步時間排序；點時間碼後藍框標在被點的那則，直到播放位置越過下一則', async () => {
+    await resetDb();
+    const VK = 'vidKVOD0001';
+    await put({ videoId: VK, title: 'K', isLive: true, startedAt: T0, endedAt: T0 + 4000e3, lastMessageAt: T0 + 2200e3, messageCount: 40, versions: [{ id: 'v1', duration: 4000 }], linkedVideos: [] }, kFixture(VK));
+    await DB.close();
+    const opened = [];
+    const realOpen = window.open;
+    window.open = (u) => { opened.push(String(u)); return null; };
+    try {
+      const c = V.mount(host, { embed: true, videoId: VK });
+      await c.ready; await frame();
+      const A = Date.now();
+      c._onClock({ currentTime: 1900.5, paused: false, duration: 4000, live: false, at: A });
+      await frame(); await frame();
+      const keys = c.state.entries.filter((e) => e.kind === 'msg').map((e) => CORE.vodSortKey(e.it.m, 'v1', c.state.cal));
+      assert(keys.every((k, i) => i === 0 || k >= keys[i - 1]), '清單依同步時間排序');
+      eq(c.state.cal.delta, -8);
+      // v43 以前：依到達時間排序，只有 replay 的（ts＝offset）排在合併的前面 → 同步點跳過部分訊息
+      c.state.vl.reveal(c.state.entries.findIndex((e) => e.key === 'lv2'), false); await frame(); await frame();
+      const btn = c.els.list.querySelector('[data-id="lv2"] button.tc');
+      assert(btn && btn.textContent === '32:05', '時間碼為校正後的時間 ' + (btn && btn.textContent));
+      btn.click();
+      assert(opened.length === 1 && opened[0].includes('t=1925'), '跳轉到 32:05 ' + opened[0]);
+      eq(c.state.currentId, 'lv2', '點下去立刻標在被點的那則');
+      // 播放器實際跳到 32:04（關鍵影格）→ 仍標在 lv2；越過下一則（mg3＝32:10）後才改
+      c._onClock({ currentTime: 1924.2, paused: false, duration: 4000, live: false, at: A + 1000 });
+      eq(c.state.currentId, 'lv2', '跳轉落點略早：仍標在被點的那則');
+      c._onClock({ currentTime: 1927, paused: false, duration: 4000, live: false, at: A + 3800 });
+      eq(c.state.currentId, 'lv2');
+      c._onClock({ currentTime: 1930.4, paused: false, duration: 4000, live: false, at: A + 7200 });
+      eq(c.state.currentId, 'mg3', '越過下一則');
+      c.els.moreBtn.click();
+      const dl = c.els.menu.querySelector('.diag-line').textContent;
+      assert(dl.includes('VOD 校正 −8.0 秒（已合併 20、疑似重複 0、只有 live 10）'), '連線狀態：' + dl);
+      document.body.click();
+    } finally { window.open = realOpen; }
+  });
+
   test('T5.2 (I)「在後台開啟此場次」：請 background 開分頁（OPEN_VIEWER），不自己開', async () => {
     await resetDb();
     await put({ videoId: VID, title: 't', versions: [], linkedVideos: [] }, [mk({ id: 'o1' })]);

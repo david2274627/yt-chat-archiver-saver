@@ -1259,6 +1259,27 @@
     self.chrome.tabs.create = realCreate;
   });
 
+  test('T5.3 (K) sourceStats：已結束場次的 live／replay／已合併筆數、亂序、校正值、疑似重複；只有數字、videoId 只留 4 字', async () => {
+    await resetAll();
+    const S0 = Date.parse('2026-11-18T20:00:00+08:00');
+    const db = await DB.open();
+    const t = db.transaction(['streams', 'messages'], 'readwrite');
+    t.objectStore('streams').put({ videoId: 'vidSRCSTAT1', title: '不應出現的標題', isLive: true, startedAt: S0, endedAt: S0 + 7200e3, messageCount: 7, lastMessageAt: S0 + 100e3 });
+    const base = { videoId: 'vidSRCSTAT1', type: 'text', authorHandle: '@a', runs: [{ text: '不應出現的內容' }], phase: 'live', aliasIds: [], deleted: false };
+    const put = (o) => t.objectStore('messages').put(Object.assign({}, base, o));
+    for (let i = 0; i < 5; i++) put({ id: 'b' + i, sources: ['live', 'replay'], offsetSource: 'replay', videoOffsetSec: 10 + i * 10, timestampAbs: S0 + (10 + i * 10 + 7) * 1000, runs: [{ text: 'b' + i }] });
+    put({ id: 'l0', sources: ['live'], offsetSource: 'estimated', videoOffsetSec: 63, timestampAbs: S0 + 63e3, runs: [{ text: 'x' }] });
+    put({ id: 'r0', sources: ['replay'], offsetSource: 'replay', videoOffsetSec: 52, timestampAbs: S0 + 52e3, runs: [{ text: 'y' }] }); // 到達時間比 b4（57 秒）早、offset 比 b3（40）大 → 依到達時間排序時不倒退
+    await new Promise((res) => { t.oncomplete = res; });
+    const [r] = await self.YTCAS_BG.sourceStats();
+    eq(r.vid, 'vidS');
+    eq([r.messages, r.sources, r.offsetSource], [7, { liveOnly: 1, replayOnly: 1, both: 5, other: 0 }, { replay: 6, estimated: 1, none: 0 }]);
+    eq(r.cal, { delta: -7, pairs: 5, how: 'merged' });
+    eq(r.disorder.both, 1, 'b4（offset 50）排在 r0（52）之後');
+    const txt = JSON.stringify(r);
+    assert(!txt.includes('不應出現') && !txt.includes('vidSRCSTAT1') && !txt.includes('@a'), '只有數字');
+  });
+
   // 審查十一 18.1 (J)：以**嵌入的 iframe 當 sender**——真實 viewer.js（embed=1）在 iframe 內點 ⋯「在後台開啟此場次」，
   // 它的 chrome.runtime.sendMessage 接到本頁真實的 background 處理函式（sender 依該 iframe 的實際網址與所在分頁組成）
   test('T5.3 (J) 嵌入面板 iframe → background：開 backend.html、成功時不顯示錯誤；失敗時面板顯示原因、不退回 window.open', async () => {

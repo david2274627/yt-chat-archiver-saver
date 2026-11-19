@@ -166,9 +166,79 @@
   //   VOD（live: false）：影片時間 = 該版本的 offset（v1 為 videoOffsetSec，F-18）＋ 連結影片的 offsetShift
   //   直播中（live: true）：以 DVR 可回放範圍換算（F-08 v37 長期直播備註 (b)）：影片時間 = seekEnd − 基準 − (取樣時間 − 訊息時間)
   //   兩者都只用 phase 'live' 的訊息（F-14：pre／post 不參與跟隨與跳轉）
-  function versionOffset(m, ver) {
+  // v44（T5.3，審查十一 18.1 (K)）VOD 同步用的時間。v1 的 offset 有兩種來源：
+  //   replay（YouTube 重播的影片時間，準確）與 live 收錄的估計值（到達時間 − 開播時間，含聊天延遲）。
+  //   已合併的訊息以 replay offset 為準（mergeMessage 已改寫）；只有 live 來源的訊息以校正值 cal 換算：
+  //   (timestampAbs − startedAt) / 1000 + cal.delta（cal 由 vodCalibration 依同場已合併訊息的差距中位數算出）
+  function versionOffset(m, ver, cal) {
     const v = ver && ver !== 'v1' ? (m.offsets ? m.offsets[ver] : null) : m.videoOffsetSec;
-    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+    if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+    if ((!ver || ver === 'v1') && cal && cal.delta != null && cal.startedAt != null && m.offsetSource !== 'replay'
+      && typeof m.timestampAbs === 'number' && Array.isArray(m.sources) && m.sources.includes('live')) {
+      return (m.timestampAbs - cal.startedAt) / 1000 + cal.delta;
+    }
+    return v;
+  }
+  // 校正值：同場「live 與 replay 都收過、offset 已是 replay」的訊息，replay offset 與 live 估計值（到達時間 − 開播）的差距中位數。
+  // 差距超過 ±10 分鐘的略過（開播時間錯誤等）；少於 minPairs 筆不校正
+  function vodCalibration(msgs, stream, minPairs) {
+    const startedAt = stream && typeof stream.startedAt === 'number' ? stream.startedAt : null;
+    const out = { delta: null, pairs: 0, startedAt, liveOnly: 0, replay: 0 };
+    if (startedAt == null || !Array.isArray(msgs)) return out;
+    const ds = [];
+    for (const m of msgs) {
+      const src = Array.isArray(m.sources) ? m.sources : [];
+      if (m.offsetSource === 'replay') out.replay++;
+      else if (src.includes('live')) out.liveOnly++;
+      if (m.offsetSource !== 'replay' || !src.includes('live') || !src.includes('replay')) continue;
+      if (typeof m.videoOffsetSec !== 'number' || typeof m.timestampAbs !== 'number' || (m.phase || 'live') !== 'live') continue;
+      const d = m.videoOffsetSec - (m.timestampAbs - startedAt) / 1000;
+      if (Math.abs(d) <= 600) ds.push(d);
+    }
+    out.pairs = ds.length;
+    const need = minPairs == null ? 5 : minPairs;
+    const median = (a) => { a.sort((x, y) => x - y); const k = a.length >> 1; return a.length % 2 ? a[k] : (a[k - 1] + a[k]) / 2; };
+    if (ds.length >= need) { out.delta = median(ds); out.how = 'merged'; }
+    // 後備：live 與 replay 沒有合併（id 不同、各存一份）時，以「同作者、同內容、各只出現一次」配對（也就是疑似重複的筆數）
+    const pairs = contentPairs(msgs, startedAt);
+    out.dupPairs = pairs.length;
+    if (out.delta == null && pairs.length >= need) { out.delta = median(pairs.map((p) => p.d)); out.how = 'content'; }
+    return out;
+  }
+  const contentKey = (m) => [m.type || '', String(m.authorHandle || m.authorChannelId || '').toLowerCase(),
+    (m.runs || []).map((r) => (r && r.text) || (r && r.emoji && (r.emoji.alt || r.emoji.shortcut)) || '').join('').normalize('NFKC').replace(/\s+/g, ' ').trim()].join('\u0001');
+  // 只有 live 來源 vs 只有 replay 來源、同作者同內容、雙方各只出現一次、offset 差距 ≤ 10 分鐘 → { live, replay, d }
+  function contentPairs(msgs, startedAt) {
+    if (startedAt == null || !Array.isArray(msgs)) return [];
+    const lv = new Map(), rp = new Map();
+    const add = (map, k, m) => { const a = map.get(k); if (a) a.push(m); else map.set(k, [m]); };
+    for (const m of msgs) {
+      if ((m.phase || 'live') !== 'live' || typeof m.timestampAbs !== 'number') continue;
+      const src = Array.isArray(m.sources) ? m.sources : [];
+      const k = contentKey(m);
+      if (k.endsWith('\u0001')) continue; // 沒有文字內容（貼圖、系統訊息）不配對
+      if (src.includes('replay') && !src.includes('live') && m.offsetSource === 'replay' && typeof m.videoOffsetSec === 'number') add(rp, k, m);
+      else if (src.includes('live') && !src.includes('replay')) add(lv, k, m);
+    }
+    const out = [];
+    for (const [k, a] of lv) {
+      const b = rp.get(k);
+      if (a.length !== 1 || !b || b.length !== 1) continue;
+      const d = b[0].videoOffsetSec - (a[0].timestampAbs - startedAt) / 1000;
+      if (Math.abs(d) <= 600) out.push({ live: a[0], replay: b[0], d });
+    }
+    return out;
+  }
+  // VOD 模式的清單順序：依同步用的時間排序（v1）。pre／post 與沒有 offset 的以「到達時間 − 開播」排入同一條時間軸
+  function vodSortKey(m, ver, cal) {
+    if ((m.phase || 'live') === 'live') { const t = versionOffset(m, ver, cal); if (t != null) return t; }
+    if (cal && cal.startedAt != null && typeof m.timestampAbs === 'number') return (m.timestampAbs - cal.startedAt) / 1000;
+    return typeof m.videoOffsetSec === 'number' ? m.videoOffsetSec : 0;
+  }
+  function sortForVod(list, ver, cal) {
+    const keyed = list.map((it, i) => ({ it, i, k: vodSortKey(it.m, ver, cal) }));
+    keyed.sort((a, b) => (a.k - b.k) || (a.i - b.i));
+    return keyed.map((x) => x.it);
   }
   function videoTimeOf(m, clock, o) {
     if (!m || !clock || (m.phase || 'live') !== 'live') return null;
@@ -177,7 +247,7 @@
       // v43：訊息到達時，在最新的播放位置是 seekEnd − 基準（o.baseline）
       return clock.seekEnd - ((o && o.baseline) || 0) - (clock.at - m.timestampAbs) / 1000;
     }
-    const off = versionOffset(m, o && o.ver);
+    const off = versionOffset(m, o && o.ver, o && o.cal);
     return off == null ? null : off + ((o && o.shift) || 0);
   }
   function inRange(t, clock) {
@@ -243,7 +313,7 @@
     let last = -Infinity;
     entries.forEach((e, i) => {
       if (e.kind !== 'msg' || (e.it.m.phase || 'live') !== 'live') return;
-      const off = versionOffset(e.it.m, o && o.ver);
+      const off = versionOffset(e.it.m, o && o.ver, o && o.cal);
       if (off == null) return;
       const t = off + ((o && o.shift) || 0);
       if (t < last) return;
@@ -323,6 +393,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg,
-    versionOffset, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

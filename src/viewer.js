@@ -200,6 +200,8 @@
       pendingPush: [], lastPushAt: 0,
       // v43：直播在最新時的延遲基準（秒）、上一次的 seeked 累計次數、面板是否退讓中（top 的 PANEL_STATE）
       baseline: null, lastSeeks: null, hostPaused: false,
+      // v44（T5.3 (K)）VOD 校正值（CORE.vodCalibration）、計算時的筆數、點時間碼後的藍框固定、目前清單是否依 VOD 時間排序
+      cal: null, calN: 0, pin: null, sortedVod: false,
     };
 
     // ---------------- 版面
@@ -378,6 +380,10 @@
           sync.push('延遲 ' + (lag == null ? '—' : lag.toFixed(1) + ' 秒') + '（基準 ' + (S.baseline == null ? '—' : S.baseline.toFixed(1)) + '）');
           sync.push('徽章 ' + (BADGE_NAME[c.badge] || '—'));
         }
+        if (c && !c.live && S.cal) {
+          const k = S.cal;
+          sync.push('VOD 校正 ' + (k.delta == null ? '無' : (k.delta >= 0 ? '+' : '−') + Math.abs(k.delta).toFixed(1) + ' 秒') + '（已合併 ' + k.pairs + '、疑似重複 ' + (k.dupPairs || 0) + '、只有 live ' + k.liveOnly + '）');
+        }
         sync.push('seeked ' + d.seeks + '、跳轉 ' + d.jumps);
         if (d.target != null) sync.push('目標 ' + CORE.fmtClock(d.target) + ' → ' + (d.targetMsg != null ? CORE.fmtClock(d.targetMsg) : '無'));
         parts.splice(2, 0, sync.join('、'));
@@ -547,7 +553,7 @@
         if (vt == null || !CORE.inRange(vt, S.clock)) return el('span', 'tc static', tc.text);
         const text = S.clock.live ? tc.text : CORE.fmtDur(vt);
         const b = el('button', 'tc', text); b.type = 'button'; b.setAttribute('aria-label', '跳轉至 ' + text);
-        b.addEventListener('click', (e) => { e.stopPropagation(); seek(vt); });
+        b.addEventListener('click', (e) => { e.stopPropagation(); if (!S.clock.live) pinAt(m, vt); seek(vt); });
         return b;
       }
       if (tc.seconds == null) return el('span', 'tc static', tc.text);
@@ -674,8 +680,15 @@
       const t0 = performance.now();
       const r = CORE.filter(S.items, S.f);
       S.counts = r.counts;
+      // v44（T5.3 (K)）VOD 模式（v1）：清單依同步用的時間排序（live 來源的訊息以校正值換算），同步點才涵蓋所有訊息
+      let list = r.list;
+      if (vodOrder()) {
+        if (!S.cal || Math.abs(S.calN - S.items.length) > Math.max(50, S.calN * 0.05)) { S.cal = CORE.vodCalibration(S.items.map((x) => x.m), S.stream); S.calN = S.items.length; }
+        list = CORE.sortForVod(list, S.ver, S.cal);
+      }
+      S.sortedVod = vodOrder();
       // 列的 key：訊息用 id；分隔線用 phase 名稱＋出現序號（量測高度快取以 key 為準）
-      const entries = CORE.withPhaseDividers(r.list);
+      const entries = CORE.withPhaseDividers(list);
       let seq = 0;
       for (const e of entries) e.key = e.kind === 'phase' ? 'ph:' + e.phase + ':' + (seq++) : e.it.m.id;
       S.timings.filterMs = performance.now() - t0;
@@ -695,7 +708,9 @@
     }
 
     // ---------------- T5：時間軸同步（F-08）
-    const syncOpts = () => ({ ver: S.ver, shift: S.link ? S.link.shift : 0, points: S.points, baseline: S.baseline });
+    const syncOpts = () => ({ ver: S.ver, shift: S.link ? S.link.shift : 0, points: S.points, baseline: S.baseline, cal: vodOrder() ? S.cal : null });
+    // VOD 模式：內嵌面板收到 live: false 的播放器時間，且看的是 v1
+    function vodOrder() { return !!(embed && S.clock && !S.clock.live && (!S.ver || S.ver === 'v1')); }
     // v43（16.1 (F)）直播倒轉到最早收錄的訊息之前：提示，不要看起來像停著不動
     function setHint(text) {
       if (syncHint.textContent !== text) syncHint.textContent = text;
@@ -712,10 +727,25 @@
       if (old) { const n = rowOf(old); if (n) n.classList.remove('current'); }
       if (id) { const n = rowOf(id); if (n) n.classList.add('current'); }
     }
+    // 點時間碼：記下被點的訊息與「下一則」的時間（同步點中第一個時間大於它的）
+    function pinAt(m, t) {
+      if (!S.points) S.points = CORE.syncPoints(S.entries, syncOpts());
+      const nx = S.points.find((p) => p.t > t + 0.001);
+      S.pin = { id: m.id, t, next: nx ? nx.t : null };
+      S.syncPaused = false;
+      setCurrent(m.id);
+    }
     function doSync(smooth) {
       if (!S.clock || S.mode !== 'sync') return;
-      if (!S.points && !S.clock.live) S.points = CORE.syncPoints(S.entries, { ver: S.ver, shift: S.link ? S.link.shift : 0 });
-      const i = CORE.syncIndex(S.entries, S.clock, syncOpts());
+      if (!S.points && !S.clock.live) S.points = CORE.syncPoints(S.entries, syncOpts());
+      let i = CORE.syncIndex(S.entries, S.clock, syncOpts());
+      // v44（T5.3 (K) 4）點時間碼跳轉後：藍框標在被點的那則，直到播放位置越過下一則（或往回超過 5 秒）
+      if (S.pin && !S.clock.live) {
+        const pi = S.entries.findIndex((e) => e.kind === 'msg' && e.it.m.id === S.pin.id);
+        const t = S.clock.currentTime;
+        if (pi >= 0 && t >= S.pin.t - 5 && (S.pin.next == null || t < S.pin.next)) i = pi;
+        else S.pin = null;
+      }
       setCurrent(i >= 0 ? S.entries[i].it.m.id : null);
       S.diag.target = S.clock.live ? CORE.playheadAbs(S.clock, S.baseline) : null;
       S.diag.targetMsg = i >= 0 ? S.entries[i].it.m.timestampAbs : null;
@@ -762,7 +792,9 @@
         resume.hidden = true;
       } else if (seeked && mode === 'sync') resume.hidden = true;
       else if (seeked && mode === 'tail' && S.clock.live) S.vl.toBottom(); // 跳回最新：回到跟隨到底
-      if (first || liveChanged) S.vl.refresh(); // 時間碼的可點與文字依 clock 而定：重新繪製可見列
+      // 時間碼的可點與文字依 clock 而定：重新繪製可見列；VOD 排序改變時重新套用（T5.3 (K)）
+      if (vodOrder() !== S.sortedVod && !S.loading) apply({ reset: true });
+      else if (first || liveChanged) S.vl.refresh();
       if (mode === 'sync') doSync(!first && !seeked);
     }
 
@@ -868,7 +900,7 @@
       S.diag.loads++;
       S.videoId = videoId || '';
       S.items = []; S.byId = new Map(); S.pinned = []; S.stream = null; S.pinOpen = false;
-      S.currentId = null; S.syncPaused = false; S.entries = []; S.points = null;
+      S.currentId = null; S.syncPaused = false; S.entries = []; S.points = null; S.cal = null; S.calN = 0; S.pin = null;
       renderPin();
       S.vl.set([], { reset: true });
       showEmpty('loading');

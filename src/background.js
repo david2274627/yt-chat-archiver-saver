@@ -1,6 +1,6 @@
 // Service Worker：唯一的 IndexedDB 寫入者、推播、頻道名稱解析（SPEC 3.2、4.2、F-03、F-11、F-14～F-16、F-18、F-19）。
 // SW 可能隨時被終止：收到資料立即寫入 IndexedDB；頻道解析佇列存 chrome.storage.session（SPEC 3.2 v28）。
-importScripts('constants.js', 'selectors.js', 'db.js');
+importScripts('constants.js', 'selectors.js', 'db.js', 'viewer-core.js'); // viewer-core：純函式（T5.3 sourceStats 用）
 
 const C = self.YTCAS_CONST;
 const SEL = self.YTCAS_SEL;
@@ -255,6 +255,39 @@ async function fillAvatars(opts) {
   const r = await DB.fillAvatars({ dryRun: !(opts && opts.dryRun === false) });
   console.info('[ytcas] 頭像補齊' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
+}
+
+// T5.3（審查十一 18.1 (K)）live／replay 來源統計（SW Console）：await YTCAS_BG.sourceStats()（已結束的場次，最多 30 場）
+// 或 { videoId }。只有數字：videoId 只留前 4 字、沒有標題與訊息內容。
+//   sources：只有 live／只有 replay／兩者（已合併）；offsetSource；disorder：依到達時間排序時 v1 offset 倒退（> 1 秒）的筆數（依來源）；
+//   cal：VOD 校正值（replay offset − live 估計值的中位數，秒）與配對數；dupPairs：live 與 replay 疑似各存一份的筆數（同作者同內容）
+async function sourceStats(opts) {
+  const CORE = self.YTCAS_VIEWER_CORE;
+  const want = opts && opts.videoId;
+  const streams = (await DB.listStreams()).filter((s) => (want ? s.videoId === want : s.endedAt != null)).slice(0, want ? 1 : 30);
+  const out = [];
+  for (const s of streams) {
+    const msgs = await DB.queryMessages(s.videoId);
+    const cat = (m) => { const a = Array.isArray(m.sources) ? m.sources : []; const l = a.includes('live'), r = a.includes('replay'); return l && r ? 'both' : l ? 'liveOnly' : r ? 'replayOnly' : 'other'; };
+    const r = { vid: String(s.videoId).slice(0, 4), messages: msgs.length, endedAt: s.endedAt ? new Date(s.endedAt).toISOString().slice(0, 16) : null,
+      sources: { liveOnly: 0, replayOnly: 0, both: 0, other: 0 }, offsetSource: { replay: 0, estimated: 0, none: 0 },
+      disorder: { liveOnly: 0, replayOnly: 0, both: 0, other: 0 } };
+    let max = -Infinity;
+    for (const m of msgs) {
+      const c = cat(m);
+      r.sources[c]++;
+      r.offsetSource[m.offsetSource === 'replay' ? 'replay' : m.offsetSource === 'estimated' ? 'estimated' : 'none']++;
+      if ((m.phase || 'live') !== 'live' || typeof m.videoOffsetSec !== 'number') continue;
+      if (m.videoOffsetSec < max - 1) r.disorder[c]++;
+      max = Math.max(max, m.videoOffsetSec);
+    }
+    const cal = CORE.vodCalibration(msgs, s);
+    r.cal = { delta: cal.delta == null ? null : Math.round(cal.delta * 10) / 10, pairs: cal.pairs, how: cal.how || null };
+    r.dupPairs = cal.dupPairs;
+    out.push(r);
+  }
+  console.info('[ytcas] live／replay 來源統計', out);
+  return out;
 }
 
 // T4.2（審查十一 9）頻道名稱解析統計（SW Console）：await YTCAS_BG.channelStats()
@@ -1079,4 +1112,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, channelStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
