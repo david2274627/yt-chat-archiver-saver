@@ -202,6 +202,8 @@
       baseline: null, lastSeeks: null, hostPaused: false,
       // v44（T5.3 (K)）VOD 校正值（CORE.vodCalibration）、計算時的筆數、點時間碼後的藍框固定、目前清單是否依 VOD 時間排序
       cal: null, calN: 0, pin: null, sortedVod: false,
+      // v44（T5.3 (L)）直播：倒轉時的錨點、同步微調（直播延遲，秒；依頻道記住）、記住的基準（進入頁面時已不在最新用）、seekEnd 前進速度
+      anchor: null, latency: 0, latencyFrom: 'default', liveSync: null, seekEndRate: null,
     };
 
     // ---------------- 版面
@@ -240,7 +242,17 @@
       b.addEventListener('click', () => shiftLink(d));
       linkBox.appendChild(b);
     }
-    sub.append(verPick, linkBox);
+    // v44（T5.3 (L)）直播倒轉時的「同步微調」：畫面落後真實時間的秒數（直播延遲），依頻道記住
+    const latBox = el('div', 'link-box lat-box'); latBox.hidden = true;
+    const latText = el('span', 'link-txt');
+    latBox.appendChild(latText);
+    for (const d of [-10, -1, 1, 10]) {
+      const b = el('button', 'btn sm shift', (d > 0 ? '+' : '−') + Math.abs(d)); b.type = 'button';
+      b.setAttribute('aria-label', '同步微調' + (d > 0 ? '加 ' : '減 ') + Math.abs(d) + ' 秒');
+      b.addEventListener('click', () => shiftLatency(d));
+      latBox.appendChild(b);
+    }
+    sub.append(verPick, linkBox, latBox);
     panel.appendChild(sub);
     // T5：F-12 說明與收錄狀態（一行，不是大型橫幅；非持續性的 10 秒後自動隱藏）
     const note = el('div', 'p-note'); note.hidden = true; note.setAttribute('role', 'status');
@@ -377,8 +389,12 @@
         const sync = ['模式 ' + S.mode + (S.syncPaused ? '（暫停）' : '')];
         if (c && c.live) {
           const lag = CORE.liveLag(c);
-          sync.push('延遲 ' + (lag == null ? '—' : lag.toFixed(1) + ' 秒') + '（基準 ' + (S.baseline == null ? '—' : S.baseline.toFixed(1)) + '）');
+          const eb = effBaseline();
+          sync.push('延遲 ' + (lag == null ? '—' : lag.toFixed(1) + ' 秒') + '（基準 ' + (eb == null ? '—' : eb.toFixed(1) + (S.baseline == null ? '，沿用上次' : '')) + '）');
           sync.push('徽章 ' + (BADGE_NAME[c.badge] || '—'));
+          // v44（T5.3 (L)）同步微調與 seekEnd 前進速度（每秒，正常約 1.00）
+          sync.push('同步微調 ' + S.latency + ' 秒（' + ({ channel: '本頻道', last: '沿用上次', default: '預設' }[S.latencyFrom] || '') + '）');
+          if (S.seekEndRate != null) sync.push('seekEnd 速度 ' + S.seekEndRate.toFixed(2));
         }
         if (c && !c.live && S.cal) {
           const k = S.cal;
@@ -708,7 +724,50 @@
     }
 
     // ---------------- T5：時間軸同步（F-08）
-    const syncOpts = () => ({ ver: S.ver, shift: S.link ? S.link.shift : 0, points: S.points, baseline: S.baseline, cal: vodOrder() ? S.cal : null });
+    const syncOpts = () => ({ ver: S.ver, shift: S.link ? S.link.shift : 0, points: S.points, baseline: effBaseline(), cal: vodOrder() ? S.cal : null,
+      latency: S.latency, target: S.clock && S.clock.live && S.mode === 'sync' ? CORE.liveTarget(S.clock, S.anchor, S.latency) : undefined });
+    // 基準：本頁量到的；還沒量到（進入頁面時已不在最新、徽章說不在最新）時用記住的上一次的值
+    function effBaseline() { return S.baseline != null ? S.baseline : (S.liveSync && typeof S.liveSync.baseline === 'number' ? S.liveSync.baseline : null); }
+
+    // ---------------- v44（T5.3 (L)）同步微調（直播延遲）：chrome.storage.local 'liveSync' = { byChannel: { 頻道: 秒 }, last: 秒, baseline: 秒 }
+    const LS_KEY = 'liveSync';
+    const chanKey = () => (S.stream && (S.stream.channelHandle || S.stream.channelId)) || '';
+    async function loadLiveSync() {
+      try { const r = await chrome.storage.local.get(LS_KEY); S.liveSync = (r && r[LS_KEY]) || {}; } catch (_) { S.liveSync = S.liveSync || {}; }
+      applyLatency();
+    }
+    function applyLatency() {
+      const ls = S.liveSync || {};
+      const k = chanKey();
+      const by = ls.byChannel || {};
+      if (k && typeof by[k] === 'number') { S.latency = by[k]; S.latencyFrom = 'channel'; }
+      else if (typeof ls.last === 'number') { S.latency = ls.last; S.latencyFrom = 'last'; } // 沒校正過的頻道：用最近一次校正的值
+      else { S.latency = C.PANEL.LIVE_LATENCY_DEFAULT_SEC; S.latencyFrom = 'default'; }
+      renderSub();
+    }
+    let lsSave = 0;
+    function saveLiveSync(patch) {
+      S.liveSync = Object.assign({}, S.liveSync || {}, patch);
+      clearTimeout(lsSave);
+      lsSave = setTimeout(() => { try { const p = chrome.storage.local.set({ [LS_KEY]: S.liveSync }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* 測試頁 */ } }, 800);
+    }
+    function shiftLatency(d) {
+      S.latency = Math.max(-600, Math.min(600, Math.round((S.latency + d) * 10) / 10));
+      S.latencyFrom = 'channel';
+      const k = chanKey();
+      const by = Object.assign({}, (S.liveSync && S.liveSync.byChannel) || {});
+      if (k) by[k] = S.latency;
+      // 只保留最近 200 個頻道
+      const keys = Object.keys(by); if (keys.length > 200) delete by[keys[0]];
+      saveLiveSync({ byChannel: by, last: S.latency });
+      renderSub(); S.vl.refresh(); doSync(false);
+    }
+    let lastBaselineSave = 0;
+    function rememberBaseline() {
+      if (S.baseline == null || Date.now() - lastBaselineSave < 30000) return;
+      lastBaselineSave = Date.now();
+      saveLiveSync({ baseline: Math.round(S.baseline * 10) / 10 });
+    }
     // VOD 模式：內嵌面板收到 live: false 的播放器時間，且看的是 v1
     function vodOrder() { return !!(embed && S.clock && !S.clock.live && (!S.ver || S.ver === 'v1')); }
     // v43（16.1 (F)）直播倒轉到最早收錄的訊息之前：提示，不要看起來像停著不動
@@ -747,7 +806,7 @@
         else S.pin = null;
       }
       setCurrent(i >= 0 ? S.entries[i].it.m.id : null);
-      S.diag.target = S.clock.live ? CORE.playheadAbs(S.clock, S.baseline) : null;
+      S.diag.target = S.clock.live ? CORE.liveTarget(S.clock, S.anchor, S.latency) : null;
       S.diag.targetMsg = i >= 0 ? S.entries[i].it.m.timestampAbs : null;
       let hint = '';
       if (S.clock.live && i < 0 && S.entries.length) {
@@ -790,8 +849,18 @@
         if (mode === 'tail') { setCurrent(null); setHint(''); S.diag.target = null; S.diag.targetMsg = null; resume.textContent = '↓ 恢復自動捲動'; S.vl.toBottom(); }
         else resume.textContent = '↓ 回到播放位置';
         resume.hidden = true;
+        renderSub(); // 同步微調只在直播倒轉時顯示
       } else if (seeked && mode === 'sync') resume.hidden = true;
       else if (seeked && mode === 'tail' && S.clock.live) S.vl.toBottom(); // 跳回最新：回到跟隨到底
+      // v44（T5.3 (L)）直播：在最新時與每次跳轉時重新定錨；倒轉中目標時間依播放位置前進（不依賴 seekEnd 之後怎麼動）
+      if (S.clock.live) {
+        if (mode === 'tail' || seeked || !S.anchor || liveChanged) S.anchor = { ct: S.clock.currentTime, abs: CORE.playheadAbs(S.clock, effBaseline()) };
+        if (prev && prev.live && typeof prev.seekEnd === 'number' && typeof S.clock.seekEnd === 'number') {
+          const dt = (S.clock.at - prev.at) / 1000;
+          if (dt > 0.2 && dt < 10) { const r = (S.clock.seekEnd - prev.seekEnd) / dt; S.seekEndRate = S.seekEndRate == null ? r : S.seekEndRate * 0.9 + r * 0.1; }
+        }
+        rememberBaseline();
+      } else { S.anchor = null; S.seekEndRate = null; }
       // 時間碼的可點與文字依 clock 而定：重新繪製可見列；VOD 排序改變時重新套用（T5.3 (K)）
       if (vodOrder() !== S.sortedVod && !S.loading) apply({ reset: true });
       else if (first || liveChanged) S.vl.refresh();
@@ -816,7 +885,14 @@
         linkText.textContent = '同步原始場次「' + ((S.stream && S.stream.title) || S.link.orig) + '」・時間差 ' + (sh >= 0 ? '+' : '−') + Math.abs(sh) + ' 秒';
         linkBox.hidden = false;
       } else linkBox.hidden = true;
-      sub.hidden = verPick.hidden && linkBox.hidden;
+      const showLat = !!(embed && S.clock && S.clock.live && S.mode === 'sync');
+      if (showLat) {
+        const L = S.latency;
+        latText.textContent = '同步微調：畫面落後 ' + (L >= 0 ? '' : '−') + Math.abs(L) + ' 秒' + (S.latencyFrom === 'channel' ? '（本頻道）' : S.latencyFrom === 'last' ? '（沿用上次）' : '');
+        latText.title = '藍框的訊息比畫面內容新（畫面還沒演到就先出現）→ 按 +；藍框的訊息比畫面內容舊 → 按 −';
+      }
+      latBox.hidden = !showLat;
+      sub.hidden = verPick.hidden && linkBox.hidden && latBox.hidden;
     }
     let linkSave = 0;
     function shiftLink(d) {
@@ -937,6 +1013,7 @@
         S.pinned = CORE.dedupePinned(pinned);
         renderPin();
         S.ver = 'v1'; S.verManual = false; S.points = null;
+        if (S.liveSync) applyLatency(); // 頻道已知：套用該頻道的同步微調（v44）
         renderSub();
         S.loading = false;
         S.diag.dbCount = msgs.length;
@@ -1133,6 +1210,7 @@
 
     // ---------------- 啟動
     const ready = (async () => {
+      if (embed) await loadLiveSync();
       if (!embed) await loadStreamList();
       let v = S.videoId;
       if (!v && !embed && S.streams.length) v = S.streams[0].videoId;
@@ -1141,8 +1219,8 @@
     })();
 
     return {
-      ready, load, state: S, _onRuntime: onRuntime, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
-      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText },
+      ready, load, state: S, _onRuntime: onRuntime, _shiftLatency: shiftLatency, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
+      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText },
     };
   }
 

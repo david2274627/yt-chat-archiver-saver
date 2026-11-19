@@ -571,6 +571,70 @@
     } finally { window.open = realOpen; }
   });
 
+  // ================================================================ T5.3（審查十一 18.1 (L)）
+  test('T5.3 (L) 直播同步微調：倒轉時顯示、±秒、依頻道記住；錨點不受 seekEnd 停住影響；進入頁面時已不在最新 → 沿用記住的基準', async () => {
+    await resetDb();
+    const VL = 'vidLATENCY1', VO = 'vidLATOTHER';
+    const now = Date.now();
+    const msgs = [];
+    for (let i = 0; i < 300; i++) msgs.push(mk({ id: 'n' + i, videoId: VL, timestampAbs: now - (300 - i) * 10e3, videoOffsetSec: 50000 + i * 10 }));
+    for (let i = 0; i < 300; i++) msgs.push(mk({ id: 'o' + i, videoId: VO, timestampAbs: now - (300 - i) * 10e3, videoOffsetSec: 50000 + i * 10 }));
+    await put({ videoId: VL, title: 'L', channelHandle: '@chanL', isLive: true, startedAt: now - 86400e3, lastMessageAt: now, messageCount: 300, versions: [], linkedVideos: [] }, msgs.slice(0, 300));
+    await put({ videoId: VO, title: 'O', channelHandle: '@other', isLive: true, startedAt: now - 86400e3, lastMessageAt: now, messageCount: 300, versions: [], linkedVideos: [] }, msgs.slice(300));
+    await DB.close();
+    chrome.storage.local._reset();
+    try {
+      let c = V.mount(host, { embed: true, videoId: VL });
+      await c.ready; await frame();
+      eq([c.state.latency, c.state.latencyFrom], [0, 'default']);
+      let t = now, seeks = 0, seekEnd = 10000;
+      const tick = (lag, o, dt) => { t += dt || 250; if (!(o && o.freeze)) seekEnd = 10000 + (t - now) / 1000; c._onClock(Object.assign({ currentTime: seekEnd - lag, paused: false, duration: null, seekStart: seekEnd - 7200, seekEnd, live: true, at: t, seeks }, o)); };
+      const cur = () => msgs.find((x) => x.id === c.state.currentId);
+      const near = (back) => { const m = cur(); return !!m && m.timestampAbs <= t - back * 1000 && m.timestampAbs > t - back * 1000 - 10e3; };
+      for (let k = 0; k < 6; k++) tick(40);
+      assert(c.els.latBox.hidden, '在最新時不顯示同步微調');
+      seeks++; tick(340);
+      await frame();
+      assert(!c.els.latBox.hidden && c.els.latText.textContent.includes('畫面落後 0 秒'), '倒轉時顯示 ' + c.els.latText.textContent);
+      assert(near(300), '微調 0：5 分鐘前 ' + c.state.currentId);
+      // 畫面落後真實時間 30 秒 → 按 +10 三次
+      const plus10 = Array.from(c.els.latBox.querySelectorAll('button')).find((b) => b.textContent === '+10');
+      plus10.click(); plus10.click(); plus10.click();
+      eq([c.state.latency, c.state.latencyFrom], [30, 'channel']);
+      assert(near(330) && c.els.latText.textContent.includes('30 秒（本頻道）'), '微調 30：' + c.state.currentId + ' ' + c.els.latText.textContent);
+      // seekEnd 停住不動（DVR 範圍沒有更新），播放 60 秒：目標只隨播放位置前進（v43 會以 2 倍速往前跑）
+      let ct = c.state.clock.currentTime;
+      for (let k = 0; k < 60; k++) { ct += 1; t += 1000; c._onClock({ currentTime: ct, paused: false, duration: null, seekStart: seekEnd - 7200, seekEnd, live: true, at: t, seeks }); }
+      await frame();
+      assert(near(330), 'seekEnd 停住時仍落在現在 − 330 秒：' + c.state.currentId);
+      c.els.moreBtn.click();
+      const dl = c.els.menu.querySelector('.diag-line').textContent;
+      assert(dl.includes('同步微調 30 秒（本頻道）') && /seekEnd 速度 0\.\d\d/.test(dl), '連線狀態：' + dl);
+      document.body.click();
+      await sleep(900); // 寫入 storage 有 800ms 延遲
+      const st = (await chrome.storage.local.get('liveSync')).liveSync;
+      eq([st.byChannel['@chanL'], st.last, st.baseline], [30, 30, 40]);
+      // 沒校正過的頻道：沿用上次的值；進入頁面時已不在最新（徽章「非最新」）→ 沿用記住的基準
+      c = V.mount(host, { embed: true, videoId: VO });
+      await c.ready; await frame();
+      eq([c.state.latency, c.state.latencyFrom], [30, 'last']);
+      t = Date.now(); seekEnd = 10000;
+      tick(340, { liveHead: false });
+      await frame();
+      eq(c.state.mode, 'sync');
+      eq(c.state.baseline, null, '本頁還沒量到基準');
+      const m = msgs.find((x) => x.id === c.state.currentId);
+      assert(m && m.timestampAbs <= t - 330e3 && m.timestampAbs > t - 340e3, '以記住的基準 40 換算：' + c.state.currentId);
+      c.els.moreBtn.click();
+      assert(c.els.menu.querySelector('.diag-line').textContent.includes('基準 40.0，沿用上次'), '連線狀態標示沿用');
+      document.body.click();
+      // 回到原頻道：用該頻道的值
+      c = V.mount(host, { embed: true, videoId: VL });
+      await c.ready;
+      eq([c.state.latency, c.state.latencyFrom], [30, 'channel']);
+    } finally { await sleep(900); chrome.storage.local._reset(); }
+  });
+
   test('T5.2 (I)「在後台開啟此場次」：請 background 開分頁（OPEN_VIEWER），不自己開', async () => {
     await resetDb();
     await put({ videoId: VID, title: 't', versions: [], linkedVideos: [] }, [mk({ id: 'o1' })]);

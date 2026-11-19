@@ -245,7 +245,8 @@
     if (clock.live) {
       if (typeof clock.seekEnd !== 'number' || typeof m.timestampAbs !== 'number') return null;
       // v43：訊息到達時，在最新的播放位置是 seekEnd − 基準（o.baseline）
-      return clock.seekEnd - ((o && o.baseline) || 0) - (clock.at - m.timestampAbs) / 1000;
+      // v44（T5.3 (L)）：畫面落後真實時間 o.latency 秒（直播延遲）→ 該則訊息對應的畫面位置再往後 latency 秒
+      return clock.seekEnd - ((o && o.baseline) || 0) - (clock.at - m.timestampAbs) / 1000 + ((o && o.latency) || 0);
     }
     const off = versionOffset(m, o && o.ver, o && o.cal);
     return off == null ? null : off + ((o && o.shift) || 0);
@@ -284,13 +285,19 @@
     const behind = Math.max(0, (clock.seekEnd - clock.currentTime) - (baseline || 0));
     return clock.at - behind * 1000;
   }
+  // v44（T5.3 (L)）直播倒轉時的目標時間（ms）：以跳轉當下為錨點，之後依播放位置前進（不依賴 seekEnd 之後的變化）；
+  // 再扣掉直播延遲（畫面落後真實時間的秒數，「同步微調」）。anchor：{ ct: 當時的 currentTime, abs: 當時的 playheadAbs }
+  function liveTarget(clock, anchor, latencySec) {
+    const base = anchor ? anchor.abs + (clock.currentTime - anchor.ct) * 1000 : clock.at;
+    return base - (latencySec || 0) * 1000;
+  }
   // 清單（withPhaseDividers 的輸出）中「目前播放位置」的訊息：影片時間 ≤ t 的最後一則。
   // 直播：依 timestampAbs（清單本來就依此排序）二分搜尋；VOD：依該版本 offset，先抽出有 offset 的訊息（遞增）再二分搜尋
   function syncIndex(entries, clock, o) {
     if (!clock || !entries || !entries.length) return -1;
     const isMsg = (e) => e.kind === 'msg' && (e.it.m.phase || 'live') === 'live';
     if (clock.live) {
-      const target = playheadAbs(clock, o && o.baseline);
+      const target = o && typeof o.target === 'number' ? o.target : playheadAbs(clock, o && o.baseline) - ((o && o.latency) || 0) * 1000;
       let lo = 0, hi = entries.length - 1, ans = -1;
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
@@ -393,6 +400,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);
