@@ -50,6 +50,10 @@ mark .emo-img { vertical-align: -5px; }
 .card .nm { font-weight: 700; }
 .card.nocolor { background: var(--ytcas-surface-2); color: var(--ytcas-text); }
 .card .stk img { width: 72px; height: 72px; object-fit: contain; }
+/* v44（T5.3，17.2）貼圖沒有圖時的描述文字；（17.1）訊息中的連結 */
+.card .stk .stk-alt { font-size: var(--ytcas-fs-sm); line-height: 1.3; padding: 4px; text-align: center; overflow: hidden; word-break: break-word; color: var(--ytcas-text-2); }
+.content a.lnk { color: var(--ytcas-accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
+.content a.lnk:hover { text-decoration-thickness: 2px; }
 .giftcard .gimg img { width: 40px; height: 40px; object-fit: contain; }
 .card.deleted .content, .giftcard.deleted .content { color: var(--ytcas-text-3); text-decoration: line-through; }
 .card.deleted .content { color: inherit; opacity: .6; }

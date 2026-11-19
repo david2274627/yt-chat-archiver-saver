@@ -48,6 +48,11 @@
     return hash([m.type || '', handle, text, Math.round(off / C.FP_BUCKET_SEC)].join('\u0001'));
   }
 
+  function safeHttpUrl(u) {
+    if (typeof u !== 'string' || !u) return '';
+    try { const x = new URL(u); return x.protocol === 'https:' || x.protocol === 'http:' ? x.href.slice(0, 2000) : ''; } catch (_) { return ''; }
+  }
+
   // 置頂、降落橫幅等取不到 YouTube id 時的補救 id（SPEC 4.3）
   function fallbackId(m) {
     return 'ytcas-' + hash([m.type || '', m.authorHandle || m.authorChannelId || '', normText(m.runs), m.timestampAbs || ''].join('\u0001'));
@@ -247,6 +252,8 @@
     r.videoId = ctx.videoId;
     if (!TYPES.has(r.type)) r.type = T.SYSTEM;
     if (!Array.isArray(r.runs)) r.runs = [];
+    // v44（17.1）連結 run：只保留 http／https 的完整網址，其他協定只留文字（擷取、匯入、遷移都經過這裡）
+    else r.runs = r.runs.map((x) => (x && x.link ? (safeHttpUrl(x.link.url) ? { text: String(x.text || ''), link: { url: safeHttpUrl(x.link.url) } } : { text: String(x.text || '') }) : x));
     if (!Array.isArray(r.authorBadges)) r.authorBadges = [];
     r.timestampAbs = num(r.timestampAbs) !== null ? r.timestampAbs : ctx.now;
     const off = num(r.videoOffsetSec);
@@ -1358,7 +1365,10 @@
     else if (aid.startsWith('channel/')) authorChannelId = aid.slice(8);
     if (!authorHandle && typeof o.authorName === 'string' && o.authorName.startsWith('@')) authorHandle = o.authorName;
     const runs = Array.isArray(o.parts)
-      ? o.parts.map((p) => (p && p.type === 'emoji' ? { emoji: { src: p.src || '', alt: p.alt || '', shortcut: '' } } : { text: (p && p.text) || '' }))
+      ? o.parts.map((p) => (p && p.type === 'emoji' ? { emoji: { src: p.src || '', alt: p.alt || '', shortcut: '' } }
+        // v44（17.1）舊版若有連結資料（type 'link'、url／href）一併轉入；網址在 normalizeIncoming 檢查
+        : p && p.type === 'link' && (p.url || p.href) ? { text: p.text || p.url || p.href, link: { url: String(p.url || p.href) } }
+          : { text: (p && p.text) || '' }))
       : (o.plainText ? [{ text: String(o.plainText) }] : []);
     const id = typeof o.id === 'string' && o.id ? o.id : null;
     const aliasIds = [];

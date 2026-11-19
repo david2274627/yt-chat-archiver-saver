@@ -3,7 +3,7 @@
 > 本檔是 `selectors.js` 與模擬頁的**唯一依據**。只收錄在真實 YouTube 頁面上確認過的結構；每筆標註日期與 Chrome 版本。原始診斷輸出存於 `docs/diag/`。
 > 規則：模擬頁測試只能證明「程式邏輯沒錯」；依賴 DOM 的功能必須以本檔記錄的實機結構為準，未記錄的結構一律標「待確認」。
 
-最後更新：2026-11-16（第 5 節：T3 實測）　Chrome 157.0.8103.51　淺色主題　台灣繁體中文介面
+最後更新：2026-11-20（1.6 直播徽章已驗證；2.7、2.8 待驗證）　Chrome 157.0.8103.51　淺色主題　台灣繁體中文介面
 
 ---
 
@@ -46,6 +46,11 @@ ytd-watch-metadata > #above-the-fold > #bottom-row > #teaser-carousel
 
 ### 1.5 主題
 - 淺色時 `html[dark]` 不存在（深色狀態尚未實測，預期為 `html[dark]`）。
+
+### 1.6 播放器「直播」徽章（**已驗證**：2026-11-19 23:32，使用者 T5.2 實測，審查十一第 18 節）
+- `.html5-video-player .ytp-live-badge`：在直播最新時，面板 ⋯「連線狀態」顯示「徽章 最新」，模式 tail、沒有藍框（3 場直播）；倒轉後為「非最新」。判定依據為 `disabled` 屬性或 `ytp-live-badge-is-livehead` class（`selectors.js` 的 `top.liveBadge`、`top.liveHeadClass`）；實機是哪一個依據尚未區分（連線狀態只顯示結果）。
+- 同時記錄：`video.seekable.end − currentTime` 在最新時約 3,556 秒（3 場），`seekable.end` **不是**真正的直播邊緣。
+- 播放器的直播延遲（「詳細統計資料」的 Live Latency）只在使用者打開該面板時才有 DOM；頁面 JS 的播放器 API 在 content script 的隔離環境讀不到。
 
 ---
 
@@ -105,6 +110,17 @@ yt-live-chat-renderer
 - `yt-live-chat-paid-message-renderer`（SC 文字版）：**確認存在**（2026-11-16 欄位統計：`superchat` 19 筆，金額 19／19 有值，即 `#purchase-amount`／`#purchase-amount-chip` 解析成功；顏色變數待 `fieldStats` 重跑確認）。
 - 禮物 `yt-gift-message-view-model`：確認（見 5.3）。
 - **待確認（尚未出現）**：`ytd-sponsorships-live-chat-gift-purchase-announcement-renderer`、`ytd-sponsorships-live-chat-header-renderer`、`yt-live-chat-banner-redirect-renderer`（降落）、`yt-live-chat-poll-renderer`、`yt-live-chat-action-panel-renderer`、里程碑。
+
+### 2.7 超級貼圖的 `img`（**待驗證**，審查十一 17.2）
+- `#sticker-container > yt-img-shadow#sticker` 內的 `img`：`src` 屬性的格式（`https://`／協定相對 `//lh3.googleusercontent.com/…`／空的／`data:` 佔位圖）與載入時機尚未實機記錄。
+- 實機現象（2026-11-19 02:38）：$45.00 超級貼圖在面板中沒有圖（`stickerSrc` 為空），直播畫面正常。
+- T5.3 處理：協定相對網址補 `https:`、先用屬性值再用已解析的 `.src`、只接受 https；`src` 晚於擷取出現時監看 10 秒補送；存 `alt` 當後備。
+- 待確認：`img` 的 `alt` 是否為貼圖描述（或在 `aria-label`）。
+
+### 2.8 訊息中的連結（**待驗證**，審查十一 17.1）
+- 預期：`#message` 內 `<a class="yt-simple-endpoint style-scope yt-live-chat-text-message-renderer" href="https://www.youtube.com/redirect?event=live_chat&redir_token=…&q=<完整網址>">截斷的文字</a>`；站內連結（頻道、影片、`#hashtag`）為相對或 `https://www.youtube.com/…`。**以上未經實機確認**。
+- 實機現象（2026-11-19 02:15）：網址在原生聊天室顯示為截斷文字（`https://madestudio.com.tw/zh/games/br...`），原生可點。
+- `selectors.js`：`chat.link = { anchor: 'a[href]', redirectPath: '/redirect', redirectParam: 'q' }`。
 
 ### 2.5 輸入區 `#input-panel`（2026-11-15）
 ```

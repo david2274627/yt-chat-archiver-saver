@@ -22,8 +22,37 @@
     return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
   }
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-  const httpsOnly = (u) => (typeof u === 'string' && u.startsWith('https://') ? u : '');
+  // v44（T5.3，審查十一 17.2）圖片網址正規化（表符、頭像、貼圖、禮物共用）：協定相對網址（//host/…）補 https:；
+  // 只接受 https（data:、blob:、javascript:、http: 一律丟棄）
+  const httpsOnly = (u) => {
+    if (typeof u !== 'string') return '';
+    const s = u.trim();
+    if (s.startsWith('//')) return 'https:' + s;
+    return s.startsWith('https://') ? s : '';
+  };
+  // img 元素 → https 網址：先用屬性值（協定相對網址補 https:），不行再用瀏覽器已解析的 .src。
+  // v43 以前是 `getAttribute('src') || img.src`：屬性是協定相對網址時不是空字串，不會改用 .src，接著被 httpsOnly 丟掉
+  const imgUrl = (img) => (img ? httpsOnly(img.getAttribute('src') || '') || httpsOnly(img.src || '') : '');
   const httpsOnlyUrl = httpsOnly; // T5.1：頭像補送用（同一規則）
+
+  // v44（T5.3，審查十一 17.1）訊息中的連結：完整網址只在 href（顯示文字本來就會截斷）。
+  // YouTube 的 /redirect?…&q=<網址> 解出 q；站內連結（頻道、影片、#hashtag）保留為 https://www.youtube.com/… 的完整網址；
+  // 只接受 http:／https:，其他協定丟棄（只留文字）
+  function linkUrl(href) {
+    if (typeof href !== 'string' || !href.trim()) return '';
+    let u;
+    try { u = new URL(href.trim(), 'https://www.youtube.com/'); } catch (_) { return ''; }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    const yt = /(^|\.)youtube\.com$/i.test(u.hostname);
+    if (yt && u.pathname === S.chat.link.redirectPath) {
+      const q = u.searchParams.get(S.chat.link.redirectParam);
+      if (!q) return '';
+      let t;
+      try { t = new URL(q); } catch (_) { return ''; }
+      return t.protocol === 'https:' || t.protocol === 'http:' ? t.href : '';
+    }
+    return u.href;
+  }
 
   // 直播 #timestamp（當地時間，只到分鐘；例「下午10:23」「10:23 PM」「22:23」）→ ms。
   // 擷取時間夾在該分鐘範圍內（SPEC F-02 v29）；比擷取時間晚超過 12 小時視為前一天；解析失敗回傳 null。
@@ -76,15 +105,22 @@
     const push = (t) => {
       if (!t) return;
       const last = out[out.length - 1];
-      if (last && last.text != null) last.text += t; else out.push({ text: t });
+      if (last && last.text != null && !last.link) last.text += t; else out.push({ text: t });
     };
     const walk = (node) => {
       for (const n of node.childNodes) {
         if (n.nodeType === 3) push(n.nodeValue);
         else if (n.nodeType === 1) {
           if (n.tagName === 'IMG') {
-            out.push({ emoji: { src: httpsOnly(n.getAttribute('src') || n.src), alt: n.getAttribute('alt') || '',
+            out.push({ emoji: { src: imgUrl(n), alt: n.getAttribute('alt') || '',
               shortcut: n.getAttribute(S.chat.emojiShortcutAttr) || '' } });
+          } else if (n.tagName === 'A' && n.matches(S.chat.link.anchor)) {
+            // v44（17.1）：{ text, link: { url } }；網址不合格 → 只留文字
+            const url = linkUrl(n.getAttribute('href') || '');
+            const text = n.textContent || '';
+            if (url && text) out.push({ text, link: { url } });
+            else if (url) out.push({ text: url, link: { url } });
+            else push(text);
           } else walk(n);
         }
       }
@@ -155,7 +191,7 @@
       authorHandle: handle,
       authorChannelId: '',
       authorUrl: handle ? 'https://www.youtube.com/' + handle : '',
-      authorAvatar: photo ? httpsOnly(photo.getAttribute('src') || photo.src) : '',
+      authorAvatar: imgUrl(photo),
       authorBadges: badgesOf(el),
       runs: [],
     };
@@ -175,14 +211,17 @@
       m.runs = runsOf(msgEl);
       if (type === T.SUPERSTICKER) {
         const st = el.querySelector(S.chat.stickerImg);
-        m.stickerSrc = st ? httpsOnly(st.getAttribute('src') || st.src) : '';
+        m.stickerSrc = imgUrl(st);
+        // v44（17.2）貼圖描述：沒有圖時以 alt 文字當後備
+        const alt = st ? clean(st.getAttribute('alt') || st.getAttribute('aria-label') || '') : '';
+        if (alt) m.stickerAlt = alt.slice(0, 200);
       }
     } else if (tag === S.chat.giftMessage) {
       // F-13 禮物（T3.6）：內部結構未確認 → 通用解析（作者、頭像已在上方取得；文字 runs；第一張非頭像圖片作為禮物圖片）。
       // 結構確認後改為專用解析（送禮者、禮物名稱、數量）；在那之前保存 rawTag 供日後重新解析判斷
       m.runs = msgEl ? runsOf(msgEl) : textRuns(clean(el.textContent).slice(0, 300));
       const imgs = Array.from(el.querySelectorAll('img')).filter((i) => i !== photo);
-      const gi = imgs.map((i) => httpsOnly(i.getAttribute('src') || i.src)).find(Boolean);
+      const gi = imgs.map((i) => imgUrl(i)).find(Boolean);
       if (gi) m.giftImage = gi;
       m.rawTag = tag;
     } else if (type === T.SYSTEM || tag === S.chat.giftRedemption || tag === S.chat.giftAnnouncement) {
@@ -278,7 +317,7 @@
       queue: [], unflushed: new Set(), sending: null, batchTimer: 0, trimTimer: 0, pollTimer: 0, statsTimer: 0,
       pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
-        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0 },
+        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0 },
       seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
@@ -461,6 +500,7 @@
       st.stats.captured++;
       if (how && how !== 'observer') st.stats[how === 'backfill' ? 'backfillCaptured' : 'lateCaptured']++;
       if (!m.authorAvatar && m.type !== T.SYSTEM) watchAvatar(el, m);
+      if (m.type === T.SUPERSTICKER && !m.stickerSrc) watchSticker(el, m);
       // 同一頁已擷取過的 id 再次出現（YouTube 重新插入節點）：只計數供診斷，去重由 background 負責
       if (m.id) {
         if (st.seenIds.has(m.id)) st.stats.dupCaptured++;
@@ -474,8 +514,11 @@
     // 節點在這之前被修剪或逾時就放棄；同時監看的數量有上限
     const AVATAR_WAIT_MS = 10000, AVATAR_MAX_WATCH = 60;
     let avatarWatch = 0;
-    function watchAvatar(el, m) {
-      const img = el.querySelector(S.chat.author.photo);
+    // v44（17.2）貼圖（stickerSrc）也走同一套延遲載入補送，統計 stickerLate／stickerMissing
+    function watchAvatar(el, m) { watchImg(el, m, S.chat.author.photo, 'authorAvatar', 'avatarLate', 'avatarMissing'); }
+    function watchSticker(el, m) { watchImg(el, m, S.chat.stickerImg, 'stickerSrc', 'stickerLate', 'stickerMissing'); }
+    function watchImg(el, m, sel, field, lateKey, missKey) {
+      const img = el.querySelector(sel);
       if (!img || avatarWatch >= AVATAR_MAX_WATCH || typeof MutationObserver === 'undefined') return;
       avatarWatch++;
       const vid = st.videoId; // 擷取時的場次（訊息物件本身不一定帶 videoId）
@@ -483,16 +526,16 @@
       const finish = () => { if (done) return; done = true; avatarWatch--; mo.disconnect(); clearTimeout(timer); };
       const check = () => {
         if (done) return;
-        const u = httpsOnlyUrl(img.getAttribute('src') || img.src);
+        const u = imgUrl(img);
         if (!u) return;
         finish();
         if (!el.isConnected || st.mode !== 'capturing' || vid !== st.videoId) return;
-        st.stats.avatarLate++;
-        enqueue(Object.assign({}, m, { authorAvatar: u }));
+        st.stats[lateKey]++;
+        enqueue(Object.assign({}, m, { [field]: u }));
       };
       const mo = new MutationObserver(check);
       mo.observe(img, { attributes: true, attributeFilter: ['src'] });
-      const timer = setTimeout(() => { if (!done) { st.stats.avatarMissing++; finish(); } }, AVATAR_WAIT_MS);
+      const timer = setTimeout(() => { if (!done) { st.stats[missKey]++; finish(); } }, AVATAR_WAIT_MS);
       check();
     }
 

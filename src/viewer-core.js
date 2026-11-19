@@ -396,10 +396,15 @@
 
   // ---------------------------------------------------------------- 圖片
   const safeImg = (u) => (u && C.isAllowedImageUrl(u) ? u : '');
+  // v44（17.1）訊息連結：只接受 http／https（顯示時再檢查一次，舊資料或匯入資料也一樣）
+  const safeLink = (u) => {
+    if (typeof u !== 'string' || !u) return '';
+    try { const x = new URL(u); return x.protocol === 'https:' || x.protocol === 'http:' ? x.href : ''; } catch (_) { return ''; }
+  };
 
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
-    matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg,
+    matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
     versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

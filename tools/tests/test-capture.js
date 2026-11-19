@@ -874,6 +874,66 @@
     e.stop();
   });
 
+  // ---------------------------------------------------------------- T5.3（審查十一 17.1、17.2）
+  test('T5.3 連結（17.1）：/redirect 解出 q、站內連結保留完整網址、javascript: 丟棄只留文字、文字含 < > 不變成 HTML', () => {
+    const el = textMsg({ id: 'LINK-1' });
+    const msg = el.querySelector('#message');
+    msg.textContent = '';
+    const a = (href, text) => { const x = document.createElement('a'); x.className = 'yt-simple-endpoint style-scope yt-live-chat-text-message-renderer'; x.setAttribute('href', href); x.textContent = text; return x; };
+    msg.append('看這裡 ',
+      a('https://www.youtube.com/redirect?event=live_chat&redir_token=TOKEN&q=https%3A%2F%2Fmadestudio.com.tw%2Fzh%2Fgames%2Fbrave-story%3Fa%3D1', 'https://madestudio.com.tw/zh/games/br...'),
+      ' 頻道 ', a('/@someone', '@someone'), ' ', a('/hashtag/test', '#test'),
+      ' ', a('javascript:alert(1)', '點我'), ' ', a('/redirect?q=javascript%3Aalert(1)', '壞的'), ' <b>不是粗體</b>');
+    const m = CAP.parseMessage(el, { source: 'live', now: NOW, startedAt: null });
+    const links = m.runs.filter((r) => r.link);
+    eq(links.map((r) => [r.text, r.link.url]), [
+      ['https://madestudio.com.tw/zh/games/br...', 'https://madestudio.com.tw/zh/games/brave-story?a=1'],
+      ['@someone', 'https://www.youtube.com/@someone'],
+      ['#test', 'https://www.youtube.com/hashtag/test'],
+    ]);
+    const text = m.runs.map((r) => r.text).join('');
+    assert(text.includes('點我') && text.includes('壞的'), '不合格的連結只留文字');
+    assert(text.endsWith(' <b>不是粗體</b>'), '文字照原樣（textContent）');
+    assert(!m.runs.some((r) => r.link && !/^https?:/.test(r.link.url)), '只有 http／https');
+    // 相鄰的文字不會併入連結
+    eq(m.runs[0], { text: '看這裡 ' });
+  });
+
+  test('T5.3 超級貼圖（17.2）：協定相對網址補 https:、存下 alt；data:／javascript: 丟棄；延遲載入補送（stickerLate）', async () => {
+    let el = stickerMsg();
+    const img = el.querySelector('#sticker img');
+    img.setAttribute('src', '//lh3.googleusercontent.com/stk-rel=s96');
+    img.setAttribute('alt', '開心的貓');
+    let m = CAP.parseMessage(el, { source: 'live', now: NOW, startedAt: null });
+    eq([m.stickerSrc, m.stickerAlt], ['https://lh3.googleusercontent.com/stk-rel=s96', '開心的貓']);
+    for (const bad of ['data:image/gif;base64,R0lGODlhAQABAAAAACw=', 'javascript:alert(1)', 'http://lh3.googleusercontent.com/x']) {
+      el = stickerMsg(); el.querySelector('#sticker img').setAttribute('src', bad);
+      m = CAP.parseMessage(el, { source: 'live', now: NOW, startedAt: null });
+      eq(m.stickerSrc, '', bad.slice(0, 12));
+    }
+    // 表符與頭像用同一個函式
+    const t = textMsg({ id: 'REL-EMOJI', avatar: '//yt4.ggpht.com/rel-avatar=s64', runs: [{ emoji: { alt: ':x:', src: '//yt3.ggpht.com/rel-emoji=w24' } }] });
+    m = CAP.parseMessage(t, { source: 'live', now: NOW, startedAt: null });
+    eq([m.authorAvatar, m.runs[0].emoji.src], ['https://yt4.ggpht.com/rel-avatar=s64', 'https://yt3.ggpht.com/rel-emoji=w24']);
+    // 延遲載入
+    const { items } = buildChat();
+    const send = mockSend();
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidStkr', startDate: NOW - 60000, channelHandle: '@ch' });
+    await until(() => send.of(RT.CAPTURE_START).length === 1, 2000, 'CAPTURE_START');
+    await sleep(50);
+    el = stickerMsg();
+    const id = el.id;
+    el.querySelector('#sticker img').setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAAAAACw=');
+    items.append(el);
+    await until(() => savedIds(send).includes(id), 3000, '先送出');
+    el.querySelector('#sticker img').setAttribute('src', 'https://lh3.googleusercontent.com/late-stk=s96');
+    await until(() => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).some((x) => x.id === id && x.stickerSrc), 3000, '補送貼圖');
+    eq(e.state().stats.stickerLate, 1);
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];

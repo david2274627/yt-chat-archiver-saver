@@ -171,7 +171,8 @@
     assert(t.includes('<img src=x onerror="window.__xss=1">'), '注入字串以純文字顯示');
     assert(!window.__xss && !ctl.els.list.querySelector('img[src="x"]'), '沒有產生 img 元素');
     const imgs = Array.from(ctl.els.list.querySelectorAll('img')).map((i) => new URL(i.src).hostname);
-    assert(imgs.includes('yt3.ggpht.com') && imgs.includes('lh3.googleusercontent.com'), '白名單圖片顯示');
+    // v44：貼圖載入失敗（本頁 CSP 擋下外部圖片）會換成 alt／🏷，所以貼圖可能已被替換
+    assert(imgs.includes('yt3.ggpht.com') && (imgs.includes('lh3.googleusercontent.com') || ctl.els.list.querySelector('.stk')), '白名單圖片顯示');
     assert(!imgs.includes('evil.example'), '非白名單圖片不載入');
     assert(t.includes(':evil:'), '非白名單表符以 alt 文字顯示');
     const sc = ctl.els.list.querySelector('.card');
@@ -633,6 +634,33 @@
       await c.ready;
       eq([c.state.latency, c.state.latencyFrom], [30, 'channel']);
     } finally { await sleep(900); chrome.storage.local._reset(); }
+  });
+
+  test('T5.3 連結與超級貼圖的呈現（17.1、17.2）：<a target=_blank rel=noopener noreferrer>、title 為完整網址；非 http(s) 只顯示文字；貼圖沒圖時顯示 alt', async () => {
+    await resetDb();
+    const VLK = 'vidLINKS001';
+    await put({ videoId: VLK, title: 'links', versions: [], linkedVideos: [] }, [
+      mk({ id: 'k1', videoId: VLK, timestampAbs: T0 + 1000, runs: [{ text: '看 ' }, { text: 'https://madestudio.com.tw/zh/games/br...', link: { url: 'https://madestudio.com.tw/zh/games/brave-story' } }, { text: ' <img src=x onerror=alert(1)>' }] }),
+      mk({ id: 'k2', videoId: VLK, timestampAbs: T0 + 2000, runs: [{ text: '壞連結', link: { url: 'javascript:alert(1)' } }] }), // 直接寫入（略過 db 的檢查）
+      mk({ id: 'k3', videoId: VLK, timestampAbs: T0 + 3000, type: 'supersticker', amount: '$45.00', stickerSrc: '', stickerAlt: '揮手的熊', runs: [] }),
+      mk({ id: 'k4', videoId: VLK, timestampAbs: T0 + 4000, type: 'supersticker', amount: '$5.00', stickerSrc: '', runs: [] }),
+    ]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VLK });
+    await c.ready; await frame(); await frame();
+    const row = (id) => c.els.list.querySelector('[data-id="' + id + '"]');
+    const a = row('k1').querySelector('a.lnk');
+    assert(a, '連結');
+    eq([a.getAttribute('href'), a.target, a.rel, a.title, a.textContent], ['https://madestudio.com.tw/zh/games/brave-story', '_blank', 'noopener noreferrer', 'https://madestudio.com.tw/zh/games/brave-story', 'https://madestudio.com.tw/zh/games/br...']);
+    assert(!row('k1').querySelector('img[src="x"]') && row('k1').textContent.includes('<img src=x onerror=alert(1)>'), '文字不變成 HTML');
+    assert(!row('k2').querySelector('a') && row('k2').textContent.includes('壞連結'), 'javascript: 只顯示文字');
+    eq(row('k3').querySelector('.stk').textContent, '揮手的熊', '貼圖沒有圖 → alt');
+    eq(row('k4').querySelector('.stk').textContent, '🏷', '都沒有 → 🏷');
+    // db 寫入時也只保留 http／https（擷取、匯入、遷移都經過 normalizeIncoming）
+    await DB.saveMessages({ videoId: VLK, source: 'live', messages: [{ id: 'k5', type: 'text', timestampAbs: T0 + 5000, runs: [{ text: 'a', link: { url: 'javascript:alert(1)' } }, { text: 'b', link: { url: 'https://ok.example/' } }] }] });
+    const saved = (await DB.queryMessages(VLK)).find((m) => m.id === 'k5');
+    eq(saved.runs, [{ text: 'a' }, { text: 'b', link: { url: 'https://ok.example/' } }]);
+    await DB.close();
   });
 
   test('T5.2 (I)「在後台開啟此場次」：請 background 開分頁（OPEN_VIEWER），不自己開', async () => {

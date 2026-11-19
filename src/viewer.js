@@ -549,15 +549,23 @@
           } else node = el('span', 'emo-alt', r.emoji.alt || r.emoji.shortcut || '');
           if (hit) { const mk = el('mark'); mk.appendChild(node); box.appendChild(mk); } else box.appendChild(node);
         } else if (r && r.text) {
+          // v44（17.1）連結：<a target="_blank" rel="noopener noreferrer">，文字照原樣（可能是截斷的），title 顯示完整網址
+          const url = r.link ? CORE.safeLink(r.link.url) : '';
+          let target = box;
+          if (url) {
+            const a = el('a', 'lnk'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = url;
+            a.addEventListener('click', (e) => e.stopPropagation());
+            box.appendChild(a); target = a;
+          }
           const ranges = kw ? CORE.matchRanges(r.text, kw) : [];
-          if (!ranges.length) { box.appendChild(document.createTextNode(r.text)); continue; }
+          if (!ranges.length) { target.appendChild(document.createTextNode(r.text)); continue; }
           let p = 0;
           for (const [a, b] of ranges) {
-            if (a > p) box.appendChild(document.createTextNode(r.text.slice(p, a)));
-            box.appendChild(el('mark', null, r.text.slice(a, b)));
+            if (a > p) target.appendChild(document.createTextNode(r.text.slice(p, a)));
+            target.appendChild(el('mark', null, r.text.slice(a, b)));
             p = b;
           }
-          if (p < r.text.length) box.appendChild(document.createTextNode(r.text.slice(p)));
+          if (p < r.text.length) target.appendChild(document.createTextNode(r.text.slice(p)));
         }
       }
     }
@@ -619,7 +627,13 @@
         if (m.type === T.SUPERSTICKER) {
           const stk = el('div', 'stk');
           const src = CORE.safeImg(m.stickerSrc);
-          if (src) { const img = el('img'); img.src = src; img.alt = '超級貼圖'; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; stk.appendChild(img); }
+          // v44（17.2）alt：貼圖描述；沒有圖時以 alt 文字當後備（都沒有才顯示 🏷）
+          const alt = typeof m.stickerAlt === 'string' ? m.stickerAlt : '';
+          if (src) {
+            const img = el('img'); img.src = src; img.alt = alt || '超級貼圖'; img.title = alt; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+            img.addEventListener('error', () => { img.replaceWith(alt ? el('span', 'stk-alt', alt) : document.createTextNode('🏷')); }, { once: true });
+            stk.appendChild(img);
+          } else if (alt) stk.appendChild(el('span', 'stk-alt', alt));
           else stk.textContent = '🏷';
           row.appendChild(stk);
         }
