@@ -1238,12 +1238,67 @@
     const created = self.chrome.tabs._created;
     created.length = 0;
     eq((await send({ type: 'OPEN_VIEWER', videoId: V }, CONTENT)).error, 'forbidden', 'content script 不可開');
-    const EMBED = { id: 'testextid', url: 'chrome-extension://dynamic-id/src/viewer.html?embed=1&v=' + V, tab: { id: 7, index: 3, windowId: 2 } };
+    // Chrome 對嵌在 youtube.com 裡的擴充功能 iframe 給的 MessageSender 形狀（url／origin 為動態 ID、tab 為 YouTube 分頁）
+    const EMBED = { id: 'testextid', url: 'chrome-extension://dynamic-id/src/viewer.html?embed=1&v=' + V, origin: 'chrome-extension://dynamic-id',
+      frameId: 12, documentId: 'D', tab: { id: 7, index: 3, windowId: 2, url: 'https://www.youtube.com/watch?v=' + V } };
     eq((await send({ type: 'OPEN_VIEWER', videoId: V }, EMBED)).ok, true);
     eq(created.length, 1);
-    eq(created[0], { url: 'chrome-extension://testextid/src/viewer.html?v=' + V, index: 4, windowId: 2, openerTabId: 7 });
-    eq((await send({ type: 'OPEN_VIEWER', videoId: 'x"><script>' }, EMBED)).ok, false, '不合法的 videoId');
+    // v44（T5.3 (J)）：開不在 web_accessible_resources 的 backend.html；不設 openerTabId
+    eq(created[0], { url: 'chrome-extension://testextid/src/backend.html?v=' + V, index: 4, windowId: 2 });
+    eq((await send({ type: 'OPEN_VIEWER', videoId: 'x"><script>' }, EMBED)), { ok: false, error: 'bad-video-id' }, '不合法的 videoId');
     eq(created.length, 1);
+    // tabs.create 失敗：先不指定位置重試；仍失敗 → 回傳原因代碼
+    const realCreate = self.chrome.tabs.create;
+    let calls = 0;
+    self.chrome.tabs.create = async (o) => { calls++; if (o.index != null) throw new Error('No window with id: 2.'); created.push(o); return { id: 99 }; };
+    eq((await send({ type: 'OPEN_VIEWER', videoId: V }, EMBED)).ok, true, '位置不合法 → 不指定位置重試');
+    eq([calls, created.length, created[1].index], [2, 2, undefined]);
+    self.chrome.tabs.create = async () => { throw new Error('Tabs cannot be edited right now'); };
+    const r = await send({ type: 'OPEN_VIEWER', videoId: V }, EMBED);
+    assert(r.ok === false && r.error.startsWith('tabs-create:'), JSON.stringify(r));
+    self.chrome.tabs.create = realCreate;
+  });
+
+  // 審查十一 18.1 (J)：以**嵌入的 iframe 當 sender**——真實 viewer.js（embed=1）在 iframe 內點 ⋯「在後台開啟此場次」，
+  // 它的 chrome.runtime.sendMessage 接到本頁真實的 background 處理函式（sender 依該 iframe 的實際網址與所在分頁組成）
+  test('T5.3 (J) 嵌入面板 iframe → background：開 backend.html、成功時不顯示錯誤；失敗時面板顯示原因、不退回 window.open', async () => {
+    const created = self.chrome.tabs._created;
+    created.length = 0;
+    const f = document.createElement('iframe');
+    f.style.cssText = 'width:360px;height:500px';
+    f.src = 'content-fixtures/viewer-env.html?embed=1&v=' + V + '&db=test-db-embed-ytcas';
+    document.body.appendChild(f);
+    try {
+      await until(() => f.contentWindow && f.contentWindow.__loaded && f.contentWindow.YTCAS_VIEWER && f.contentWindow.YTCAS_VIEWER.current, 6000, '面板載入');
+      const w = f.contentWindow;
+      await w.YTCAS_VIEWER.current.ready;
+      const opened = [];
+      w.open = (u) => { opened.push(String(u)); return null; };
+      const sender = () => ({ id: 'testextid', url: w.location.href, origin: w.location.origin, frameId: 3, tab: { id: 7, index: 1, windowId: 2, url: 'https://www.youtube.com/watch?v=' + V } });
+      w.chrome.runtime.sendMessage = (msg) => send(JSON.parse(JSON.stringify(msg)), sender());
+      const click = () => {
+        w.YTCAS_VIEWER.current.els.moreBtn.click();
+        Array.from(w.YTCAS_VIEWER.current.els.menu.querySelectorAll('button')).find((b) => b.textContent.includes('在後台開啟此場次')).click();
+      };
+      click();
+      await until(() => created.length === 1, 2000, 'tabs.create');
+      eq(created[0].url, 'chrome-extension://testextid/src/backend.html?v=' + V);
+      const note = w.YTCAS_VIEWER.current.els.note;
+      assert(note.hidden || !note.textContent.includes('無法開啟'), '成功時不顯示錯誤');
+      // background 失敗 → 面板顯示原因代碼；嵌入模式不退回 window.open
+      const realCreate = self.chrome.tabs.create;
+      self.chrome.tabs.create = async () => { throw new Error('blocked'); };
+      try {
+        click();
+        await until(() => !note.hidden && note.textContent.includes('無法開啟後台分頁（tabs-create:'), 2000, '錯誤提示 ' + note.textContent);
+      } finally { self.chrome.tabs.create = realCreate; }
+      // 送訊息本身拋錯
+      w.chrome.runtime.sendMessage = () => Promise.reject(new Error('Could not establish connection'));
+      click();
+      await until(() => note.textContent.includes('send:'), 2000, '送出失敗的提示');
+      eq(opened, [], '嵌入模式不退回 window.open');
+      eq(created.length, 1);
+    } finally { f.remove(); indexedDB.deleteDatabase('test-db-embed-ytcas'); }
   });
 
   // ---------------------------------------------------------------- 舊資料庫測試資料

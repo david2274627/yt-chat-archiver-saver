@@ -525,6 +525,16 @@ const isExtensionPage = (sender) => !!sender && sender.id === chrome.runtime.id 
 const ADMIN = new Set([RT.DELETE_STREAM, RT.DELETE_STREAMS, RT.RESET_STREAM, RT.RECLASSIFY_SYSTEM, RT.MIGRATE_LEGACY,
   RT.IMPORT_DATA, RT.EXPORT_STREAM, RT.SET_VERSION_LABEL, RT.LINK_VIDEO, RT.UNLINK_VIDEO, RT.GET_STORAGE_USAGE, RT.DIAG_CONTROL, RT.OPEN_VIEWER]);
 
+// v44（T5.3 (J)）「在後台開啟此場次」失敗：SW console warnOnce（代碼只有 ASCII，不含網址與個人資料）
+const openViewerWarned = new Set();
+function openViewerWarn(code) {
+  const key = 'openViewer:' + C.asciiOnly(code);
+  if (openViewerWarned.has(key)) return;
+  openViewerWarned.add(key);
+  console.warn('[ytcas] 無法開啟後台分頁', key);
+  try { if (diagOn('P8')) diagLog('P8', 'warnOnce', { key, level: 'warn', desc: C.diagWarnText(key) }); } catch (_) { /* ignore */ }
+}
+
 function vid(msg) {
   if (typeof msg.videoId !== 'string' || !/^[\w-]{6,20}$/.test(msg.videoId)) throw new Error('invalid videoId');
   return msg.videoId;
@@ -829,13 +839,25 @@ const handlers = {
 
   // v43（T5.2 (I)）面板的「在後台開啟此場次」：由 background 開新分頁（擴充功能發起的導覽不受 use_dynamic_url 限制）。
   // 只接受擴充功能頁面（ADMIN）；網址固定為本擴充功能的 viewer.html，只帶通過檢查的 videoId
+  // v44（T5.3 (J)）：v43 實機仍是 ERR_BLOCKED_BY_CLIENT。改開**不在 web_accessible_resources 的 backend.html**
+  // （viewer.html 設了 use_dynamic_url，靜態 ID 網址的導覽可能被當成存取網頁可存取資源）；不設 openerTabId
+  //（避免新分頁的導覽被歸到 YouTube 分頁發起）。失敗時回傳原因代碼並 warnOnce（只有代碼）
   async [RT.OPEN_VIEWER](msg, sender) {
-    const url = chrome.runtime.getURL('src/viewer.html') + '?v=' + encodeURIComponent(vid(msg));
+    let videoId;
+    try { videoId = vid(msg); } catch (_) { openViewerWarn('bad-video-id'); return { ok: false, error: 'bad-video-id' }; }
+    const url = chrome.runtime.getURL('src/backend.html') + '?v=' + encodeURIComponent(videoId);
     const opt = { url };
     const tab = sender && sender.tab;
     if (tab && typeof tab.index === 'number') { opt.index = tab.index + 1; if (typeof tab.windowId === 'number') opt.windowId = tab.windowId; }
-    if (tab && typeof tab.id === 'number') opt.openerTabId = tab.id;
-    await chrome.tabs.create(opt);
+    try {
+      await chrome.tabs.create(opt);
+    } catch (e) {
+      // 位置參數不合法（分頁已關閉、視窗不存在等）→ 不指定位置再試一次
+      try { await chrome.tabs.create({ url }); } catch (e2) {
+        openViewerWarn('tabs-create');
+        return { ok: false, error: 'tabs-create:' + C.asciiOnly(String((e2 && e2.message) || e2)).slice(0, 80) };
+      }
+    }
     return {};
   },
 
@@ -933,6 +955,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || typeof msg.type !== 'string' || !Object.prototype.hasOwnProperty.call(handlers, msg.type)) return false;
   if (!sender || sender.id !== chrome.runtime.id) return false;
   if (ADMIN.has(msg.type) && !isExtensionPage(sender)) {
+    // v44（T5.3 (J)）：只記網址的協定（不含網址本身）
+    if (msg.type === RT.OPEN_VIEWER) openViewerWarn('forbidden:' + (/^([a-z-]+):/i.exec(String((sender && sender.url) || '')) || [0, 'none'])[1]);
     sendResponse({ ok: false, error: 'forbidden' });
     return false;
   }

@@ -265,6 +265,7 @@
     'handoff:teaser': '找不到可用的「開啟面板」，無法自動展開聊天室',
     'poc:': 'PoC 錨點或結構找不到',
     'panel:': '優化面板的開關位置找不到',
+    'openViewer:': '無法開啟後台分頁',
   });
   C.diagWarnText = function (key) {
     const k = String(key || '');

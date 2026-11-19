@@ -381,6 +381,7 @@
         sync.push('seeked ' + d.seeks + '、跳轉 ' + d.jumps);
         if (d.target != null) sync.push('目標 ' + CORE.fmtClock(d.target) + ' → ' + (d.targetMsg != null ? CORE.fmtClock(d.targetMsg) : '無'));
         parts.splice(2, 0, sync.join('、'));
+        if (d.openErr) parts.push('開啟後台失敗 ' + C.asciiOnly(d.openErr));
       }
       return parts.join(' · ');
     }
@@ -430,16 +431,27 @@
 
     // v43（T5.2 (I)）內嵌面板由 background 以 chrome.tabs.create 開啟：嵌在 youtube.com 裡的面板自己開，
     // 新分頁的導覽被視為網頁發起、存取 use_dynamic_url 的資源 → ERR_BLOCKED_BY_CLIENT（16.1 (I)）
+    // v44（T5.3 (J)）：嵌入模式**不再退回 window.open**（嵌入環境開出的分頁一定被擋）；失敗時在面板顯示原因代碼。
+    // 開的是不在 web_accessible_resources 的 backend.html（background 端）
     async function openBackend() {
       const vid = S.link ? S.link.orig : S.videoId;
+      let code = 'no-runtime';
       if (root.chrome && chrome.runtime && chrome.runtime.sendMessage) {
         try {
           const r = await chrome.runtime.sendMessage({ type: RT.OPEN_VIEWER, videoId: vid });
           if (r && r.ok) return;
-        } catch (_) { /* 退回自己開 */ }
+          code = r ? String(r.error || 'failed') : 'no-response';
+        } catch (e) { code = 'send:' + C.asciiOnly(String((e && e.message) || e)).slice(0, 60); }
       }
-      const url = (root.chrome && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('src/viewer.html') : 'viewer.html') + '?v=' + encodeURIComponent(vid);
-      try { if (!embed && chrome.tabs && chrome.tabs.create) { chrome.tabs.create({ url }); return; } } catch (_) { /* 退回 window.open */ }
+      S.diag.openErr = code;
+      if (embed) {
+        console.warn('[ytcas] 無法開啟後台分頁', 'openViewer:' + C.asciiOnly(code));
+        showNotice('無法開啟後台分頁（' + C.asciiOnly(code) + '）。可從擴充功能圖示的選單開啟後台。', 'warn');
+        return;
+      }
+      // 後台分頁本身（測試頁等沒有 background 時）：同一個擴充功能頁面內開新分頁不受限制
+      const url = (root.chrome && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL('src/backend.html') : 'backend.html') + '?v=' + encodeURIComponent(vid);
+      try { if (chrome.tabs && chrome.tabs.create) { chrome.tabs.create({ url }); return; } } catch (_) { /* 退回 window.open */ }
       root.open(url, '_blank', 'noopener');
     }
 
@@ -803,6 +815,16 @@
       note.className = 'p-note ' + n.tone;
       note.hidden = false;
       if (!n.sticky) noteTimer = setTimeout(() => { note.hidden = true; }, 10000);
+    }
+
+    // 一次性的提示（用同一個 p-note 列，10 秒後隱藏；之後的收錄狀態會覆蓋它）
+    function showNotice(text, tone) {
+      clearTimeout(noteTimer);
+      S.noteKey = 'notice:' + text;
+      noteText.textContent = text;
+      note.className = 'p-note ' + (tone || 'info');
+      note.hidden = false;
+      noteTimer = setTimeout(() => { note.hidden = true; }, 10000);
     }
 
     function showEmpty(kind) {

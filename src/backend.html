@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YT 加強版聊天室 — 後台</title>
+  <!-- v44（T5.3 (J)）後台獨立分頁。與 viewer.html 內容相同，但**不在 web_accessible_resources**：
+       viewer.html 設了 use_dynamic_url（給嵌入面板用），以靜態 ID 網址開新分頁時可能被當成存取網頁可存取資源而擋下
+       （ERR_BLOCKED_BY_CLIENT）。擴充功能自己的非 WAR 頁面不受這個限制。 -->
+  <link rel="stylesheet" href="styles/tokens.css">
+  <link rel="stylesheet" href="styles/components.css">
+  <link rel="stylesheet" href="styles/viewer.css">
+  <script src="theme.js" data-auto></script>
+</head>
+<body>
+  <main id="app" data-autostart></main>
+  <script src="constants.js"></script>
+  <script src="db.js"></script>
+  <script src="viewer-core.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>
