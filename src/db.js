@@ -746,6 +746,21 @@
     return out;
   }
 
+  // v45（21.3）system 紀錄的元件標籤統計（只有標籤與筆數，不含文字）：找出「頁面狀態提示」用的是哪個元件
+  async function systemTagStats() {
+    const db = await open();
+    const all = await req(db.transaction('messages').objectStore('messages').getAll());
+    const out = { system: 0, notice: 0, byTag: {} };
+    for (const m of all) {
+      if (m.type !== T.SYSTEM) continue;
+      out.system++;
+      if (C.isNotice(m)) out.notice++;
+      const k = (m.rawTag || '(無 rawTag)') + (C.isNotice(m) ? '（提示）' : '');
+      out.byTag[k] = (out.byTag[k] || 0) + 1;
+    }
+    return out;
+  }
+
   function recomputePhases(videoId) { return withLock(videoId, () => recomputePhasesUnlocked(videoId)); }
   async function recomputePhasesUnlocked(videoId) {
     const db = await open();
@@ -1675,7 +1690,7 @@
     configure, open, close,
     saveMessages, savePinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
-    recomputePhases, recomputeAllPhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
+    recomputePhases, recomputeAllPhases, systemTagStats, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
     getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,

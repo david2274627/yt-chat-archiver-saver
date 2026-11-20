@@ -939,7 +939,8 @@
     const r2 = await send({ type: 'DIAG_LOG', records: [{ probe: 'P1', kind: 'stats', data: {} }] });
     eq([r2.accepted, r2.active], [0, false], '停止後不再寫入');
     const dl = await BG.diag.download();
-    assert(/^YT聊天室診斷\/ytcas-diag-\d{8}-\d{4}\.json$/.test(dl.filename) && chrome.downloads._list.length >= 1, '下載到 YT聊天室診斷 資料夾');
+    // v45（20.6）預設格式 ytcas-diag-{yy}_{MM}_{dd}_{HH}_{mm}（記錄開始時間）
+    assert(/^YT聊天室診斷\/ytcas-diag-\d\d_\d\d_\d\d_\d\d_\d\d\.json$/.test(dl.filename) && chrome.downloads._list.length >= 1, '下載到 YT聊天室診斷 資料夾 ' + dl.filename);
     eq(chrome.downloads._list[chrome.downloads._list.length - 1].url.startsWith('data:application/json;base64,'), true);
   });
 
@@ -1305,6 +1306,10 @@
     eq(r.updated, 1);
     eq((await get('p2')).phase, 'post');
     eq((await BG.fixPhases()).changed, 0, '再跑一次沒有要改的');
+    // 頁面狀態提示用的元件標籤統計（只有標籤與筆數）
+    const tags = await BG.systemTags();
+    eq([tags.system, tags.notice], [1, 1]);
+    assert(!JSON.stringify(tags).includes('提示'.repeat(2)) && Object.keys(tags.byTag)[0].endsWith('（提示）'), JSON.stringify(tags));
   });
 
   test('權限：管理操作只接受擴充功能頁面，content script 被拒', async () => {
