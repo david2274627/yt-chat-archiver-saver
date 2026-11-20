@@ -338,6 +338,28 @@
     return (m && (m.authorHandle || (m.authorChannelId ? 'ch:' + m.authorChannelId : ''))) || '';
   };
 
+  // v45（T5.4，審查十一 20.6 第 2 點）診斷匯出檔名格式。參數：{yy} {yyyy} {MM} {dd} {HH} {mm} {ss}（記錄開始時間，本機時區）、{probes}（例 P1-P9-P10）。
+  // 只允許英數、_ - .；其他字元（含未知的 {參數}）轉成 _；不提供 videoId、頻道等參數（個資規則）。結果不含副檔名與資料夾
+  C.DIAG_FILE_FORMAT_KEY = 'diagFileFormat';
+  C.DIAG_FILE_FORMAT_DEFAULT = 'ytcas-diag-{yy}_{MM}_{dd}_{HH}_{mm}';
+  C.DIAG_FILE_FORMAT_PRESETS = Object.freeze([
+    'ytcas-diag-{yy}_{MM}_{dd}_{HH}_{mm}',
+    'ytcas-diag-{yyyy}{MM}{dd}-{HH}{mm}',
+    'ytcas-diag-{yyyy}-{MM}-{dd}_{HH}{mm}{ss}',
+    'ytcas-diag-{yy}_{MM}_{dd}_{HH}_{mm}_{probes}',
+  ]);
+  C.diagFileName = function (fmt, t, probes) {
+    const d = new Date(typeof t === 'number' && Number.isFinite(t) ? t : Date.now());
+    const p2 = (n) => String(n).padStart(2, '0');
+    const v = { yyyy: String(d.getFullYear()), yy: p2(d.getFullYear() % 100), MM: p2(d.getMonth() + 1), dd: p2(d.getDate()),
+      HH: p2(d.getHours()), mm: p2(d.getMinutes()), ss: p2(d.getSeconds()),
+      probes: (Array.isArray(probes) ? probes : []).filter((x) => /^P\d{1,2}$/.test(x)).join('-') };
+    const f = typeof fmt === 'string' && fmt.trim() ? fmt.trim().slice(0, 120) : C.DIAG_FILE_FORMAT_DEFAULT;
+    let s = f.replace(/\{(yyyy|yy|MM|dd|HH|mm|ss|probes)\}/g, (_, k) => v[k]);
+    s = s.replace(/[^A-Za-z0-9_.-]/g, '_').replace(/^[.\-_]+/, '').replace(/\.+$/, '').slice(0, 120);
+    return s || C.diagFileName(C.DIAG_FILE_FORMAT_DEFAULT, t, probes);
+  };
+
   // v45（T5.4，審查十一 20.4）文字開頭的 @handle（YouTube handle：3～30 個字母、數字、. _ -，可含各語系文字）→ '@handle'；不是 → ''。
   // 只看 @ 與 handle 的字元格式，不比對任何語言的文字
   C.handleOf = function (text) {

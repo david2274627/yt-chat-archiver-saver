@@ -62,6 +62,26 @@
     assert(document.getElementById('p9Minutes') ? document.getElementById('p9Minutes').value === '1' : true, '診斷頁欄位預設 1');
   });
 
+  test('T5.4 輸出檔名格式（20.6）：預設與現行一致、參數取記錄開始時間、非法字元轉成 _、不提供 videoId；診斷頁欄位與預覽', async () => {
+    const C = self.YTCAS_CONST;
+    const t = new Date(2026, 10, 20, 19, 50, 7).getTime();
+    eq(C.diagFileName(C.DIAG_FILE_FORMAT_DEFAULT, t, []), 'ytcas-diag-26_11_20_19_50');
+    eq(C.diagFileName('ytcas-diag-{yyyy}{MM}{dd}-{HH}{mm}', t), 'ytcas-diag-20261120-1950');
+    eq(C.diagFileName('x-{yyyy}-{MM}-{dd}_{HH}{mm}{ss}_{probes}', t, ['P1', 'P9', 'P10', 'bad']), 'x-2026-11-20_195007_P1-P9-P10');
+    eq(C.diagFileName('診斷 {videoId}/../{HH}', t), 'videoId__.._19', '非法字元與未知參數 → _（開頭的 _ 去掉；{videoId} 不是參數，只剩字面文字）');
+    eq(C.diagFileName('', t), 'ytcas-diag-26_11_20_19_50', '空白 → 預設');
+    eq(C.diagFileName('////', t), 'ytcas-diag-26_11_20_19_50', '全部非法 → 預設');
+    await until(() => $('fileFormat') && $('fileFormat').value === C.DIAG_FILE_FORMAT_DEFAULT, 3000, '欄位預設');
+    assert(/^預覽：ytcas-diag-\d\d_\d\d_\d\d_\d\d_\d\d\.json/.test($('filePreview').textContent), $('filePreview').textContent);
+    $('fileFormat').value = 'mine-{HH}{mm}'; $('fileFormat').dispatchEvent(new Event('input'));
+    assert(/^預覽：mine-\d{4}\.json/.test($('filePreview').textContent), $('filePreview').textContent);
+    eq($('filePreset').value, '', '自訂');
+    await sleep(500);
+    eq((await chrome.storage.local.get(C.DIAG_FILE_FORMAT_KEY))[C.DIAG_FILE_FORMAT_KEY], 'mine-{HH}{mm}', '記在 storage.local');
+    $('filePreset').value = C.DIAG_FILE_FORMAT_DEFAULT; $('filePreset').dispatchEvent(new Event('change'));
+    eq($('fileFormat').value, C.DIAG_FILE_FORMAT_DEFAULT);
+  });
+
   // ---------------------------------------------------------------- 畫面整合
   test('畫面：初始為「開始記錄」；結束方式切換時另一個欄位停用；勾選排程才顯示開始時間', async () => {
     await until(() => $('btn-toggle').textContent === '開始記錄', 3000);
@@ -99,7 +119,8 @@
     const before = chrome.downloads._list.length;
     $('btn-export-start').click();
     await until(() => chrome.downloads._list.length === before + 1, 3000, '下載');
-    assert(/^YT聊天室診斷\/ytcas-diag-\d{8}-\d{4}\.json$/.test(chrome.downloads._list[before].filename));
+    // v45（20.6）預設格式 ytcas-diag-{yy}_{MM}_{dd}_{HH}_{mm}（記錄開始時間）
+    assert(/^YT聊天室診斷\/ytcas-diag-\d\d_\d\d_\d\d_\d\d_\d\d\.json$/.test(chrome.downloads._list[before].filename), chrome.downloads._list[before].filename);
     await until(async () => (await BG.diag.status()).active, 3000, '接著開始');
     await until(() => $('unexported').hidden, 3000);
     $('btn-toggle').click();

@@ -533,20 +533,22 @@ async function diagExport() {
     probes: st.probes || [], p9Minutes: st.p9Minutes || D.P9_MINUTES, giftStructures: await giftStructures(), records: await DB.diagAll() };
 }
 function pad(n) { return String(n).padStart(2, '0'); }
-function diagFilename(t) {
-  const d = new Date(t);
-  return D.DOWNLOAD_DIR + '/ytcas-diag-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes()) + '.json';
+// v45（20.6）檔名依診斷頁設定的格式（chrome.storage.local），時間取記錄開始時間
+let diagFileFmt = C.DIAG_FILE_FORMAT_DEFAULT;
+function diagFilename(data) {
+  return D.DOWNLOAD_DIR + '/' + C.diagFileName(diagFileFmt, (data.period && data.period.startAt) || data.exportedAt, data.probes) + '.json';
 }
 // SW Console 用：直接下載（data URL；擴充功能頁面 tools/diag.html 以 Blob 下載）
 async function diagDownload() {
+  try { const o = await chrome.storage.local.get(C.DIAG_FILE_FORMAT_KEY); if (o && typeof o[C.DIAG_FILE_FORMAT_KEY] === 'string') diagFileFmt = o[C.DIAG_FILE_FORMAT_KEY]; } catch (_) { /* ignore */ }
   const data = await diagExport();
   const json = JSON.stringify(data);
   const bytes = new TextEncoder().encode(json);
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-  const id = await chrome.downloads.download({ url: 'data:application/json;base64,' + btoa(bin), filename: diagFilename(data.exportedAt), saveAs: false, conflictAction: 'uniquify' });
+  const id = await chrome.downloads.download({ url: 'data:application/json;base64,' + btoa(bin), filename: diagFilename(data), saveAs: false, conflictAction: 'uniquify' });
   await markExported();
-  return { downloadId: id, filename: diagFilename(data.exportedAt), records: data.records.length, bytes: bytes.length };
+  return { downloadId: id, filename: diagFilename(data), records: data.records.length, bytes: bytes.length };
 }
 // 人類可讀摘要（前 maxLines 行）
 async function diagSummary(maxLines) {

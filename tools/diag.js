@@ -160,6 +160,7 @@
         staleTabs.map((t) => '#' + t.tabId + '（' + (t.kind === 'popout' ? '彈出視窗' : t.kind === 'watch' ? '影片頁' : '其他') + (t.video ? ' ' + t.video : '') + '）').join('、') +
         '。可按「重新接上這些分頁」，或對這些分頁按 F5。';
     }
+    renderPreview();
   }
 
   async function refresh() {
@@ -171,16 +172,44 @@
     renderStatus();
   }
 
-  function stamp(t) {
-    const d = new Date(t);
-    return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' + pad(d.getHours()) + pad(d.getMinutes());
+  // v45（T5.4，審查十一 20.6 第 2 點）輸出檔名格式：常用格式＋自訂，存在 chrome.storage.local；時間取記錄開始時間，即時預覽
+  let fileFormat = C.DIAG_FILE_FORMAT_DEFAULT;
+  const fmtSel = $('filePreset'), fmtIn = $('fileFormat');
+  if (fmtSel && fmtIn) {
+    for (const f of C.DIAG_FILE_FORMAT_PRESETS) { const o = document.createElement('option'); o.value = f; o.textContent = f; fmtSel.append(o); }
+    const oc = document.createElement('option'); oc.value = ''; oc.textContent = '自訂'; fmtSel.append(oc);
+    const syncSel = () => { fmtSel.value = C.DIAG_FILE_FORMAT_PRESETS.includes(fileFormat) ? fileFormat : ''; };
+    let saveT = 0;
+    const setFmt = (v, save) => {
+      fileFormat = v || C.DIAG_FILE_FORMAT_DEFAULT;
+      renderPreview();
+      if (save) { clearTimeout(saveT); saveT = setTimeout(() => { try { chrome.storage.local.set({ [C.DIAG_FILE_FORMAT_KEY]: fileFormat }); } catch (_) { /* ignore */ } }, 400); }
+    };
+    fmtSel.addEventListener('change', () => { if (fmtSel.value) { fmtIn.value = fmtSel.value; setFmt(fmtSel.value, true); } else fmtIn.focus(); });
+    fmtIn.addEventListener('input', () => { setFmt(fmtIn.value.trim(), true); syncSel(); });
+    try {
+      chrome.storage.local.get(C.DIAG_FILE_FORMAT_KEY).then((o) => {
+        const v = o && o[C.DIAG_FILE_FORMAT_KEY];
+        if (typeof v === 'string' && v) fileFormat = v;
+        fmtIn.value = fileFormat; syncSel(); renderPreview();
+      }).catch(() => {});
+    } catch (_) { /* ignore */ }
+    fmtIn.value = fileFormat; syncSel();
+  }
+  function exportName(startAt, probes) { return C.diagFileName(fileFormat, startAt, probes) + '.json'; }
+  function renderPreview() {
+    if (!$('filePreview')) return;
+    const s = status || {};
+    const t = s.startAt || Date.now();
+    const probes = s.probes && s.probes.length ? s.probes : Array.from(document.querySelectorAll('.probe:checked')).map((x) => x.value);
+    $('filePreview').textContent = '預覽：' + exportName(t, probes) + (s.startAt ? '' : '（尚無記錄，以現在時間示意）');
   }
   async function doExport() {
     const r = await ctl('export');
     if (!r || !r.ok) { msg('匯出失敗：' + (r && r.error)); return false; }
     const blob = new Blob([JSON.stringify(r.data)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const filename = D.DOWNLOAD_DIR + '/ytcas-diag-' + stamp(r.data.exportedAt) + '.json';
+    const filename = D.DOWNLOAD_DIR + '/' + exportName((r.data.period && r.data.period.startAt) || r.data.exportedAt, r.data.probes);
     try {
       await chrome.downloads.download({ url, filename, saveAs: false, conflictAction: 'uniquify' });
       msg('已匯出 ' + r.data.records.length + ' 筆（' + Math.round(blob.size / 1024) + ' KB）：下載\\' + filename.replace('/', '\\') + '　→ 請放進 docs/diag/raw/');
