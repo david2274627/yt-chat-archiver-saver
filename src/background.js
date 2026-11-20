@@ -256,6 +256,12 @@ async function fillAvatars(opts) {
   console.info('[ytcas] 頭像補齊' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
 }
+// v45（T5.4，審查十一 20.4 第 5 點）既有禮物的作者與 @handle 連結。用法：await YTCAS_BG.fixGiftAuthors()（預覽）→ { dryRun: false }
+async function fixGiftAuthors(opts) {
+  const r = await DB.fixGiftAuthors({ dryRun: !(opts && opts.dryRun === false) });
+  console.info('[ytcas] 禮物作者' + (r.dryRun ? '（預覽）' : ''), r);
+  return r;
+}
 
 // T5.3（審查十一 18.1 (K)）live／replay 來源統計（SW Console）：await YTCAS_BG.sourceStats()（已結束的場次，最多 30 場）
 // 或 { videoId }。只有數字：videoId 只留前 4 字、沒有標題與訊息內容。
@@ -496,6 +502,21 @@ async function runP5() {
   }
 }
 
+// v45（T5.4，審查十一 20.4 第 1 點）禮物結構：非記錄期間也保留最近 5 筆（chrome.storage.session；瀏覽器關閉即清除），診斷匯出時附上。
+// 只有標籤、屬性名稱、img 網域、尺寸、有無文字、@ 位置、連結種類（content 端本來就不送文字；這裡再消毒一次）
+const GIFT_STRUCT_KEY = 'giftStructs';
+async function saveGiftStructure(msg) {
+  const rec = { ts: Date.now(), source: sanitizeDiag(msg.source), videoId: sanitizeDiag(msg.videoId), data: sanitizeDiag(msg.data || {}) };
+  let list = [];
+  try { list = ((await chrome.storage.session.get(GIFT_STRUCT_KEY))[GIFT_STRUCT_KEY]) || []; } catch (_) { /* ignore */ }
+  list = list.concat([rec]).slice(-5);
+  try { await chrome.storage.session.set({ [GIFT_STRUCT_KEY]: list }); } catch (_) { /* ignore */ }
+  return list.length;
+}
+async function giftStructures() {
+  try { return ((await chrome.storage.session.get(GIFT_STRUCT_KEY))[GIFT_STRUCT_KEY]) || []; } catch (_) { return []; }
+}
+
 async function diagExport() {
   await flushDiag();
   const st = await diagStatus();
@@ -503,7 +524,7 @@ async function diagExport() {
   return { format: 'ytcas-diag', formatVersion: 1, app: C.EXPORT_APP, version: chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version,
     chrome: (/Chrome\/([\d.]+)/.exec(ua) || [])[1] || null, exportedAt: Date.now(),
     period: { startAt: st.startAt || null, endsAt: st.endsAt || null, stoppedAt: st.stoppedAt || null, reason: st.reason || null, active: !!st.active },
-    probes: st.probes || [], p9Minutes: st.p9Minutes || D.P9_MINUTES, records: await DB.diagAll() };
+    probes: st.probes || [], p9Minutes: st.p9Minutes || D.P9_MINUTES, giftStructures: await giftStructures(), records: await DB.diagAll() };
 }
 function pad(n) { return String(n).padStart(2, '0'); }
 function diagFilename(t) {
@@ -946,6 +967,10 @@ const handlers = {
     }
     return { accepted: n, active: true };
   },
+  // v45（20.4）禮物結構（content script，非記錄期間也送）
+  async [RT.GIFT_STRUCTURE](msg) {
+    return { kept: await saveGiftStructure(msg) };
+  },
   // F-20：擴充功能頁面（tools/diag.html、之後的後台）控制
   async [RT.DIAG_CONTROL](msg) {
     const op = msg.op;
@@ -1114,4 +1139,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, giftStructures, channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

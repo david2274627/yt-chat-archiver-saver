@@ -116,8 +116,10 @@
               shortcut: n.getAttribute(S.chat.emojiShortcutAttr) || '' } });
           } else if (n.tagName === 'A' && n.matches(S.chat.link.anchor)) {
             // v44（17.1）：{ text, link: { url } }；網址不合格 → 只留文字
-            const url = linkUrl(n.getAttribute('href') || '');
+            // v45（20.4 第 4 點）文字就是 @handle 的連結：一律連到 https://www.youtube.com/@handle（不管 href 指向哪裡）
             const text = n.textContent || '';
+            const h = C.handleOf(text);
+            const url = h && h === text.trim() ? C.handleUrl(h) : linkUrl(n.getAttribute('href') || '');
             if (url && text) out.push({ text, link: { url } });
             else if (url) out.push({ text: url, link: { url } });
             else push(text);
@@ -224,6 +226,13 @@
       const gi = imgs.map((i) => imgUrl(i)).find(Boolean);
       if (gi) m.giftImage = gi;
       m.rawTag = tag;
+      // v45（T5.4，審查十一 20.4 第 3 點）結構確認前的後備：作者取不到時，從內文開頭的 @handle 推出送禮者（authorSource: 'text'）。
+      // 只取 @ 開頭的 handle 格式，不比對任何語言的文字
+      if (!name) {
+        const first = m.runs.find((r) => r && typeof r.text === 'string' && r.text.trim());
+        const h = first ? C.handleOf(first.text) : '';
+        if (h) { m.authorHandle = h; m.authorUrl = C.handleUrl(h); m.authorSource = 'text'; }
+      }
     } else if (type === T.SYSTEM || tag === S.chat.giftRedemption || tag === S.chat.giftAnnouncement) {
       // 結構未確認的元件：保存 #message，沒有時保存可見文字（上限 300 字）供日後重新分類
       m.runs = msgEl ? runsOf(msgEl) : textRuns(clean(el.textContent).slice(0, 300));
@@ -280,6 +289,19 @@
 
   // ---------------------------------------------------------------- F-20 結構探針（P7，同 docs/poc-clip-path.md 附錄 C／E）
   // 只輸出後代的標籤、id、屬性名稱（不含值）、img 網域、尺寸、「有沒有文字」；不輸出任何文字
+  // 連結種類（不輸出網址本身）：handle（/@…）、channel（/channel/…）、redirect、watch、other、none
+  function hrefKind(h) {
+    if (h == null) return 'none';
+    let u;
+    try { u = new URL(h, 'https://www.youtube.com/'); } catch (_) { return 'invalid'; }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return u.protocol.replace(':', '');
+    if (!/(^|\.)youtube\.com$/i.test(u.hostname)) return 'external';
+    if (/^\/@/.test(u.pathname)) return 'handle';
+    if (/^\/channel\//.test(u.pathname)) return 'channel';
+    if (u.pathname === S.chat.link.redirectPath) return 'redirect';
+    if (u.pathname === '/watch') return 'watch';
+    return u.pathname === '/' ? 'root' : 'other';
+  }
   function structureOf(root, max) {
     max = max || 80;
     const out = [];
@@ -292,7 +314,10 @@
         out.push({ d: depth, tag: c.tagName.toLowerCase() + (c.id ? '#' + c.id : ''),
           attrs: c.getAttributeNames().filter((a) => a !== 'id' && a !== 'class' && a !== 'style' && !a.startsWith('data-ytcas')),
           img: c.tagName === 'IMG' ? host(c.getAttribute('src') || '') : undefined, size,
-          hasText: Array.from(c.childNodes).some((n) => n.nodeType === 3 && n.nodeValue.trim()) });
+          hasText: Array.from(c.childNodes).some((n) => n.nodeType === 3 && n.nodeValue.trim()),
+          // v45（T5.4，審查十一 20.4）不含文字的定位線索：自己的文字是否以 @ 開頭（handle 的位置）、連結指向的種類
+          at: Array.from(c.childNodes).some((n) => n.nodeType === 3 && /^\s*@/.test(n.nodeValue)) || undefined,
+          href: c.tagName === 'A' ? hrefKind(c.getAttribute('href')) : undefined });
         if (depth < 8) walk(c, depth + 1);
       }
     };
@@ -322,6 +347,7 @@
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
       p7: new Map(), // F-20 P7：reason:tag → 次數
+      giftStructSent: 0, // v45（20.4）禮物結構（非記錄期間也送）
       f12: null, viewMode: null, // F-12 結果：null（未執行）／running／switched／already／failed:<原因>
     };
 
@@ -495,6 +521,13 @@
       // F-20 P7：未知元件、禮物元件 → 結構紀錄（同一標籤每場最多 3 次）
       if (opts.onDiag && ((m.type === T.SYSTEM && m.rawTag && !KNOWN_SYSTEM_TAGS.has(m.rawTag)) || m.type === T.GIFT)) {
         probeStructure(m.type === T.GIFT ? 'gift' : 'unknown', el);
+      }
+      // v45（T5.4，審查十一 20.4 第 1 點）非記錄期間也保留禮物結構（只有標籤、屬性名稱、img 網域、定位線索；不含文字）：
+      // background 存在 chrome.storage.session 的最近 5 筆，診斷匯出時附上。每個引擎最多送 5 次
+      if (m.type === T.GIFT && opts.onGiftStructure && st.giftStructSent < 5) {
+        st.giftStructSent++;
+        try { opts.onGiftStructure(Object.assign({ tag: el.tagName.toLowerCase(), authorSource: m.authorSource || (m.authorHandle || m.authorName ? 'dom' : 'none'),
+          hasGiftImage: !!m.giftImage }, structureOf(el))); } catch (_) { /* ignore */ }
       }
       if (m.deleted && m.id) st.deletedReported.add(m.id);
       st.stats.captured++;

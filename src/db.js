@@ -817,6 +817,63 @@
     return out;
   }
 
+  // v45（T5.4，審查十一 20.4 第 5 點）既有禮物的重新解析（結構確認前能做的部分）：
+  // 作者空白、內文開頭是 @handle → 補 authorHandle／authorUrl、authorSource: 'text'；文字是 @handle 的連結 → 網址改為 https://www.youtube.com/@handle。
+  // 禮物名稱、禮物圖片需要原始 DOM（沒有保存），無法重新解析。dryRun：只回傳筆數；{ dryRun: false } 才寫入
+  function giftFix(m) {
+    if (!m || m.type !== T.GIFT) return null;
+    const r = clone(m);
+    let changed = false;
+    if (!r.authorHandle && !r.authorName && !r.authorChannelId) {
+      const first = (r.runs || []).find((x) => x && typeof x.text === 'string' && x.text.trim());
+      const h = first ? C.handleOf(first.text) : '';
+      if (h) { r.authorHandle = h; r.authorUrl = C.handleUrl(h); r.authorSource = 'text'; changed = true; }
+    }
+    r.runs = (r.runs || []).map((x) => {
+      if (!x || !x.link || typeof x.text !== 'string') return x;
+      const h = C.handleOf(x.text);
+      if (!h || h !== x.text.trim() || x.link.url === C.handleUrl(h)) return x;
+      changed = true;
+      return { text: x.text, link: { url: C.handleUrl(h) } };
+    });
+    if (!changed) return null;
+    r.fp = makeFp(r);
+    return r;
+  }
+  async function fixGiftAuthors(opts) {
+    const dryRun = !opts || opts.dryRun !== false;
+    const db = await open();
+    const all = await req(db.transaction('messages').objectStore('messages').getAll());
+    const out = { dryRun, gifts: 0, unknownAuthor: 0, fillable: 0, links: 0, fixed: 0, streams: 0 };
+    const byVid = new Map();
+    for (const m of all) {
+      if (m.type !== T.GIFT) continue;
+      out.gifts++;
+      if (!m.authorHandle && !m.authorName && !m.authorChannelId) out.unknownAuthor++;
+      const r = giftFix(m);
+      if (!r) continue;
+      if (r.authorSource === 'text' && m.authorSource !== 'text') out.fillable++;
+      if (JSON.stringify(r.runs) !== JSON.stringify(m.runs)) out.links++;
+      if (!byVid.has(m.videoId)) byVid.set(m.videoId, []);
+      byVid.get(m.videoId).push(m.id);
+    }
+    out.streams = byVid.size;
+    if (dryRun) return out;
+    for (const [videoId, ids] of byVid) {
+      await withLock(videoId, async () => {
+        const t = db.transaction('messages', 'readwrite');
+        const s = t.objectStore('messages');
+        for (const id of ids) {
+          const cur = await req(s.get(id));
+          const r = giftFix(cur);
+          if (r) { s.put(r); out.fixed++; }
+        }
+        await done(t);
+      });
+    }
+    return out;
+  }
+
   // T5.1（審查十一 13.1 (B)）面板的補讀：offset ≥ minOffset 的訊息（videoId_offset 索引，不讀整場）。
   // offset 為 null 的訊息不在這個索引裡（開播時間未確認時），呼叫端需改用 queryMessages
   async function queryMessagesFromOffset(videoId, minOffset) {
@@ -1594,7 +1651,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,

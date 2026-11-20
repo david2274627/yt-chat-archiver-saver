@@ -193,6 +193,9 @@ yt-live-chat-renderer
 
 ### 5.3 訊息元件
 - **禮物（F-13）**：`yt-gift-message-view-model` 是 `#items` 的**直接子節點**（2026-11-16，同一場 4 則）。內部結構待確認（`docs/poc-clip-path.md` 附錄 E 腳本）。
+  - **（v45，T5.4，審查十一 20.4）待驗證**：2026-11-20 實機 3 則禮物的作者都取不到（`#author-name` 不存在或不在預期位置），送禮者以 `@handle` 出現在內文開頭（例「@xxxx 贈送…」），該 `@handle` 以連結樣式呈現（推測內文中有 `<a href>`，指向不明）。
+  - 取得結構的方式：套件在**非記錄期間**也把每則禮物的結構（標籤、屬性名稱、img 網域、尺寸、有無文字、文字是否以 `@` 開頭、連結種類 handle／channel／redirect／external…；**不含文字與網址**）存在 `chrome.storage.session` 的最近 5 筆，診斷匯出（`giftStructures`）與 diag-report「禮物結構」一節會列出。遇到禮物後到診斷頁按「匯出」即可，不必剛好在記錄中。
+  - 結構確認前：作者取不到時以內文開頭的 `@handle` 當送禮者（`authorSource: 'text'`，只看 `@` 與 handle 字元格式，不比對任何語言的文字）；內文中文字就是 `@handle` 的連結一律指向 `https://www.youtube.com/@handle`。禮物名稱、數量、禮物圖片（目前取第一張非頭像的 `img`）待結構確認後改為專用解析。
 - `yt-live-chat-viewer-engagement-message-renderer`（歡迎／守則提示）：每次重新載入聊天室都會出現一則，**元素 id 每次不同**（同一場 6 次重新整理存成 28 筆）→ T3.5 起以內容去重。
 - 訊息元件**內部**的後代（徽章 `yt-live-chat-author-badge-renderer`、`yt-icon`、`yt-img-shadow`、`yt-image`、`span`、`div`、`button-view-model`、`yt-button-view-model`、`dom-if`、`yt-live-chat-reply-button-view-model`、`yt-live-chat-like-button-view-model` 等）會在訊息插入後才陸續渲染，而且很多帶有固定的 `id`（如 `message`、`author-name`、`image`）。以 `subtree` 監看時會被回報為新增節點 → 只能處理 `#items` 的直接子節點（T3.4）。
 - 頁面上有 2 個 `#items`：第 1 個是可見的訊息列表（`#item-list` 內），第 2 個不可見、3 個子節點（用途未查）。

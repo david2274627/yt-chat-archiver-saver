@@ -178,6 +178,11 @@
       onF12: (r) => { diag(r); postStatus(null); }, // T5：F-12 結果也告訴 top（面板說明文字）
       // F-20 P1／P2／P7：引擎的統計、節點分類、結構探針（記錄中才轉送）
       onDiag: (probe, kind, data) => { if (diagOn(probe)) dlog(probe, kind, data, { source, videoId: engine.state().videoId }); },
+      // v45（T5.4，審查十一 20.4）禮物結構：非記錄期間也送給 background（storage.session 保留最近 5 筆）
+      onGiftStructure: (data) => {
+        if (!connected()) return;
+        try { const p = chrome.runtime.sendMessage({ type: RT.GIFT_STRUCTURE, data, source, videoId: engine.state().videoId }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* 斷線 */ }
+      },
     });
     // T5：收錄狀態＋F-12 結果（viewMode、f12）→ top frame → 面板（F-12 說明文字、收錄狀態）
     let lastCap = null;

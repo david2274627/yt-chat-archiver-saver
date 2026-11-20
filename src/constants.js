@@ -110,6 +110,8 @@
       // v35 F-20：DIAG_LOG（content → bg，記錄中才送）、DIAG_CONTROL（擴充功能頁面 → bg：start／stop／status／export／summary／clear）
       DIAG_LOG: 'DIAG_LOG',
       DIAG_CONTROL: 'DIAG_CONTROL',
+      // v45（T5.4，審查十一 20.4）content → bg：禮物元件的結構（不含文字），非記錄期間也送；bg 存 storage.session 最近 5 筆
+      GIFT_STRUCTURE: 'GIFT_STRUCTURE',
       // v36（T3.8）：bg → 分頁的 top frame，確認 content script 仍連線（無回應 = 斷線，需要重新整理或重新注入）
       PING: 'YTCAS_PING',
     }),
@@ -327,6 +329,16 @@
   // T5.1（審查十一第 10 節）頭像共用的作者識別：只用 @handle 或頻道 id（名稱可能重複，不用）
   C.avatarAuthorKey = function (m) {
     return (m && (m.authorHandle || (m.authorChannelId ? 'ch:' + m.authorChannelId : ''))) || '';
+  };
+
+  // v45（T5.4，審查十一 20.4）文字開頭的 @handle（YouTube handle：3～30 個字母、數字、. _ -，可含各語系文字）→ '@handle'；不是 → ''。
+  // 只看 @ 與 handle 的字元格式，不比對任何語言的文字
+  C.handleOf = function (text) {
+    const m = /^\s*(@[\p{L}\p{N}\p{M}._\-·]{3,30})(?=$|[\s:：,，、)）])/u.exec(String(text == null ? '' : text));
+    return m ? m[1] : '';
+  };
+  C.handleUrl = function (h) {
+    return h && h[0] === '@' ? 'https://www.youtube.com/@' + encodeURIComponent(h.slice(1)) : '';
   };
 
   root.YTCAS_CONST = Object.freeze(C);

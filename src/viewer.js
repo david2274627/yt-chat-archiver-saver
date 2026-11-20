@@ -557,7 +557,9 @@
           if (hit) { const mk = el('mark'); mk.appendChild(node); box.appendChild(mk); } else box.appendChild(node);
         } else if (r && r.text) {
           // v44（17.1）連結：<a target="_blank" rel="noopener noreferrer">，文字照原樣（可能是截斷的），title 顯示完整網址
-          const url = r.link ? CORE.safeLink(r.link.url) : '';
+          // v45（20.4 第 4 點）文字是 @handle 的連結：一律連到 https://www.youtube.com/@handle（舊紀錄的網址可能指向別處，點了沒反應）
+          const hd = r.link ? C.handleOf(r.text) : '';
+          const url = r.link ? (hd && hd === r.text.trim() ? C.handleUrl(hd) : CORE.safeLink(r.link.url)) : '';
           let target = box;
           if (url) {
             const a = el('a', 'lnk'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = url;
@@ -575,6 +577,21 @@
           if (p < r.text.length) target.appendChild(document.createTextNode(r.text.slice(p)));
         }
       }
+    }
+    // v45（20.4 第 3 點）送禮者是從內文開頭的 @handle 推出的（authorSource: 'text'）：名稱已顯示，內文去掉開頭的 @handle
+    function giftRuns(m) {
+      const runs = m.runs || [];
+      if (m.authorSource !== 'text' || !m.authorHandle) return runs;
+      const i = runs.findIndex((x) => x && typeof x.text === 'string' && x.text.trim());
+      if (i < 0 || C.handleOf(runs[i].text) !== m.authorHandle) return runs;
+      const rest = runs[i].text.replace(/^\s*/, '').slice(m.authorHandle.length).replace(/^\s+/, '');
+      const out = runs.slice();
+      if (rest) out[i] = { text: rest };
+      else {
+        out.splice(i, 1);
+        if (out[i] && typeof out[i].text === 'string') out[i] = Object.assign({}, out[i], { text: out[i].text.replace(/^\s+/, '') });
+      }
+      return out;
     }
     function tcNode(m) {
       const tc = CORE.timecode(m, S.stream, { long: S.long, refMs: S.refMs });
@@ -658,7 +675,7 @@
           sub.append('送出 ');
           const gn = el('span', 'gname'); renderRuns(gn, [{ text: m.giftName }], kw); sub.appendChild(gn);
           if (m.giftCount > 1) sub.append(' ×' + m.giftCount);
-        } else renderRuns(sub, m.runs, kw); // 結構未確認前：顯示擷取到的文字
+        } else renderRuns(sub, giftRuns(m), kw); // 結構未確認前：顯示擷取到的文字
         info.appendChild(sub);
         row.append(g, info);
         if (m.jewels) row.appendChild(el('span', 'jw', fmtN(m.jewels) + ' Jewels'));

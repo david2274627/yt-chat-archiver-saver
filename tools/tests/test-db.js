@@ -1247,6 +1247,40 @@
     eq((await BG.fillAvatars()).fillable, 0, '再跑一次沒有可補的');
   });
 
+  test('T5.4 禮物（20.4）：fixGiftAuthors 預覽／執行兩段式（內文開頭 @handle → 送禮者、@handle 連結改為頻道網址）；禮物結構存 storage.session 最近 5 筆並隨匯出附上', async () => {
+    await resetAll();
+    const G = (o) => msg(Object.assign({ type: 'gift', authorHandle: '', rawTag: 'yt-gift-message-view-model' }, o));
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [
+      G({ id: 'g1', runs: [{ text: '@jaro0965 贈送X_X' }] }),
+      G({ id: 'g2', runs: [{ text: '@ididibibiKaik', link: { url: 'https://www.youtube.com/' } }, { text: ' 贈送花束' }] }),
+      G({ id: 'g3', runs: [{ text: '有人贈送' }] }),
+      G({ id: 'g4', authorHandle: '@known', runs: [{ text: '@other 贈送' }] }),
+      msg({ id: 't1', authorHandle: '', runs: [{ text: '@notgift 一般訊息' }] }),
+    ] });
+    const get = async (id) => (await DB.queryMessages(V)).find((m) => m.id === id);
+    const pre = await BG.fixGiftAuthors();
+    eq([pre.dryRun, pre.gifts, pre.unknownAuthor, pre.fillable, pre.links, pre.fixed], [true, 4, 3, 2, 1, 0]);
+    eq((await get('g1')).authorHandle, '', '預覽不改資料');
+    const r = await BG.fixGiftAuthors({ dryRun: false });
+    eq([r.fixed, r.streams], [2, 1]);
+    const g1 = await get('g1'), g2 = await get('g2');
+    eq([g1.authorHandle, g1.authorUrl, g1.authorSource], ['@jaro0965', 'https://www.youtube.com/@jaro0965', 'text']);
+    eq([g2.authorHandle, g2.runs[0].link.url], ['@ididibibiKaik', 'https://www.youtube.com/@ididibibiKaik']);
+    assert(g1.fp && g1.fp !== '', '指紋重算');
+    eq([(await get('g3')).authorHandle, (await get('g4')).authorHandle, (await get('t1')).authorHandle], ['', '@known', ''], '沒有 @handle、已有作者、非禮物都不動');
+    eq((await BG.fixGiftAuthors()).fillable, 0, '再跑一次沒有可補的');
+    // 禮物結構：content script 非記錄期間也送 → storage.session 最近 5 筆（消毒），匯出附上
+    for (let i = 0; i < 7; i++) {
+      const res = await send({ type: 'GIFT_STRUCTURE', source: 'live', videoId: V, data: { tag: 'yt-gift-message-view-model', authorSource: 'text', tree: [{ d: 1, tag: 'a', attrs: ['href'], at: true, href: 'handle' }], leak: '@jaro0965 贈送' } });
+      eq(res.ok, true);
+    }
+    const gs = await BG.giftStructures();
+    eq(gs.length, 5, '只留最近 5 筆');
+    eq([gs[0].data.tag, gs[0].data.tree[0].href, gs[0].data.leak], ['yt-gift-message-view-model', 'handle', '[removed]'], '文字被消毒');
+    const ex = await BG.diag.export();
+    eq(ex.giftStructures.length, 5, '匯出附上（不需要記錄中）');
+  });
+
   test('權限：管理操作只接受擴充功能頁面，content script 被拒', async () => {
     await resetAll();
     for (const type of ['DELETE_STREAMS', 'IMPORT_DATA', 'MIGRATE_LEGACY', 'EXPORT_STREAM', 'GET_STORAGE_USAGE', 'RECLASSIFY_SYSTEM']) {

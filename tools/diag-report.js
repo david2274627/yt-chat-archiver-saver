@@ -242,7 +242,28 @@ function report(data) {
       L('```');
       for (const n of (d.tree || []).slice(0, 80)) {
         L('  '.repeat(Math.max(0, (n.d || 1) - 1)) + n.tag + (n.attrs && n.attrs.length ? ' [' + n.attrs.join(' ') + ']' : '') +
-          (n.img ? ' img=' + n.img : '') + (n.size ? ' ' + n.size : '') + (n.hasText ? ' (有文字)' : ''));
+          (n.img ? ' img=' + n.img : '') + (n.size ? ' ' + n.size : '') + (n.hasText ? ' (有文字)' : '') + (n.at ? ' @' : '') + (n.href ? ' href=' + n.href : ''));
+      }
+      L('```');
+      L();
+    }
+  }
+
+  // ---- v45（T5.4，審查十一 20.4）禮物結構（非記錄期間也保留的最近 5 筆；不含文字）
+  const gs = Array.isArray(data.giftStructures) ? data.giftStructures : [];
+  if (gs.length) {
+    L('## 禮物結構（最近 ' + gs.length + ' 筆，非記錄期間也保留）');
+    L();
+    L('`@` = 自己的文字以 @ 開頭（handle 的位置）；`href=` = 連結種類（handle／channel／redirect／external…，不含網址）。');
+    L();
+    for (const g of gs) {
+      const d = g.data || {};
+      L('### ' + hm(g.ts) + ' `' + esc(d.tag) + '`（' + vid4(g.videoId || '—') + '，' + esc(g.source) + '，作者來源 ' + esc(d.authorSource) + '，禮物圖片 ' + (d.hasGiftImage ? '有' : '無') + '）');
+      L();
+      L('```');
+      for (const n of (d.tree || []).slice(0, 80)) {
+        L('  '.repeat(Math.max(0, (n.d || 1) - 1)) + n.tag + (n.attrs && n.attrs.length ? ' [' + n.attrs.join(' ') + ']' : '') +
+          (n.img ? ' img=' + n.img : '') + (n.size ? ' ' + n.size : '') + (n.hasText ? ' (有文字)' : '') + (n.at ? ' @' : '') + (n.href ? ' href=' + n.href : ''));
       }
       L('```');
       L();

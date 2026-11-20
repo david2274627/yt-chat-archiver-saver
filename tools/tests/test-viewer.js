@@ -699,6 +699,29 @@
     assert(hint.hidden, '不提示回到最新');
   });
 
+  test('T5.4 禮物顯示（20.4）：送禮者從內文推出時顯示為名稱、內文去掉開頭的 @handle；@handle 連結一律指向 youtube.com/@handle', async () => {
+    await resetDb();
+    const VG = 'vidGIFTV001';
+    await put({ videoId: VG, title: 'g', versions: [], linkedVideos: [] }, [
+      mk({ id: 'gv1', videoId: VG, type: 'gift', authorHandle: '@jaro0965', authorSource: 'text', timestampAbs: T0 + 1000, runs: [{ text: '@jaro0965', link: { url: 'https://www.youtube.com/#' } }, { text: ' 贈送X_X' }] }),
+      mk({ id: 'gv2', videoId: VG, type: 'gift', authorHandle: '', timestampAbs: T0 + 2000, runs: [{ text: '有人贈送花束' }] }),
+    ]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VG });
+    await c.ready; await frame(); await frame();
+    const row = (id) => c.els.list.querySelector('[data-id="' + id + '"]');
+    eq(row('gv1').querySelector('.nm').textContent, '@jaro0965');
+    eq(row('gv1').querySelector('.sub').textContent, '贈送X_X', '內文去掉開頭的 @handle');
+    eq(row('gv2').querySelector('.nm').textContent, '（未知）');
+    // 一般訊息裡的 @handle 連結：舊紀錄的網址指向別處 → 改為頻道網址
+    await put(null, [mk({ id: 'gv3', videoId: VG, timestampAbs: T0 + 3000, runs: [{ text: '@someone', link: { url: 'https://www.youtube.com/#' } }, { text: ' 你好' }] })]);
+    await DB.close();
+    const c2 = V.mount(host, { embed: false, videoId: VG });
+    await c2.ready; await frame(); await frame();
+    const a = c2.els.list.querySelector('[data-id="gv3"] a.lnk');
+    eq(a && a.getAttribute('href'), 'https://www.youtube.com/@someone');
+  });
+
   test('T5.3 連結與超級貼圖的呈現（17.1、17.2）：<a target=_blank rel=noopener noreferrer>、title 為完整網址；非 http(s) 只顯示文字；貼圖沒圖時顯示 alt', async () => {
     await resetDb();
     const VLK = 'vidLINKS001';

@@ -801,6 +801,37 @@
     e.stop();
   });
 
+  test('T5.4 禮物（20.4）：作者取不到 → 內文開頭 @handle 當送禮者（authorSource text）；@handle 連結一律指向 youtube.com/@handle；結構非記錄期間也送（不含文字，每個引擎最多 5 筆）', async () => {
+    // 作者元件不存在（實機圖5：作者顯示「（未知）」）
+    const g1 = h('yt-gift-message-view-model', { id: 'GFT1' }, [h('div', { id: 'message' }, [h('a', { href: '#', text: '@jaro0965' }), h('span', { text: ' 贈送X_X' })])]);
+    const m1 = CAP.parseMessage(g1, { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq([m1.authorHandle, m1.authorUrl, m1.authorSource], ['@jaro0965', 'https://www.youtube.com/@jaro0965', 'text']);
+    eq(m1.runs[0], { text: '@jaro0965', link: { url: 'https://www.youtube.com/@jaro0965' } }, '@handle 連結（href 是 #）→ 頻道網址');
+    const g2 = h('yt-gift-message-view-model', { id: 'GFT2' }, [h('span', { text: '@ididibibiKaik 贈送花束' })]);
+    eq(CAP.parseMessage(g2, { source: 'live', now: NOW, startedAt: NOW - 60e3 }).authorHandle, '@ididibibiKaik', '純文字的 @handle');
+    const g3 = h('yt-gift-message-view-model', { id: 'GFT3' }, [h('span', { text: '有人贈送花束' })]);
+    const m3 = CAP.parseMessage(g3, { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq([m3.authorHandle, m3.authorSource], ['', undefined], '沒有 @handle 不猜');
+    const g4 = h('yt-gift-message-view-model', { id: 'GFT4' }, [h('div', { id: 'author-name', text: '@realGiver' }), h('span', { text: '@other 贈送' })]);
+    eq([CAP.parseMessage(g4, { source: 'live', now: NOW }).authorHandle, CAP.parseMessage(g4, { source: 'live', now: NOW }).authorSource], ['@realGiver', undefined], '取得到作者時不用後備');
+    eq([C.handleOf('@a.b-c_1 x'), C.handleOf('a@b'), C.handleOf('@ab'), C.handleOf('@使用者名稱 送出')], ['@a.b-c_1', '', '', '@使用者名稱']);
+    // 引擎：禮物結構不論是否記錄中都送；不含文字
+    const { items } = buildChat();
+    const send = mockSend();
+    const gs = [];
+    const e = engine({ send, onGiftStructure: (d) => gs.push(d) });
+    e.start();
+    e.setInfo({ videoId: 'testVidGS01' });
+    await until(() => e.state().mode === 'capturing');
+    for (let i = 0; i < 7; i++) items.append(h('yt-gift-message-view-model', { id: 'GS' + i }, [h('a', { href: '/@giverX', text: '@giverX' }), h('span', { text: ' 贈送祕密禮物' }), h('img', { src: 'https://www.gstatic.com/g.png' })]));
+    await tick();
+    eq(gs.length, 5, '每個引擎最多 5 筆');
+    eq([gs[0].tag, gs[0].authorSource, gs[0].hasGiftImage], ['yt-gift-message-view-model', 'text', true]);
+    eq([gs[0].tree[0].tag, gs[0].tree[0].at, gs[0].tree[0].href, gs[0].tree[2].img], ['a', true, 'handle', 'www.gstatic.com']);
+    assert(!JSON.stringify(gs).includes('giverX') && !JSON.stringify(gs).includes('祕密'), '不含文字與 handle');
+    e.stop();
+  });
+
   test('F-20 P1／P2：每分鐘的收錄統計與 #items 節點分類（標籤 × 已存／略過／未存），沒有收錄時也記錄', async () => {
     const { items } = buildChat();
     const send = mockSend();
