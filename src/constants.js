@@ -236,7 +236,14 @@
       .join('').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
   };
   C.viewerEngagementId = function (videoId, runs) {
-    return 'ytcas-ve-' + fnv(String(videoId || '') + '\u0001' + C.runsKeyText(runs));
+    return C.NOTICE_ID_PREFIX + fnv(String(videoId || '') + '\u0001' + C.runsKeyText(runs));
+  };
+
+  // v45（T5.4，審查十一 21.3）頁面狀態提示（歡迎／守則、聊天室模式、重播已啟用等「每次載入聊天室都會出現」的提示）：
+  // 擷取時依元件標籤（selectors.js 的 viewerEngagement）標 notice: true；既有紀錄以 T3.5 起的內容 id（ytcas-ve-…）判斷。不比對任何文字
+  C.NOTICE_ID_PREFIX = 'ytcas-ve-';
+  C.isNotice = function (m) {
+    return !!m && (m.notice === true || (typeof m.id === 'string' && m.id.startsWith(C.NOTICE_ID_PREFIX)));
   };
 
   // T3.6（審查十追加五 E、E-3）開播／結束時間的來源等級：等級高者覆蓋低者

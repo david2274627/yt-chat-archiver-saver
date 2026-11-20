@@ -669,6 +669,7 @@
   // 回傳更新後的紀錄（複本），沒有變動回傳 null
   function recomputeRecord(rec, s) {
     if (!s || s.startedAt == null) return null;
+    if (C.isNotice(rec)) return null; // v45（21.3）頁面狀態提示不參與 phase
     const fromLive = (rec.sources || []).some((x) => x === 'live' || x === 'legacy' || x === 'import');
     if (rec.offsetSource === 'replay' || !fromLive) return null;
     const v = clone(rec);
@@ -717,6 +718,31 @@
       await done(t);
       out.updated = await recomputePhasesUnlocked(videoId);
     });
+    return out;
+  }
+
+  // v45（T5.4，審查十一 21.2 第 1 點）既有資料：所有已知開播時間的場次，依目前的 startedAt／endedAt 重算 phase（與寫入時的自動重算同一規則）。
+  // dryRun：只回傳各場會改變的筆數與 phase 分布（videoId 只留 4 碼）；{ dryRun: false } 才寫入
+  async function recomputeAllPhases(opts) {
+    const dryRun = !opts || opts.dryRun !== false;
+    const db = await open();
+    const streams = (await req(db.transaction('streams').objectStore('streams').getAll())).filter((s) => s.startedAt != null);
+    const out = { dryRun, streams: 0, changed: 0, updated: 0, list: [] };
+    for (const s of streams) {
+      const msgs = await req(db.transaction('messages').objectStore('messages').index('videoId').getAll(s.videoId));
+      const moves = {};
+      let n = 0;
+      for (const m of msgs) {
+        const nv = recomputeRecord(m, s);
+        if (!nv) continue;
+        n++;
+        if (nv.phase !== m.phase) { const k = (m.phase || '(無)') + '→' + nv.phase; moves[k] = (moves[k] || 0) + 1; }
+      }
+      if (!n) continue;
+      out.streams++; out.changed += n;
+      out.list.push({ vid: String(s.videoId).slice(0, 4), ended: s.endedAt != null, changed: n, moves });
+      if (!dryRun) out.updated += await recomputePhases(s.videoId);
+    }
     return out;
   }
 
@@ -1649,7 +1675,7 @@
     configure, open, close,
     saveMessages, savePinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
-    recomputePhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
+    recomputePhases, recomputeAllPhases, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
     getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,

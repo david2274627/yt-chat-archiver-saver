@@ -104,15 +104,16 @@
   }
 
   // ---------------------------------------------------------------- F-14 時段分隔
-  const PHASE_LABEL = Object.freeze({ pre: '直播開始前（待機室）', live: '直播中', post: '直播結束後' });
-  // 在清單中插入分隔線：清單出現 pre 或 post 時，每段開頭都加上該段標籤；只有 live 時不加
+  // v45（21.3）notice：頁面狀態提示（歡迎、聊天室模式、重播已啟用…），不屬於 pre／live／post
+  const PHASE_LABEL = Object.freeze({ notice: '聊天室提示', pre: '直播開始前（待機室）', live: '直播中', post: '直播結束後' });
+  // 在清單中插入分隔線：清單出現 notice、pre 或 post 時，每段開頭都加上該段標籤；只有 live 時不加
   function withPhaseDividers(list) {
-    const hasOther = list.some((it) => it.m.phase === 'pre' || it.m.phase === 'post');
+    const hasOther = list.some((it) => phaseOf(it.m) !== 'live');
     if (!hasOther) return list.map((it) => ({ kind: 'msg', it }));
     const out = [];
     let cur = null;
     for (const it of list) {
-      const p = it.m.phase || 'live';
+      const p = phaseOf(it.m);
       if (p !== cur) { out.push({ kind: 'phase', phase: p, label: PHASE_LABEL[p] || p }); cur = p; }
       out.push({ kind: 'msg', it });
     }
@@ -147,7 +148,8 @@
     const long = ctx && ctx.long;
     const ref = ctx && ctx.refMs;
     const off = typeof m.videoOffsetSec === 'number' && Number.isFinite(m.videoOffsetSec) ? m.videoOffsetSec : null;
-    const phase = m.phase || 'live';
+    const phase = phaseOf(m);
+    if (phase === 'notice') return { text: fmtClock(m.timestampAbs, ref), seconds: null };
     if (phase === 'pre') {
       if (off != null && off < 0 && !long) return { text: '開播前 ' + fmtDur(-off), seconds: null };
       return { text: '開播前 ' + fmtClock(m.timestampAbs, ref), seconds: null };
@@ -235,13 +237,22 @@
     if (cal && cal.startedAt != null && typeof m.timestampAbs === 'number') return (m.timestampAbs - cal.startedAt) / 1000;
     return typeof m.videoOffsetSec === 'number' ? m.videoOffsetSec : 0;
   }
+  // v45（T5.4，審查十一 21.2）依 phase 分段（頁面狀態提示 → pre → live → post），段內各自依時間：
+  // live 依同步時間（校正後的影片時間），pre／post 依 timestampAbs。v44 把 post 的「開播後秒數」與 live 的影片時間混排，
+  // 校正值為負（VOD 開頭被剪）時兩者穿插、分段標題重複
+  const PHASE_RANK = Object.freeze({ notice: 0, pre: 1, live: 2, post: 3 });
+  function phaseOf(m) { return C.isNotice(m) ? 'notice' : ((m && m.phase) || 'live'); }
   function sortForVod(list, ver, cal) {
-    const keyed = list.map((it, i) => ({ it, i, k: vodSortKey(it.m, ver, cal) }));
-    keyed.sort((a, b) => (a.k - b.k) || (a.i - b.i));
+    const keyed = list.map((it, i) => {
+      const p = phaseOf(it.m);
+      const k = p === 'live' ? vodSortKey(it.m, ver, cal) : (typeof it.m.timestampAbs === 'number' ? it.m.timestampAbs / 1000 : 0);
+      return { it, i, r: PHASE_RANK[p] != null ? PHASE_RANK[p] : 2, k };
+    });
+    keyed.sort((a, b) => (a.r - b.r) || (a.k - b.k) || (a.i - b.i));
     return keyed.map((x) => x.it);
   }
   function videoTimeOf(m, clock, o) {
-    if (!m || !clock || (m.phase || 'live') !== 'live') return null;
+    if (!m || !clock || phaseOf(m) !== 'live') return null;
     if (clock.live) {
       // v45（T5.4，審查十一 20.2）牆上時間錨點：畫面上的媒體時間 t 對應的真實時間 ≈ A + t（A＝在最新時量到的 now − currentTime）；
       // 再加上直播延遲 o.latency（同步微調）。本頁還沒量過 A → 不可點（不依賴 seekEnd：實機 seekEnd 會停住不前進）
@@ -314,7 +325,7 @@
   // 直播：依 timestampAbs（清單本來就依此排序）二分搜尋；VOD：依該版本 offset，先抽出有 offset 的訊息（遞增）再二分搜尋
   function syncIndex(entries, clock, o) {
     if (!clock || !entries || !entries.length) return -1;
-    const isMsg = (e) => e.kind === 'msg' && (e.it.m.phase || 'live') === 'live';
+    const isMsg = (e) => e.kind === 'msg' && phaseOf(e.it.m) === 'live';
     if (clock.live) {
       if (o && o.target === null) return -1; // v45：本頁還沒量過錨點 → 不同步
       const target = o && typeof o.target === 'number' ? o.target : playheadAbs(clock, o && o.baseline) - ((o && o.latency) || 0) * 1000;
@@ -322,7 +333,9 @@
       while (lo <= hi) {
         const mid = (lo + hi) >> 1;
         const e = entries[mid];
-        const t = e.kind === 'msg' ? e.it.m.timestampAbs : (mid > 0 && entries[mid - 1].kind === 'msg' ? entries[mid - 1].it.m.timestampAbs : -Infinity);
+        // v45：清單最上方的頁面狀態提示（與其後的分隔線）視為 −∞，維持二分搜尋需要的遞增
+        const tOf = (j) => { const x = entries[j]; if (x.kind === 'msg') return phaseOf(x.it.m) === 'notice' ? -Infinity : x.it.m.timestampAbs; return j > 0 && entries[j - 1].kind === 'msg' ? tOf(j - 1) : -Infinity; };
+        const t = tOf(mid);
         if (t <= target) { ans = mid; lo = mid + 1; } else hi = mid - 1;
       }
       while (ans >= 0 && !isMsg(entries[ans])) ans--;
@@ -339,7 +352,7 @@
     const out = [];
     let last = -Infinity;
     entries.forEach((e, i) => {
-      if (e.kind !== 'msg' || (e.it.m.phase || 'live') !== 'live') return;
+      if (e.kind !== 'msg' || phaseOf(e.it.m) !== 'live') return;
       const off = versionOffset(e.it.m, o && o.ver, o && o.cal);
       if (off == null) return;
       const t = off + ((o && o.shift) || 0);
@@ -425,6 +438,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

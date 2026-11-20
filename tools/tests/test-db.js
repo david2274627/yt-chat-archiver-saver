@@ -1281,6 +1281,32 @@
     eq(ex.giftStructures.length, 5, '匯出附上（不需要記錄中）');
   });
 
+  test('T5.4 phase（21.2、21.3）：endedAt 確定時自動重算；既有資料 fixPhases 預覽／執行兩段式；頁面狀態提示不參與 phase', async () => {
+    await resetAll();
+    const S0 = 1_700_000_000_000;
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: S0, startedAtSource: 'meta-actual' }, messages: [
+      msg({ id: 'p1', timestampAbs: S0 + 100e3, videoOffsetSec: 100 }), msg({ id: 'p2', timestampAbs: S0 + 900e3, videoOffsetSec: 900 }),
+      msg({ id: 'ytcas-ve-x1', type: 'system', timestampAbs: S0 + 950e3, videoOffsetSec: 950, notice: true, runs: [{ text: '提示' }] })] });
+    const get = async (id) => (await DB.queryMessages(V)).find((m) => m.id === id);
+    eq((await get('p2')).phase, 'live');
+    // 結束時間之後才取得（meta）→ 自動重算：p2 在結束之後 → post；提示不動
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { endedAt: S0 + 500e3, endedAtSource: 'meta-actual' }, messages: [] });
+    eq([(await get('p1')).phase, (await get('p2')).phase, (await get('ytcas-ve-x1')).phase], ['live', 'post', 'live']);
+    // 既有資料（模擬重算以前就存著的錯誤 phase）
+    const p2 = await get('p2');
+    const db = await DB.open();
+    const t = db.transaction('messages', 'readwrite');
+    t.objectStore('messages').put(Object.assign({}, p2, { phase: 'live' }));
+    await new Promise((r) => { t.oncomplete = r; });
+    const pre = await BG.fixPhases();
+    eq([pre.dryRun, pre.streams, pre.changed, pre.list[0].vid, pre.list[0].moves], [true, 1, 1, V.slice(0, 4), { 'live→post': 1 }]);
+    eq((await get('p2')).phase, 'live', '預覽不改資料');
+    const r = await BG.fixPhases({ dryRun: false });
+    eq(r.updated, 1);
+    eq((await get('p2')).phase, 'post');
+    eq((await BG.fixPhases()).changed, 0, '再跑一次沒有要改的');
+  });
+
   test('權限：管理操作只接受擴充功能頁面，content script 被拒', async () => {
     await resetAll();
     for (const type of ['DELETE_STREAMS', 'IMPORT_DATA', 'MIGRATE_LEGACY', 'EXPORT_STREAM', 'GET_STORAGE_USAGE', 'RECLASSIFY_SYSTEM']) {

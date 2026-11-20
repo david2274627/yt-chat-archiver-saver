@@ -722,6 +722,59 @@
     eq(a && a.getAttribute('href'), 'https://www.youtube.com/@someone');
   });
 
+  test('T5.4 已結束場次（21.2、21.3）：依 phase 分段（提示 → pre → live → post）、每段標題一次；超出影片長度的時間碼面板與後台都不可點並說明；頁面狀態提示在最上方、不參與同步', async () => {
+    await resetDb();
+    const VE = 'vidENDED001';
+    const msgs = [];
+    // 已合併（live＋replay，影片時間＝到達時間 − 開播 − 8 秒）→ 校正值 −8；VOD 長度 1000 秒，比直播（1100 秒）短
+    for (let i = 0; i < 10; i++) { const off = 100 + i * 80; msgs.push(mk({ id: 'mg' + i, videoId: VE, videoOffsetSec: off, offsets: { v1: off }, offsetSource: 'replay', sources: ['live', 'replay'], timestampAbs: T0 + (off + 8) * 1000 })); }
+    msgs.push(mk({ id: 'late', videoId: VE, videoOffsetSec: 1090, offsets: { v1: 1090 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 + 1090e3 })); // 校正後 1082 > 1000
+    for (let j = 0; j < 3; j++) msgs.push(mk({ id: 'po' + j, videoId: VE, phase: 'post', videoOffsetSec: 1101 + j * 2, offsets: { v1: 1101 + j * 2 }, sources: ['live'], timestampAbs: T0 + (1101 + j * 2) * 1000 }));
+    msgs.push(mk({ id: 'pr0', videoId: VE, phase: 'pre', videoOffsetSec: null, timestampAbs: T0 - 3600e3 }));
+    msgs.push(mk({ id: 'pr1', videoId: VE, phase: 'pre', videoOffsetSec: -30, timestampAbs: T0 - 30e3 }));
+    msgs.push(mk({ id: 'ytcas-ve-replayon', videoId: VE, type: 'system', phase: 'live', videoOffsetSec: 5000, timestampAbs: T0 + 5000e3, runs: [{ text: '提示' }] })); // 之後打開 VOD 時擷取
+    await put({ videoId: VE, title: 'E', isLive: false, startedAt: T0, endedAt: T0 + 1100e3, lastMessageAt: T0 + 5000e3, messageCount: msgs.length, versions: [{ id: 'v1', duration: 1000 }], linkedVideos: [] }, msgs);
+    await DB.close();
+    const order = (c) => c.state.entries.map((e) => (e.kind === 'phase' ? '#' + e.phase : e.it.m.id));
+    const check = (c, label) => {
+      const o = order(c);
+      eq(o.filter((x) => x[0] === '#'), ['#notice', '#pre', '#live', '#post'], label + '：每段標題一次');
+      eq(o.slice(0, 5), ['#notice', 'ytcas-ve-replayon', '#pre', 'pr0', 'pr1'], label);
+      eq(o.slice(-4), ['#post', 'po0', 'po1', 'po2'], label + '：post 在最後、不與 live 穿插');
+      eq(o[o.indexOf('#post') - 1], 'late', label);
+    };
+    const realOpen = window.open;
+    window.open = () => null;
+    try {
+      // 面板（VOD）
+      const c = V.mount(host, { embed: true, videoId: VE });
+      await c.ready; await frame();
+      c._onClock({ currentTime: 500, paused: false, duration: 1000, live: false, at: Date.now() });
+      await frame(); await frame();
+      check(c, '面板');
+      eq(c.state.cal.delta, -8);
+      c.state.vl.reveal(c.state.entries.findIndex((e) => e.kind === 'msg' && e.it.m.id === 'late'), false); await frame(); await frame();
+      const t1 = c.els.list.querySelector('[data-id="late"] .tc');
+      eq([t1.tagName, t1.textContent, t1.title], ['SPAN', '18:02', '超出影片長度（16:40）']);
+      const syncIds = CORE.syncPoints(c.state.entries, { ver: 'v1', cal: c.state.cal }).map((p) => c.state.entries[p.i].it.m.id);
+      assert(!syncIds.includes('ytcas-ve-replayon') && !syncIds.includes('po0') && !syncIds.includes('pr0'), '提示、pre、post 不參與同步');
+      // 後台（獨立分頁）：同一規則
+      const b = V.mount(host, { embed: false, videoId: VE });
+      await b.ready; await frame(); await frame();
+      check(b, '後台');
+      b.state.vl.reveal(b.state.entries.findIndex((e) => e.kind === 'msg' && e.it.m.id === 'late'), false); await frame(); await frame();
+      const t2 = b.els.list.querySelector('[data-id="late"] .tc');
+      eq([t2.tagName, t2.textContent, t2.title], ['SPAN', '18:02', '超出影片長度（16:40）'], '後台也不可點（v44 可點）');
+      b.state.vl.reveal(b.state.entries.findIndex((e) => e.kind === 'msg' && e.it.m.id === 'mg3'), false); await frame(); await frame();
+      const t3 = b.els.list.querySelector('[data-id="mg3"] .tc');
+      eq([t3.tagName, t3.textContent], ['BUTTON', '5:40'], '範圍內可點');
+      // 日期：不是今天一律顯示月／日
+      b.state.vl.reveal(1, false); await frame(); await frame();
+      const pre = b.els.list.querySelector('[data-id="pr0"] .tc');
+      assert(/\d+\/\d+ /.test(pre.textContent), 'pre 顯示月／日 ' + pre.textContent);
+    } finally { window.open = realOpen; }
+  });
+
   test('T5.3 連結與超級貼圖的呈現（17.1、17.2）：<a target=_blank rel=noopener noreferrer>、title 為完整網址；非 http(s) 只顯示文字；貼圖沒圖時顯示 alt', async () => {
     await resetDb();
     const VLK = 'vidLINKS001';

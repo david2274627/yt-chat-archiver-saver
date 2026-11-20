@@ -274,6 +274,8 @@
     if (isDeletedEl(el)) { m.deleted = true; m.deletedAt = ctx.now; }
     // T3.5：歡迎／守則提示每次重新整理 id 都不同 → 同一場次以內容產生固定 id（只存一筆）
     if (tag === S.chat.viewerEngagement && ctx.videoId) m.id = C.viewerEngagementId(ctx.videoId, m.runs);
+    // v45（T5.4，審查十一 21.3）頁面狀態提示（依元件標籤，不比對文字）：不參與 pre／live／post，檢視器顯示在最上方
+    if (tag === S.chat.viewerEngagement) m.notice = true;
     return m;
   }
 

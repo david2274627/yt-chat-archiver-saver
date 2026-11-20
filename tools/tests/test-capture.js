@@ -832,6 +832,15 @@
     e.stop();
   });
 
+  test('T5.4 頁面狀態提示（21.3）：依元件標籤標 notice（不比對文字；其他語系同樣分類）、同場同內容同一個 id', () => {
+    const mkVe = (text) => h(self.YTCAS_SEL.chat.viewerEngagement, { id: 'VE' + (++seq) }, [h('div', { id: 'message', text })]);
+    const a = CAP.parseMessage(mkVe('Welcome to live chat!'), { source: 'replay', now: NOW, videoId: 'testVidVE01' });
+    const b = CAP.parseMessage(mkVe('Welcome to live chat!'), { source: 'replay', now: NOW + 5000, videoId: 'testVidVE01' });
+    eq([a.type, a.notice, C.isNotice(a), a.id === b.id], ['system', true, true, true]);
+    const t = CAP.parseMessage(textMsg({}), { source: 'live', now: NOW });
+    eq([t.notice, C.isNotice(t)], [undefined, false], '一般訊息不是提示');
+  });
+
   test('F-20 P1／P2：每分鐘的收錄統計與 #items 節點分類（標籤 × 已存／略過／未存），沒有收錄時也記錄', async () => {
     const { items } = buildChat();
     const send = mockSend();

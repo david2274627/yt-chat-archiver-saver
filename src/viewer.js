@@ -596,17 +596,29 @@
     function tcNode(m) {
       const tc = CORE.timecode(m, S.stream, { long: S.long, refMs: S.refMs });
       // T5：內嵌面板收到播放器時間後，可點與否、跳到哪裡依時間軸換算（VOD：版本 offset＋連結時間差；直播：DVR 範圍）
+      // v45（21.2 第 3 點）不可點的時間碼在 title 說明原因；VOD 的長度判斷面板與後台一致
+      const stat = (text, why) => { const s = el('span', 'tc static', text); if (why) s.title = why; return s; };
+      const dur = vodDuration();
       if (embed && S.clock) {
         const vt = CORE.videoTimeOf(m, S.clock, syncOpts());
-        if (vt == null || !CORE.inRange(vt, S.clock)) return el('span', 'tc static', tc.text);
+        if (vt == null) return stat(tc.text, S.clock.live && S.wallA == null && CORE.phaseOf(m) === 'live' ? '先點播放器的「直播」回到最新一次，才能跳轉' : '');
+        if (!CORE.inRange(vt, S.clock)) {
+          if (S.clock.live) return stat(tc.text, '不在直播可倒轉的範圍內');
+          return stat(CORE.fmtDur(vt), vt < 0 ? '在影片開頭之前' : '超出影片長度（' + CORE.fmtDur(dur || 0) + '）');
+        }
         const text = S.clock.live ? tc.text : CORE.fmtDur(vt);
         const b = el('button', 'tc', text); b.type = 'button'; b.setAttribute('aria-label', '跳轉至 ' + text);
         b.addEventListener('click', (e) => { e.stopPropagation(); if (!S.clock.live) pinAt(m, vt); seek(vt); });
         return b;
       }
-      if (tc.seconds == null) return el('span', 'tc static', tc.text);
-      const b = el('button', 'tc', tc.text); b.type = 'button'; b.setAttribute('aria-label', tc.label);
-      b.addEventListener('click', (e) => { e.stopPropagation(); seek(tc.seconds); });
+      if (tc.seconds == null) return stat(tc.text, '');
+      // 後台看已結束場次：與面板相同，用校正後的影片時間、超出影片長度不可點
+      let sec = tc.seconds, text = tc.text;
+      if (vodOrder()) { const v = CORE.versionOffset(m, S.ver, S.cal); if (v != null) { sec = Math.floor(v); text = CORE.fmtDur(v); } }
+      if (sec < 0) return stat(text, '在影片開頭之前');
+      if (dur != null && sec > dur + 1) return stat(text, '超出影片長度（' + CORE.fmtDur(dur) + '）');
+      const b = el('button', 'tc', text); b.type = 'button'; b.setAttribute('aria-label', '跳轉至 ' + text);
+      b.addEventListener('click', (e) => { e.stopPropagation(); seek(sec); });
       return b;
     }
     function nameNode(it, cls) {
@@ -739,6 +751,9 @@
       if (vodOrder()) {
         if (!S.cal || Math.abs(S.calN - S.items.length) > Math.max(50, S.calN * 0.05)) { S.cal = CORE.vodCalibration(S.items.map((x) => x.m), S.stream); S.calN = S.items.length; }
         list = CORE.sortForVod(list, S.ver, S.cal);
+      } else if (list.some((it) => C.isNotice(it.m))) {
+        // v45（21.3）頁面狀態提示一律在最上方（不混在時間軸裡），其餘順序不變
+        list = list.filter((it) => C.isNotice(it.m)).concat(list.filter((it) => !C.isNotice(it.m)));
       }
       S.sortedVod = vodOrder();
       // 列的 key：訊息用 id；分隔線用 phase 名稱＋出現序號（量測高度快取以 key 為準）
@@ -814,7 +829,19 @@
       renderSub(); S.vl.refresh(); doSync(false);
     }
     // VOD 模式：內嵌面板收到 live: false 的播放器時間，且看的是 v1
-    function vodOrder() { return !!(embed && S.clock && !S.clock.live && (!S.ver || S.ver === 'v1')); }
+    // v45（21.2 第 3 點）後台（獨立分頁）看已結束場次時也依同一規則（排序、校正後的影片時間、超出影片長度不可點），與面板一致
+    function vodOrder() {
+      if (S.ver && S.ver !== 'v1') return false;
+      if (embed) return !!(S.clock && !S.clock.live);
+      return !!(S.stream && S.stream.endedAt != null);
+    }
+    // 影片長度：面板用播放器回報的；後台用場次記錄的版本長度
+    function vodDuration() {
+      if (embed && S.clock && !S.clock.live && typeof S.clock.duration === 'number') return S.clock.duration;
+      const vs = (S.stream && Array.isArray(S.stream.versions)) ? S.stream.versions : [];
+      const v = vs.find((x) => x && x.id === (S.ver || 'v1'));
+      return v && typeof v.duration === 'number' ? v.duration : null;
+    }
     // v43（16.1 (F)）直播倒轉到最早收錄的訊息之前：提示，不要看起來像停著不動
     function setHint(text) {
       if (syncHint.textContent !== text) syncHint.textContent = text;
@@ -1059,7 +1086,8 @@
         S.timings.queryMs = performance.now() - t0;
         S.stream = stream || { videoId: S.videoId };
         S.long = CORE.isLongStream(S.stream);
-        S.refMs = S.stream.startedAt || (msgs[0] && msgs[0].timestampAbs) || null;
+        // v45（21.3）日期顯示：不是今天就一律顯示月／日（v44 以開播日為準，待機室跨日時同一段有的有日期、有的沒有）
+        S.refMs = Date.now();
         const handles = new Set();
         for (const m of msgs) if (m.authorHandle) handles.add(m.authorHandle);
         for (const p of pinned) if (p.authorHandle) handles.add(p.authorHandle);

@@ -256,6 +256,12 @@ async function fillAvatars(opts) {
   console.info('[ytcas] 頭像補齊' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
 }
+// v45（T5.4，審查十一 21.2）既有資料的 phase 重算。用法：await YTCAS_BG.fixPhases()（預覽，只有筆數）→ { dryRun: false }
+async function fixPhases(opts) {
+  const r = await DB.recomputeAllPhases({ dryRun: !(opts && opts.dryRun === false) });
+  console.info('[ytcas] phase 重算' + (r.dryRun ? '（預覽）' : ''), r);
+  return r;
+}
 // v45（T5.4，審查十一 20.4 第 5 點）既有禮物的作者與 @handle 連結。用法：await YTCAS_BG.fixGiftAuthors()（預覽）→ { dryRun: false }
 async function fixGiftAuthors(opts) {
   const r = await DB.fixGiftAuthors({ dryRun: !(opts && opts.dryRun === false) });
@@ -1139,4 +1145,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, giftStructures, channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, giftStructures, fixPhases, channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
