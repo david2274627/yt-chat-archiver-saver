@@ -173,6 +173,62 @@ function report(data) {
     }
   }
 
+  // ---- P10 直播時鐘（v45，T5.4，審查十一 20.2 第 5 點）：在最新期間 A = now − currentTime×1000 是否穩定、currentTime 是否連續、seekEnd 是否前進
+  const p10 = (byProbe.P10 || []).filter((r) => r.kind === 'live-clock' && r.data && typeof r.data.now === 'number');
+  if (p10.length) {
+    const g10 = new Map();
+    for (const r of p10) {
+      const c = r.ctx || {};
+      const k = [c.tab != null ? c.tab : '—', vid4(c.videoId || '—')].join('|');
+      if (!g10.has(k)) g10.set(k, []);
+      g10.get(k).push(r);
+    }
+    const EDGE = new Set(['class', 'disabled']);
+    const rate = (list, f) => {
+      const a = list[0], b = list[list.length - 1];
+      const dt = (b.data.now - a.data.now) / 1000;
+      return dt > 5 && typeof f(a) === 'number' && typeof f(b) === 'number' ? ((f(b) - f(a)) / dt).toFixed(2) : '—';
+    };
+    L('## P10 直播時鐘（每 10 秒）');
+    L();
+    L('A＝now − currentTime×1000。**在最新（徽章「最新」）期間 A 的變動範圍應在數秒內**；倒轉中 A 會隨倒轉量改變（正常）。currentTime 速度與 seekEnd 速度正常約 1.00（seekEnd 0.00＝停住）。');
+    L();
+    L('| 分頁 | videoId | 期間 | 筆數 | 在最新筆數 | 在最新時 A 範圍（秒） | currentTime 速度 | seekEnd 速度 | currentTime 不連續 |');
+    L('|---|---|---|---|---|---|---|---|---|');
+    for (const [k, list] of g10) {
+      const [tab, vid] = k.split('|');
+      const edge = list.filter((r) => EDGE.has(r.data.badge) && !r.data.paused);
+      const As = edge.map((r) => r.data.wallA).filter((x) => typeof x === 'number');
+      const span = As.length ? ((Math.max(...As) - Math.min(...As)) / 1000).toFixed(1) : '—';
+      // 不連續：相鄰兩筆 currentTime 的差與經過時間差超過 3 秒（跳轉或緩衝）
+      let jumps = 0;
+      for (let i = 1; i < list.length; i++) {
+        const a = list[i - 1].data, b = list[i].data;
+        if (a.paused || b.paused) continue;
+        if (Math.abs((b.currentTime - a.currentTime) - (b.now - a.now) / 1000) > 3) jumps++;
+      }
+      L('| ' + [tab, vid, hm(list[0].ts) + '～' + hm(list[list.length - 1].ts), list.length, edge.length, span,
+        rate(list, (r) => r.data.currentTime), rate(list, (r) => r.data.seekEnd), jumps].map(esc).join(' | ') + ' |');
+      if (As.length >= 6 && Number(span) > 10) anomalies.push('P10（分頁 ' + tab + '，' + vid + '）在最新期間 A 的範圍 ' + span + ' 秒（> 10 秒，牆上時間錨點的假設不成立）');
+    }
+    L();
+    for (const [k, list] of g10) {
+      const [tab, vid] = k.split('|');
+      const pick = list.length <= 40 ? list : Array.from({ length: 40 }, (_, i) => list[Math.round(i * (list.length - 1) / 39)]);
+      const A0 = list[0].data.wallA;
+      L('### 分頁 ' + tab + '，' + vid + '（A、錨點以第一筆為 0，單位秒）');
+      L();
+      L('| 時間 | currentTime | seekStart | seekEnd | 徽章 | 模式 | 暫停 | A | 錨點 | 樣本 | 同步微調 |');
+      L('|---|---|---|---|---|---|---|---|---|---|---|');
+      const rel = (x) => (typeof x === 'number' && typeof A0 === 'number' ? ((x - A0) / 1000).toFixed(1) : '—');
+      for (const r of pick) {
+        const d = r.data;
+        L('| ' + [hm(r.ts), d.currentTime, d.seekStart, d.seekEnd, d.badge, d.mode, d.paused ? '是' : '否', rel(d.wallA), rel(d.anchorA), d.anchorN, d.latency].map(esc).join(' | ') + ' |');
+      }
+      L();
+    }
+  }
+
   // ---- P7 結構
   const p7 = byProbe.P7 || [];
   if (p7.length) {

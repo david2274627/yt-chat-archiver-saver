@@ -879,6 +879,7 @@
       if (vodOrder() !== S.sortedVod && !S.loading) apply({ reset: true });
       else if (first || liveChanged) S.vl.refresh();
       if (mode === 'sync') doSync(!first && !seeked);
+      if (S.clock.live && embed) p10Tick();
     }
 
     // ---------------- T5：版本（F-18）與連結影片（F-18 第 6 點）
@@ -1235,7 +1236,28 @@
         if (chrome.storage.onChanged) chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch[DG.STATE_KEY]) { diagSt = ch[DG.STATE_KEY].newValue || { active: false }; lastP9 = 0; } });
       } catch (_) { /* 測試頁 */ }
     }
-    const p9On = () => !!diagSt.active && Array.isArray(diagSt.probes) && diagSt.probes.includes('P9');
+    const probeOn = (p) => !!diagSt.active && Array.isArray(diagSt.probes) && diagSt.probes.includes(p);
+    const p9On = () => probeOn('P9');
+    const diagSend = (rec) => { try { const p = chrome.runtime.sendMessage({ type: RT.DIAG_LOG, records: [rec] }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* ignore */ } };
+    // v45（T5.4，審查十一 20.2 第 5 點）F-20 P10 直播時鐘：直播中每 10 秒記錄播放器時間（只有數字與徽章代碼），
+    // 用來驗證「在最新時 A = now − currentTime × 1000 是否穩定」「currentTime 是否連續」「seekEnd 是否前進」。
+    // wallA：這一筆的 now − currentTime × 1000；anchorA：面板目前採用的錨點（中位數）；anchorN：錨點的樣本數
+    let lastP10 = 0;
+    function p10Sample() {
+      const c = S.clock;
+      if (!c || !c.live) return null;
+      return { now: c.at, currentTime: Math.round(c.currentTime * 1000) / 1000, seekStart: c.seekStart, seekEnd: c.seekEnd,
+        badge: c.badge || null, liveHead: c.liveHead, paused: c.paused, mode: S.mode, wallA: Math.round(c.at - c.currentTime * 1000),
+        anchorA: S.wallA != null ? Math.round(S.wallA) : null, anchorN: S.wallSamples ? S.wallSamples.length : 0, latency: S.latency };
+    }
+    function p10Tick() {
+      if (!probeOn('P10')) return;
+      if (Date.now() - lastP10 < DG.P10_SEC * 1000 - 200) return;
+      const d = p10Sample();
+      if (!d) return;
+      lastP10 = Date.now();
+      diagSend({ ts: lastP10, probe: 'P10', kind: 'live-clock', ctx: { env: 'panel', videoId: S.link ? S.link.orig : S.videoId }, data: d });
+    }
     function p9Sample() {
       const pm = (typeof performance !== 'undefined' && performance.memory) || null;
       const mb = (v) => (typeof v === 'number' ? Math.round(v / 104857.6) / 10 : null);
@@ -1264,7 +1286,7 @@
     })();
 
     return {
-      ready, load, state: S, _onRuntime: onRuntime, _shiftLatency: shiftLatency, _p9Sample: p9Sample, _p9Tick: p9Tick, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
+      ready, load, state: S, _onRuntime: onRuntime, _shiftLatency: shiftLatency, _p9Sample: p9Sample, _p9Tick: p9Tick, _p10Sample: p10Sample, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
       els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText },
     };
   }

@@ -172,7 +172,9 @@
     // F-20 診斷記錄模式（T3.7，審查十追加六 B）
     DIAG: Object.freeze({
       STATE_KEY: 'diagState',                       // chrome.storage.local：{ active, scheduled, startAt, endsAt, probes, … }
-      PROBES: Object.freeze(['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9']),
+      PROBES: Object.freeze(['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10']),
+      // v45（T5.4，審查十一 20.2 第 5 點）P10 直播時鐘：直播中每 10 秒記 { now, currentTime, seekStart, seekEnd, 徽章 }（只有數字）
+      P10_SEC: 10,
       DEFAULT_HOURS: 6, MIN_HOURS: 1, MAX_HOURS: 24, // 一律有最長時限
       MAX_RECORDS: 50000, MAX_BYTES: 20 * 1024 * 1024,
       RETAIN_DAYS: 30,                               // 停止 30 天後自動清除

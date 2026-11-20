@@ -16,6 +16,7 @@
     P7: 'P7 結構探針（未知元件、禮物、降落、直播結束時自動記錄結構）',
     P8: 'P8 本套件的警告、錯誤與例外',
     P9: 'P9 記憶體（JS heap、DOM 節點數；面板另記清單筆數與繪出列數；間隔見下方）',
+    P10: 'P10 直播時鐘（直播中每 10 秒：currentTime、seekStart／seekEnd、徽章；驗證同步錨點）',
   };
   const pad = (n) => String(n).padStart(2, '0');
   const hhmm = (t) => { const d = new Date(t); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
