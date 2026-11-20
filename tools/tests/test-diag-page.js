@@ -82,6 +82,21 @@
     eq($('fileFormat').value, C.DIAG_FILE_FORMAT_DEFAULT);
   });
 
+  test('T5.4 backend.html 與 viewer.html 一致（審查十一第 19 節第 1 點）：載入的 script／css 清單與順序完全相同，只允許 title 與註解不同', async () => {
+    const get = async (p) => (await self.__sameOriginFetch(new URL(p, location.href).href, { cache: 'no-store' })).text();
+    const [a, b] = await Promise.all([get('../../src/viewer.html'), get('../../src/backend.html')]);
+    const assets = (html) => {
+      const d = new DOMParser().parseFromString(html, 'text/html');
+      return Array.from(d.querySelectorAll('script, link[rel="stylesheet"]')).map((n) => n.tagName.toLowerCase() + ':' + (n.getAttribute('src') || n.getAttribute('href')) +
+        Array.from(n.attributes).map((x) => x.name).filter((x) => x !== 'src' && x !== 'href' && x !== 'rel').sort().map((x) => '[' + x + ']').join(''));
+    };
+    const la = assets(a), lb = assets(b);
+    assert(la.length >= 5, '清單 ' + la.join(' '));
+    eq(lb, la, 'script／css 清單');
+    const strip = (html) => html.replace(/<!--[\s\S]*?-->/g, '').replace(/<title>[\s\S]*?<\/title>/i, '').replace(/\s+/g, ' ').trim();
+    eq(strip(b), strip(a), '除了 title 與註解，其餘完全相同');
+  });
+
   // ---------------------------------------------------------------- 畫面整合
   test('畫面：初始為「開始記錄」；結束方式切換時另一個欄位停用；勾選排程才顯示開始時間', async () => {
     await until(() => $('btn-toggle').textContent === '開始記錄', 3000);
