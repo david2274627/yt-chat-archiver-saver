@@ -68,6 +68,7 @@ mark .emo-img { vertical-align: -5px; }
 .link-box { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
 .link-box .link-txt { flex: 1 1 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .link-box .shift { padding: 1px 8px; font-variant-numeric: tabular-nums; }
+.lat-box .lat-help { flex: 1 1 100%; font-size: 11px; color: var(--ytcas-text-3); }
 .p-note { flex: none; display: flex; align-items: flex-start; gap: 6px; padding: 4px var(--ytcas-space-2) 4px var(--ytcas-space-3);
   font-size: var(--ytcas-fs-xs); line-height: 1.4; color: var(--ytcas-text-2); background: var(--ytcas-accent-soft);
   border-bottom: 1px solid var(--ytcas-border); }

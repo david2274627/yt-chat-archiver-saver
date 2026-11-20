@@ -295,9 +295,12 @@
     eq(CORE.videoTimeOf(m, vod, { shift: 12 }), 112, '連結影片時間差');
     eq(CORE.videoTimeOf(mk({ phase: 'pre', videoOffsetSec: -30 }), vod, {}), null, 'pre 不參與');
     eq(CORE.videoTimeOf(mk({ phase: 'post', videoOffsetSec: 4000 }), vod, {}), null, 'post 不參與');
-    // 直播：取樣時間 at 時的直播邊緣為 seekEnd；訊息 10 分鐘前 → seekEnd − 600
+    // 直播（v45 牆上時間錨點）：A＝在最新時的 at − currentTime×1000；訊息 10 分鐘前 → currentTime − 600；沒有 A → 不可點
     const live = { live: true, currentTime: 50000, seekStart: 40000, seekEnd: 50000, at: T0 + 3600e3 };
-    eq(CORE.videoTimeOf(mk({ timestampAbs: T0 + 3000e3 }), live, {}), 49400);
+    const wallA = live.at - 50000e3;
+    eq(CORE.videoTimeOf(mk({ timestampAbs: T0 + 3000e3 }), live, { wallA }), 49400);
+    eq(CORE.videoTimeOf(mk({ timestampAbs: T0 + 3000e3 }), live, {}), null, '沒量過錨點');
+    eq(CORE.videoTimeOf(mk({ timestampAbs: T0 + 3000e3 }), live, { wallA, latency: 20 }), 49420, '直播延遲 20 秒：畫面晚 20 秒才演到');
     assert(CORE.inRange(49400, live) && !CORE.inRange(39000, live), 'DVR 範圍');
     assert(CORE.inRange(100, vod) && !CORE.inRange(3700, vod) && !CORE.inRange(-1, vod), 'VOD 範圍');
     assert(CORE.atLiveEdge(live, 15) && !CORE.atLiveEdge(Object.assign({}, live, { currentTime: 49000 }), 15), '直播邊緣');
@@ -308,7 +311,12 @@
     assert(CORE.atLiveEdge(Object.assign({}, lag40, { currentTime: 49000, liveHead: true }), 15, 0), '徽章說在最新');
     assert(!CORE.atLiveEdge(Object.assign({}, lag40, { liveHead: false }), 15, 40), '徽章說不在最新');
     eq(CORE.playheadAbs(Object.assign({}, live, { currentTime: 50000 - 100 }), 40), live.at - 60e3, '倒轉 1 分鐘 → 1 分鐘前（v42 會算成 100 秒前）');
-    eq(CORE.videoTimeOf(mk({ timestampAbs: live.at - 60e3 }), live, { baseline: 40 }), 50000 - 100, '時間碼換算也扣掉基準');
+    // v45：A 的中位數、目標時間
+    eq(CORE.median([5, 1, 3]), 3); eq(CORE.median([4, 1, 3, 2]), 2.5); eq(CORE.median([]), null);
+    eq(CORE.nextWallSamples([1, 2, 3], live, 3).length, 3, '最多 maxN 個');
+    eq(CORE.wallTarget(Object.assign({}, live, { currentTime: 50000 - 60 }), wallA, 0), live.at - 60e3, '倒轉 1 分鐘 → 1 分鐘前（不看 seekEnd）');
+    eq(CORE.wallTarget(Object.assign({}, live, { currentTime: 50000 - 60, seekEnd: 99999 }), wallA, 10), live.at - 70e3, 'seekEnd 無關；延遲 10 秒');
+    eq(CORE.wallTarget(live, null, 0), null);
     const nb = (b, lagSec, o) => CORE.nextBaseline(b, Object.assign({}, live, { currentTime: 50000 - lagSec }, o), 15, 0.5);
     eq(nb(null, 40), 40, '第一個樣本');
     eq(nb(40, 30), 30, '較小 → 採用');
@@ -572,68 +580,123 @@
     } finally { window.open = realOpen; }
   });
 
-  // ================================================================ T5.3（審查十一 18.1 (L)）
-  test('T5.3 (L) 直播同步微調：倒轉時顯示、±秒、依頻道記住；錨點不受 seekEnd 停住影響；進入頁面時已不在最新 → 沿用記住的基準', async () => {
+  // ================================================================ T5.4（審查十一 20.2）直播牆上時間錨點
+  test('T5.4 直播牆上時間錨點（20.2）：seekEnd 停住時倒轉 1／2／3 分鐘都對齊；「藍框提早／延後」、+ 往較新、依頻道記住；本頁沒量過錨點 → 提示先回到最新；P10', async () => {
     await resetDb();
-    const VL = 'vidLATENCY1', VO = 'vidLATOTHER';
+    const VL = 'vidWALLA001', VO = 'vidWALLOTHR';
     const now = Date.now();
     const msgs = [];
-    for (let i = 0; i < 300; i++) msgs.push(mk({ id: 'n' + i, videoId: VL, timestampAbs: now - (300 - i) * 10e3, videoOffsetSec: 50000 + i * 10 }));
-    for (let i = 0; i < 300; i++) msgs.push(mk({ id: 'o' + i, videoId: VO, timestampAbs: now - (300 - i) * 10e3, videoOffsetSec: 50000 + i * 10 }));
-    await put({ videoId: VL, title: 'L', channelHandle: '@chanL', isLive: true, startedAt: now - 86400e3, lastMessageAt: now, messageCount: 300, versions: [], linkedVideos: [] }, msgs.slice(0, 300));
-    await put({ videoId: VO, title: 'O', channelHandle: '@other', isLive: true, startedAt: now - 86400e3, lastMessageAt: now, messageCount: 300, versions: [], linkedVideos: [] }, msgs.slice(300));
+    for (let i = 0; i < 400; i++) msgs.push(mk({ id: 'w' + i, videoId: VL, timestampAbs: now - (400 - i) * 5e3 + 300e3, videoOffsetSec: 50000 + i * 5, runs: [{ text: '不應出現 ' + i }] }));
+    for (let i = 0; i < 400; i++) msgs.push(mk({ id: 'x' + i, videoId: VO, timestampAbs: now - (400 - i) * 5e3 + 300e3, videoOffsetSec: 50000 + i * 5 }));
+    await put({ videoId: VL, title: 'W', channelHandle: '@chanW', isLive: true, startedAt: now - 86400e3, lastMessageAt: now, messageCount: 400, versions: [], linkedVideos: [] }, msgs.slice(0, 400));
+    await put({ videoId: VO, title: 'X', channelHandle: '@otherW', isLive: true, startedAt: now - 86400e3, lastMessageAt: now, messageCount: 400, versions: [], linkedVideos: [] }, msgs.slice(400));
     await DB.close();
     chrome.storage.local._reset();
+    const sent = [];
+    const realSend = chrome.runtime.sendMessage;
+    chrome.runtime.sendMessage = (m) => { sent.push(JSON.parse(JSON.stringify(m))); return Promise.resolve({ ok: true }); };
     try {
+      await chrome.storage.local.set({ liveSync: { byChannel: { '@chanW': -110 }, last: -110, baseline: 2038.8 } }); // v44 的值：不沿用
+      await chrome.storage.local.set({ [self.YTCAS_CONST.DIAG.STATE_KEY]: { active: true, probes: ['P10'] } });
       let c = V.mount(host, { embed: true, videoId: VL });
       await c.ready; await frame();
-      eq([c.state.latency, c.state.latencyFrom], [0, 'default']);
-      let t = now, seeks = 0, seekEnd = 10000;
-      const tick = (lag, o, dt) => { t += dt || 250; if (!(o && o.freeze)) seekEnd = 10000 + (t - now) / 1000; c._onClock(Object.assign({ currentTime: seekEnd - lag, paused: false, duration: null, seekStart: seekEnd - 7200, seekEnd, live: true, at: t, seeks }, o)); };
+      eq([c.state.latency, c.state.latencyFrom], [0, 'default'], 'v44 的 liveSync 不沿用');
+      // 實機（20.2 圖4）：seekEnd 停住不前進（速度 0.00）、seekEnd − currentTime ≈ 3,486 秒；徽章「最新」可靠
+      let t = now, ct = 10000, seeks = 0;
+      const SE = 13486;
+      const tick = (o, dt) => { dt = dt == null ? 1000 : dt; t += dt; if (!(o && o.paused)) ct += dt / 1000; c._onClock(Object.assign({ currentTime: ct, paused: false, duration: null, seekStart: 3000, seekEnd: SE, live: true, at: t, seeks, liveHead: true, badge: 'class' }, o)); };
+      const behind = { liveHead: false, badge: 'behind' };
       const cur = () => msgs.find((x) => x.id === c.state.currentId);
-      const near = (back) => { const m = cur(); return !!m && m.timestampAbs <= t - back * 1000 && m.timestampAbs > t - back * 1000 - 10e3; };
-      for (let k = 0; k < 6; k++) tick(40);
-      assert(c.els.latBox.hidden, '在最新時不顯示同步微調');
-      seeks++; tick(340);
-      await frame();
-      assert(!c.els.latBox.hidden && c.els.latText.textContent.includes('畫面落後 0 秒'), '倒轉時顯示 ' + c.els.latText.textContent);
-      assert(near(300), '微調 0：5 分鐘前 ' + c.state.currentId);
-      // 畫面落後真實時間 30 秒 → 按 +10 三次
-      const plus10 = Array.from(c.els.latBox.querySelectorAll('button')).find((b) => b.textContent === '+10');
-      plus10.click(); plus10.click(); plus10.click();
-      eq([c.state.latency, c.state.latencyFrom], [30, 'channel']);
-      assert(near(330) && c.els.latText.textContent.includes('30 秒（本頻道）'), '微調 30：' + c.state.currentId + ' ' + c.els.latText.textContent);
-      // seekEnd 停住不動（DVR 範圍沒有更新），播放 60 秒：目標只隨播放位置前進（v43 會以 2 倍速往前跑）
-      let ct = c.state.clock.currentTime;
-      for (let k = 0; k < 60; k++) { ct += 1; t += 1000; c._onClock({ currentTime: ct, paused: false, duration: null, seekStart: seekEnd - 7200, seekEnd, live: true, at: t, seeks }); }
-      await frame();
-      assert(near(330), 'seekEnd 停住時仍落在現在 − 330 秒：' + c.state.currentId);
+      const near = (back) => { const m = cur(); return !!m && m.timestampAbs <= t - back * 1000 && m.timestampAbs > t - back * 1000 - 5e3; };
+      for (let k = 0; k < 12; k++) tick();
+      eq(c.state.mode, 'tail');
+      eq(c.state.wallSamples.length, 12);
+      // 播放器偶發的小抖動（一次 2 秒的跳動）：中位數不受影響
+      t += 1000; ct += 1;
+      c._onClock({ currentTime: ct - 2, paused: false, duration: null, seekStart: 3000, seekEnd: SE, live: true, at: t, seeks, liveHead: true, badge: 'class' });
+      tick();
+      eq(c.state.wallA, now - 10000e3, '錨點＝中位數');
+      // 倒轉 1、2、3 分鐘，各播放 20 秒：差距固定（v44 會隨倒轉量變大）
+      for (const back of [60, 120, 180]) {
+        seeks++; ct -= back; tick(behind, 0);
+        await frame();
+        eq(c.state.mode, 'sync', '倒轉 ' + back);
+        assert(near(back), '倒轉 ' + back + ' 秒 → ' + back + ' 秒前：' + c.state.currentId);
+        for (let k = 0; k < 20; k++) tick(behind);
+        assert(near(back), '播放 20 秒後仍是 ' + back + ' 秒前：' + c.state.currentId);
+        seeks++; ct += back; tick({}, 0); // 點「直播」回到最新 → 重新量錨點
+        eq(c.state.mode, 'tail');
+        eq(c.state.wallSamples.length, 1, '回到最新：重新量');
+        for (let k = 0; k < 5; k++) tick();
+      }
+      // 同步微調：倒轉 1 分鐘；按 +10 三次 → 藍框往較新的訊息移動 30 秒（提早 30 秒）
+      seeks++; ct -= 60; tick(behind, 0); await frame();
+      assert(!c.els.latBox.hidden && c.els.latText.textContent === '同步微調：0 秒', c.els.latText.textContent);
+      assert(c.els.latBox.textContent.includes('按 + 藍框往較新的訊息移動，按 − 往較舊移動'), '說明');
+      const btn = (label) => Array.from(c.els.latBox.querySelectorAll('button')).find((b) => b.textContent === label);
+      btn('+10').click(); btn('+10').click(); btn('+10').click();
+      eq([c.state.latency, c.state.latencyFrom], [-30, 'channel']);
+      assert(near(30), '+30：往較新 → 30 秒前 ' + c.state.currentId);
+      eq(c.els.latText.textContent, '同步微調：藍框提早 30 秒（本頻道）');
+      for (let k = 0; k < 5; k++) btn('−10').click();
+      eq(c.state.latency, 20);
+      assert(near(80), '−50：往較舊 → 80 秒前 ' + c.state.currentId);
+      eq(c.els.latText.textContent, '同步微調：藍框延後 20 秒（本頻道）');
       c.els.moreBtn.click();
       const dl = c.els.menu.querySelector('.diag-line').textContent;
-      assert(dl.includes('同步微調 30 秒（本頻道）') && /seekEnd 速度 0\.\d\d/.test(dl), '連線狀態：' + dl);
+      assert(dl.includes('錨點 ') && dl.includes('樣本、範圍 ') && dl.includes('同步微調 藍框延後 20 秒（本頻道）') && dl.includes('seekEnd 速度 0.00'), '連線狀態：' + dl);
       document.body.click();
+      // P10：記錄中且選了 P10 → 每 10 秒一筆，只有數字與徽章代碼
+      const p10 = sent.filter((m) => m.type === 'DIAG_LOG').map((m) => m.records[0]).filter((r) => r.probe === 'P10');
+      assert(p10.length >= 8 && p10.length <= 14, 'P10 筆數 ' + p10.length);
+      const r = p10[0];
+      eq([r.kind, r.ctx.env, r.ctx.videoId], ['live-clock', 'panel', VL]);
+      eq(r.data.seekEnd, SE);
+      assert(typeof r.data.now === 'number' && typeof r.data.currentTime === 'number' && typeof r.data.wallA === 'number' && ['class', 'behind'].includes(r.data.badge), JSON.stringify(r.data));
+      assert(!JSON.stringify(p10).includes('不應出現') && !JSON.stringify(p10).includes('@chanW'), '沒有內容與頻道');
       await sleep(900); // 寫入 storage 有 800ms 延遲
-      const st = (await chrome.storage.local.get('liveSync')).liveSync;
-      eq([st.byChannel['@chanL'], st.last, st.baseline], [30, 30, 40]);
-      // 沒校正過的頻道：沿用上次的值；進入頁面時已不在最新（徽章「非最新」）→ 沿用記住的基準
+      const st = (await chrome.storage.local.get('liveSyncV2')).liveSyncV2;
+      eq([st.byChannel['@chanW'], st.last, st.baseline], [20, 20, undefined]);
+      // 進入頁面時就不在最新（本頁沒量過錨點）：提示先回到最新，清單不動、不沿用別的分頁記下的值
       c = V.mount(host, { embed: true, videoId: VO });
       await c.ready; await frame();
-      eq([c.state.latency, c.state.latencyFrom], [30, 'last']);
-      t = Date.now(); seekEnd = 10000;
-      tick(340, { liveHead: false });
-      await frame();
+      eq([c.state.latency, c.state.latencyFrom], [20, 'last']);
+      t = Date.now(); ct = 5000;
+      tick(behind, 0); await frame();
       eq(c.state.mode, 'sync');
-      eq(c.state.baseline, null, '本頁還沒量到基準');
+      eq([c.state.wallA, c.state.currentId], [null, null]);
+      const hint = c.els.list.parentElement.querySelector('.sync-hint');
+      assert(hint && !hint.hidden && hint.textContent.includes('請先點播放器的「直播」回到最新一次'), '提示 ' + (hint && hint.textContent));
+      const tcb = c.els.list.querySelector('.vrow .tc');
+      assert(tcb && tcb.tagName === 'SPAN', '沒量過錨點：時間碼不可點');
+      // 回到最新一次後再倒轉 → 對齊
+      seeks++; ct = 5100; tick({}, 0); tick(); tick();
+      seeks++; ct -= 120; tick(behind, 0); await frame();
+      assert(hint.hidden, '量到錨點後提示消失');
       const m = msgs.find((x) => x.id === c.state.currentId);
-      assert(m && m.timestampAbs <= t - 330e3 && m.timestampAbs > t - 340e3, '以記住的基準 40 換算：' + c.state.currentId);
-      c.els.moreBtn.click();
-      assert(c.els.menu.querySelector('.diag-line').textContent.includes('基準 40.0，沿用上次'), '連線狀態標示沿用');
-      document.body.click();
+      assert(m && m.timestampAbs <= t - 140e3 && m.timestampAbs > t - 145e3, '2 分鐘前再延後 20 秒（沿用上次）：' + c.state.currentId);
       // 回到原頻道：用該頻道的值
       c = V.mount(host, { embed: true, videoId: VL });
       await c.ready;
-      eq([c.state.latency, c.state.latencyFrom], [30, 'channel']);
-    } finally { await sleep(900); chrome.storage.local._reset(); }
+      eq([c.state.latency, c.state.latencyFrom], [20, 'channel']);
+    } finally { chrome.runtime.sendMessage = realSend; await sleep(900); chrome.storage.local._reset(); }
+  });
+
+  test('T5.4 待機室（21.1）：播放器回報 live 也不做時間軸同步、不顯示同步微調；已結束場次也不顯示', async () => {
+    await resetDb();
+    const VW = 'vidWAITRM01';
+    const now = Date.now();
+    await put({ videoId: VW, title: 'wait', isLive: true, startedAt: null, scheduledStartAt: now + 100 * 86400e3, lastMessageAt: now, messageCount: 3, versions: [], linkedVideos: [] },
+      [0, 1, 2].map((i) => mk({ id: 'wr' + i, videoId: VW, phase: 'pre', timestampAbs: now - (3 - i) * 60e3, videoOffsetSec: null })));
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VW });
+    await c.ready; await frame();
+    c._onClock({ currentTime: 100, paused: false, duration: null, seekStart: 0, seekEnd: 3600, live: true, at: now, liveHead: false, badge: 'behind' });
+    await frame();
+    eq(c.state.mode, 'tail', '待機室：跟隨到底');
+    assert(c.els.latBox.hidden, '待機室不顯示同步微調');
+    const hint = c.els.list.parentElement.querySelector('.sync-hint');
+    assert(hint.hidden, '不提示回到最新');
   });
 
   test('T5.3 連結與超級貼圖的呈現（17.1、17.2）：<a target=_blank rel=noopener noreferrer>、title 為完整網址；非 http(s) 只顯示文字；貼圖沒圖時顯示 alt', async () => {

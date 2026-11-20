@@ -243,17 +243,18 @@
   function videoTimeOf(m, clock, o) {
     if (!m || !clock || (m.phase || 'live') !== 'live') return null;
     if (clock.live) {
-      if (typeof clock.seekEnd !== 'number' || typeof m.timestampAbs !== 'number') return null;
-      // v43：訊息到達時，在最新的播放位置是 seekEnd − 基準（o.baseline）
-      // v44（T5.3 (L)）：畫面落後真實時間 o.latency 秒（直播延遲）→ 該則訊息對應的畫面位置再往後 latency 秒
-      return clock.seekEnd - ((o && o.baseline) || 0) - (clock.at - m.timestampAbs) / 1000 + ((o && o.latency) || 0);
+      // v45（T5.4，審查十一 20.2）牆上時間錨點：畫面上的媒體時間 t 對應的真實時間 ≈ A + t（A＝在最新時量到的 now − currentTime）；
+      // 再加上直播延遲 o.latency（同步微調）。本頁還沒量過 A → 不可點（不依賴 seekEnd：實機 seekEnd 會停住不前進）
+      if (typeof m.timestampAbs !== 'number' || !o || typeof o.wallA !== 'number') return null;
+      return (m.timestampAbs - o.wallA) / 1000 + (o.latency || 0);
     }
     const off = versionOffset(m, o && o.ver, o && o.cal);
     return off == null ? null : off + ((o && o.shift) || 0);
   }
   function inRange(t, clock) {
     if (t == null || !clock) return false;
-    if (clock.live) return typeof clock.seekStart === 'number' && t >= clock.seekStart - 1 && t <= clock.seekEnd + 1;
+    // v45：seekEnd 可能停住 → 上限取 seekEnd 與目前播放位置較大者
+    if (clock.live) return typeof clock.seekStart === 'number' && t >= clock.seekStart - 1 && t <= Math.max(typeof clock.seekEnd === 'number' ? clock.seekEnd : -Infinity, clock.currentTime) + 1;
     return t >= 0 && (clock.duration == null || t <= clock.duration + 1);
   }
   // 直播中：在最新 → 一般的「跟隨到底」；倒轉 DVR → 依時間軸同步。
@@ -291,12 +292,31 @@
     const base = anchor ? anchor.abs + (clock.currentTime - anchor.ct) * 1000 : clock.at;
     return base - (latencySec || 0) * 1000;
   }
+  // v45（T5.4，審查十一 20.2）牆上時間錨點。直播的 currentTime 是連續的媒體時間，在最新時 A＝at − currentTime×1000；
+  // 倒轉時目標＝A + currentTime×1000 − 同步微調×1000。完全不用 seekEnd（實機在最新時 seekEnd 速度 0.00，會停住）。
+  // 在最新期間持續取樣（每秒最多一次，最多 maxN 個），A 取中位數，吸收播放器緩衝造成的小抖動
+  function median(a) {
+    if (!a || !a.length) return null;
+    const s = a.slice().sort((x, y) => x - y);
+    const k = s.length >> 1;
+    return s.length % 2 ? s[k] : (s[k - 1] + s[k]) / 2;
+  }
+  function wallSample(clock) { return clock.at - clock.currentTime * 1000; }
+  function nextWallSamples(samples, clock, maxN) {
+    const out = (samples || []).concat([wallSample(clock)]);
+    return out.length > (maxN || 60) ? out.slice(out.length - (maxN || 60)) : out;
+  }
+  function wallTarget(clock, wallA, latencySec) {
+    if (typeof wallA !== 'number') return null;
+    return wallA + clock.currentTime * 1000 - (latencySec || 0) * 1000;
+  }
   // 清單（withPhaseDividers 的輸出）中「目前播放位置」的訊息：影片時間 ≤ t 的最後一則。
   // 直播：依 timestampAbs（清單本來就依此排序）二分搜尋；VOD：依該版本 offset，先抽出有 offset 的訊息（遞增）再二分搜尋
   function syncIndex(entries, clock, o) {
     if (!clock || !entries || !entries.length) return -1;
     const isMsg = (e) => e.kind === 'msg' && (e.it.m.phase || 'live') === 'live';
     if (clock.live) {
+      if (o && o.target === null) return -1; // v45：本頁還沒量過錨點 → 不同步
       const target = o && typeof o.target === 'number' ? o.target : playheadAbs(clock, o && o.baseline) - ((o && o.latency) || 0) * 1000;
       let lo = 0, hi = entries.length - 1, ans = -1;
       while (lo <= hi) {
@@ -405,6 +425,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);
