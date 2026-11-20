@@ -155,7 +155,25 @@
   - 17.1 訊息連結保留完整網址並可點擊；17.2 圖片網址正規化、超級貼圖延遲載入補送與 alt 後備；dom-notes 直播徽章改為已驗證（commit `3553821`）。
   - F-20 P9 補量面板 viewer、取樣間隔可設定（診斷頁預設 1 分鐘）（commit `a88ed41`）。
   - 審查文件第 17～18 節、P9 診斷摘要（commit `abb3ca9`）。
-  - 規格 v44、測試清單、T5 報告「T5.3」（本段落所在的 commit）。
+  - 規格 v44、測試清單、T5 報告「T5.3」（commit `0dd7f89`）。
+- v45／T5.4（`docs/review-2026-11-17.md` 第 19～21 節；報告為 T5 報告的「T5.4」）：
+  - F-20 P10 直播時鐘探針（commit `59c2818`）。
+  - 直播倒轉改用牆上時間錨點、同步微調改為「藍框提早／延後 N 秒」；待機室不同步、不顯示同步微調（commit `110899e`）。
+  - 禮物送禮者以內文開頭 `@handle` 後備、`@handle` 連結指向頻道網址、禮物結構保留、`fixGiftAuthors`（commit `cd1899e`）。
+  - 已結束場次依 phase 分段排序、時間碼可否點擊面板與後台一致、`fixPhases`、頁面狀態提示 `notice`、日期顯示規則（commit `eb1b7ea`）。
+  - 面板頭像快取上限 2,000（commit `110d074`）。
+  - 診斷頁「輸出檔名格式」（commit `661a4c0`）。
+  - `backend.html`／`viewer.html` 一致性測試（commit `e96a30e`）。
+  - 補上 20.6 漏改的測試斷言、`YTCAS_BG.systemTags()`（commit `dc1dd5e`）。
+  - 規格 v45、測試清單、審查文件第 19～21 節、P9 診斷摘要 2026-11-20 19:50、T5 報告「T5.4」（本段落所在的 commit）。
+
+### 規格 v45（2026-11-20，T5.4）
+- 4.1：訊息 `authorSource`、`notice`。
+- F-08：直播倒轉的牆上時間錨點（不用 `seekEnd`）、本頁沒量過錨點時的提示、同步微調的顯示與 `liveSyncV2`、待機室不同步；VOD 依 phase 分段排序、時間碼可否點擊面板與後台一致、日期顯示規則；VOD 校正值可達數十秒屬正常。
+- F-13：送禮者 `@handle` 後備、`@handle` 連結、禮物結構保留、`fixGiftAuthors`。
+- F-14：`endedAt` 確定時自動重算 phase（既有）、`fixPhases`；頁面狀態提示 `notice`。
+- F-02：面板頭像快取上限。
+- F-20：P10 直播時鐘；匯出檔名格式、`giftStructures`。
 
 ### 規格 v44（2026-11-20，T5.3）
 - 4.1：訊息 `stickerAlt`；`runs` 的文字片段可帶 `link: { url }`。

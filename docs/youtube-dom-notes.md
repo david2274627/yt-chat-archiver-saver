@@ -197,7 +197,7 @@ yt-live-chat-renderer
   - 取得結構的方式：套件在**非記錄期間**也把每則禮物的結構（標籤、屬性名稱、img 網域、尺寸、有無文字、文字是否以 `@` 開頭、連結種類 handle／channel／redirect／external…；**不含文字與網址**）存在 `chrome.storage.session` 的最近 5 筆，診斷匯出（`giftStructures`）與 diag-report「禮物結構」一節會列出。遇到禮物後到診斷頁按「匯出」即可，不必剛好在記錄中。
   - 結構確認前：作者取不到時以內文開頭的 `@handle` 當送禮者（`authorSource: 'text'`，只看 `@` 與 handle 字元格式，不比對任何語言的文字）；內文中文字就是 `@handle` 的連結一律指向 `https://www.youtube.com/@handle`。禮物名稱、數量、禮物圖片（目前取第一張非頭像的 `img`）待結構確認後改為專用解析。
 - `yt-live-chat-viewer-engagement-message-renderer`（歡迎／守則提示）：每次重新載入聊天室都會出現一則，**元素 id 每次不同**（同一場 6 次重新整理存成 28 筆）→ T3.5 起以內容去重。
-  - （v45，T5.4，審查十一 21.3）此元件擷取時標 `notice: true`（依標籤，不比對文字），檢視器放在最上方「聊天室提示」一段、不參與 pre／live／post 與同步。**待驗證**：VOD 的「已啟用聊天室訊息重播功能」與「訂閱者專屬模式」提示是否也是這個元件——是的話既有紀錄的 id 以 `ytcas-ve-` 開頭，自動歸到提示；不是的話它的 `rawTag` 會列在 `YTCAS_BG.cleanupJunkSystem()` 預覽的 `byTag`，請回報標籤名稱再補進規則。
+  - （v45，T5.4，審查十一 21.3）此元件擷取時標 `notice: true`（依標籤，不比對文字），檢視器放在最上方「聊天室提示」一段、不參與 pre／live／post 與同步。**待驗證**：VOD 的「已啟用聊天室訊息重播功能」與「訂閱者專屬模式」提示是否也是這個元件——是的話既有紀錄的 id 以 `ytcas-ve-` 開頭，自動歸到提示；不是的話它的 `rawTag` 會列在 `YTCAS_BG.systemTags()` 的 `byTag`（只有標籤與筆數），請回報標籤名稱再補進規則。
 - 訊息元件**內部**的後代（徽章 `yt-live-chat-author-badge-renderer`、`yt-icon`、`yt-img-shadow`、`yt-image`、`span`、`div`、`button-view-model`、`yt-button-view-model`、`dom-if`、`yt-live-chat-reply-button-view-model`、`yt-live-chat-like-button-view-model` 等）會在訊息插入後才陸續渲染，而且很多帶有固定的 `id`（如 `message`、`author-name`、`image`）。以 `subtree` 監看時會被回報為新增節點 → 只能處理 `#items` 的直接子節點（T3.4）。
 - 頁面上有 2 個 `#items`：第 1 個是可見的訊息列表（`#item-list` 內），第 2 個不可見、3 個子節點（用途未查）。
 - 切到「即時聊天室」（F-12）時，YouTube 會以同 id 整批重新渲染列表（一次性的 `dupCaptured` 約 72～95）。
