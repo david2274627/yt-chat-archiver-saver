@@ -775,6 +775,19 @@
     } finally { window.open = realOpen; }
   });
 
+  test('T5.4 面板頭像快取上限（20.3）：2,000 位作者（LRU）', async () => {
+    await resetDb();
+    const VA = 'vidAVCAP001';
+    const msgs = [];
+    for (let i = 0; i < 2100; i++) msgs.push(mk({ id: 'av' + i, videoId: VA, authorHandle: '@a' + i, authorAvatar: 'https://yt4.ggpht.com/a' + i + '=s64', timestampAbs: T0 + i * 1000 }));
+    await put({ videoId: VA, title: 'a', versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VA });
+    await c.ready; await frame();
+    eq(c.state.avatars.size, self.YTCAS_CONST.PANEL.AVATAR_CACHE_MAX);
+    assert(!c.state.avatars.has('@a0') && c.state.avatars.has('@a2099'), '最久沒用到的先移除');
+  });
+
   test('T5.3 連結與超級貼圖的呈現（17.1、17.2）：<a target=_blank rel=noopener noreferrer>、title 為完整網址；非 http(s) 只顯示文字；貼圖沒圖時顯示 alt', async () => {
     await resetDb();
     const VLK = 'vidLINKS001';

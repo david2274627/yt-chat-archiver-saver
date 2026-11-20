@@ -520,12 +520,16 @@
     // T5.1（審查十一第 10 節 3）頭像後備：訊息本身 → 同場次同作者 → 頻道資料（F-03）→ 首字圓點
     function rememberAvatar(m) {
       const k = C.avatarAuthorKey(m);
-      if (k && m.authorAvatar && !S.avatars.has(k)) S.avatars.set(k, m.authorAvatar);
+      if (k && m.authorAvatar && !S.avatars.has(k)) {
+        S.avatars.set(k, m.authorAvatar);
+        // v45（審查十一 20.3）上限 PANEL.AVATAR_CACHE_MAX（LRU：最久沒用到的先移除）
+        while (S.avatars.size > C.PANEL.AVATAR_CACHE_MAX) S.avatars.delete(S.avatars.keys().next().value);
+      }
     }
     function avatarUrl(m) {
       if (m.authorAvatar) return m.authorAvatar;
       const k = C.avatarAuthorKey(m);
-      if (k && S.avatars.has(k)) return S.avatars.get(k);
+      if (k && S.avatars.has(k)) { const u = S.avatars.get(k); S.avatars.delete(k); S.avatars.set(k, u); return u; }
       const ch = m.authorHandle && S.channels ? S.channels.get(m.authorHandle) : null;
       return (ch && ch.avatar) || '';
     }
