@@ -45,7 +45,7 @@
 - **v43 調整**（`docs/review-2026-11-17.md` 第 15、16 節，T5.2）：直播的「在最新」判定（播放器徽章→延遲基準）、DVR 換算扣掉基準、播放器 seek 時解除同步暫停、範圍外提示、直播同步的容許誤差（F-08）；`VOD_TIME` 加 `seeks`／`liveHead`／`badge`、`PANEL_STATE` 也送給面板（4.3）；連線狀態的實際筆數與每秒刷新；補讀後備在退讓／分頁隱藏時暫停、整場讀取間隔 2 分鐘；「在後台開啟此場次」由 background 開啟（`RT.OPEN_VIEWER`）。
 - **v44 調整**（`docs/review-2026-11-17.md` 第 17、18 節，T5.3）：「在後台開啟此場次」改開不在 `web_accessible_resources` 的 `backend.html`（F-08）；VOD 同步以 replay offset 為準、live 來源依中位數差校正、清單依同步時間排序、點時間碼後藍框標在被點的那則（F-08）；直播倒轉的目標以跳轉當下為錨點、「同步微調」（直播延遲，依頻道記住）、進入頁面時已不在最新沿用記住的基準（F-08）；訊息連結保留完整網址（F-02 `runs` 的 `link`）；圖片網址正規化、超級貼圖延遲載入補送與 `stickerAlt`（F-02）；F-20 P9 補量面板、取樣間隔可設定。
 - **v45 調整**（`docs/review-2026-11-17.md` 第 19～21 節，T5.4）：直播倒轉改用**牆上時間錨點**（完全不用 `seekEnd`）、本頁沒量過錨點時提示先回到最新、同步微調顯示「藍框提早／延後 N 秒」（F-08）；待機室不做時間軸同步、不顯示同步微調（F-08）；VOD 清單依 phase 分段排序、時間碼可否點擊面板與後台一致（F-08）；頁面狀態提示 `notice`（F-14）；日期顯示規則（F-08）；禮物送禮者的 `@handle` 後備 `authorSource`、`@handle` 連結、禮物結構保留（F-13、F-20）；`fixPhases`／`fixGiftAuthors` 兩段式維護函式；面板頭像快取上限；F-20 P10 直播時鐘、診斷匯出檔名格式。
-- **v46 調整**（`docs/review-2026-11-17.md` 第 23、24 節，T5.5）：新增 10.1 原則 7「**面板內的提示不得遮蓋聊天內容與選單**」，同步提示改為版面內的一列、「回到播放位置」顯示時清單底部留白；待機室判定改為 `isWaitingRoom`（不論播放器回報什麼）；「目標 X → Y」的判讀與實測方法（F-08）；診斷匯出顯示實際檔名、被其他擴充功能改寫時的後備下載（F-20）；禮物依實機結構專用解析、禮物卡名稱列與操作與一般訊息一致（F-13、F-05）。
+- **v46 調整**（`docs/review-2026-11-17.md` 第 23、24 節，T5.5）：新增 10.1 原則 7「**面板內的提示不得遮蓋聊天內容與選單**」，同步提示改為版面內的一列、「回到播放位置」顯示時清單底部留白；待機室判定改為 `isWaitingRoom`（不論播放器回報什麼）；「目標 X → Y」的判讀與實測方法（F-08）；診斷匯出顯示實際檔名、被其他擴充功能改寫時的後備下載（F-20）；禮物依實機結構專用解析、禮物卡名稱列與操作與一般訊息一致（F-13、F-05）；會員里程碑卡片與 tokens（10.3、10.4）。
 
 ---
 
@@ -854,6 +854,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
               --ytcas-danger;        /* 關閉優化面板按鈕 */
               --ytcas-on-accent; --ytcas-on-danger;  /* v27：accent／danger 實心底上的文字色 */
               --ytcas-gift; --ytcas-gift-soft;       /* v27：禮物卡（F-13） */
+              --ytcas-member-strong; --ytcas-on-member; --ytcas-member-soft;  /* v46：會員里程碑卡（標題列／其上文字／留言區） */
   /* 字體 */  --ytcas-font: "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
               --ytcas-font-mono: ui-monospace,"SF Mono",Consolas,monospace;  /* 時間碼 */
   /* 字級 */  --ytcas-fs-xs:11px; --ytcas-fs-sm:12px; --ytcas-fs-md:13px; --ytcas-fs-lg:15px; --ytcas-fs-xl:18px;
@@ -880,7 +881,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | **置頂卡片**（F-07） | 浮在工具區下方；左側主播頭像 + 「置頂」標籤；收合時單行省略，點擊展開全文；`--ytcas-shadow-1` |
 | **訊息列** | 頭像 24px → 時間碼（mono、`--ytcas-timecode`、可點）→ 名稱（主名稱粗體 + 淡色 @Handle）→ 徽章 → 內容；表符與文字基線對齊，表符高 20px（會員貼圖 24px）；行高 1.45；hover 顯示淡底 |
 | **Super Chat / 超級貼圖卡** | 圓角卡片，上半金額列（頭像、名稱、金額），下半訊息；超級貼圖顯示貼圖 72px。（v39 已決）文字色依 10.3 以對比度選黑或白，不跟隨 YouTube 原生的白字（例：藍色 `#1e88e5` 用黑字） |
-| **會員 / 里程碑** | 左側 `--ytcas-member` 色條 + 標籤 |
+| **會員 / 里程碑** | 新會員等公告（沒有留言）：左側 `--ytcas-member` 色條 + 標籤。（v46，審查十一 24.6）**里程碑**（`yt-live-chat-membership-item-renderer` 帶留言：`runs`＝標題＋`\n`＋留言，`CORE.isMilestone`）：會員色卡片，標題列 `--ytcas-member-strong` 底／`--ytcas-on-member` 字（頭像、時間碼、名稱、灰色 `@handle`、「里程碑」徽章、月數與徽章名稱），下方留言區 `--ytcas-member-soft` 底；與新會員一眼可分。對比度以 `tools/check-contrast.js` 檢查（SC／超級貼圖依訊息底色選黑白字，禮物、里程碑、降落各組合深淺色都 ≥ 4.5，非文字區隔 ≥ 3） |
 | **降落高光**（F-05） | Raid 橫幅：整列 `--ytcas-raid-soft` 底 + `--ytcas-raid` 左邊框 + 「✨ 降落」標籤；認證實況主發言：名稱旁加 raid 色徽章 |
 | **VOD 當前訊息**（F-08） | `--ytcas-current-ring` 2px 內框，平滑移動 |
 | **「↓ 恢復自動捲動」** | 底部置中浮動膠囊按鈕，位於原生底部互動區（`bottomZoneHeight`）之上 8px；（v46）顯示時清單底部留出等高空白、`z-index` 低於 ⋯ 選單（10.1 原則 7） |

@@ -55,7 +55,9 @@ mark .emo-img { vertical-align: -5px; }
 .content a.lnk { color: var(--ytcas-accent); text-decoration: underline; text-underline-offset: 2px; word-break: break-all; }
 .content a.lnk:hover { text-decoration-thickness: 2px; }
 .giftcard .gimg img { width: 40px; height: 40px; object-fit: contain; }
-.card.deleted .content, .giftcard.deleted .content { color: var(--ytcas-text-3); text-decoration: line-through; }
+.card.deleted .content, .giftcard.deleted .content, .milestone.deleted .content { color: var(--ytcas-text-3); text-decoration: line-through; }
+/* v46（24.6）里程碑標題列上的搜尋標示：文字改用本文色（標題列文字是 on-member） */
+.milestone .ms-head mark { color: var(--ytcas-text); }
 .card.deleted .content { color: inherit; opacity: .6; }
 
 /* ---------- T5 內嵌面板（F-08、F-09、F-12、F-18） ---------- */

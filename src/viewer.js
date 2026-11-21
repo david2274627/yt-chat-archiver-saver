@@ -531,6 +531,7 @@
       if (t === T.SUPERCHAT) return 84;
       if (t === T.SUPERSTICKER) return 128;
       if (t === T.GIFT) return 64;
+      if (CORE.isMilestone(e.it.m)) return 96;
       if (t === T.MEMBERSHIP || t === T.MILESTONE || t === T.RAID) return 56;
       return 40;
     }
@@ -724,6 +725,21 @@
         info.appendChild(sub);
         row.append(g, info);
         if (m.jewels) row.appendChild(el('span', 'jw', fmtN(m.jewels) + ' Jewels'));
+      } else if (CORE.isMilestone(m)) {
+        // v46（T5.5，審查十一 24.6）里程碑（會員訊息帶留言）：會員色卡片。標題列＝頭像、時間碼、名稱、@handle、
+        // 「里程碑」與月數／徽章名稱（#header-primary-text／#header-subtext）；下方＝使用者的留言。新會員（沒有留言）維持左側色條列
+        const parts = CORE.memberParts(m);
+        row = el('div', 'milestone' + (m.deleted ? ' deleted' : ''));
+        const hr = el('div', 'ms-head');
+        const who = el('div', 'ms-who');
+        who.append(tcNode(m), nameNode(it, ''));
+        if (m.authorHandle && m.authorHandle !== it.name) who.appendChild(el('span', 'hd', m.authorHandle));
+        who.appendChild(el('span', 'bdg member', '里程碑'));
+        if (m.deleted) who.appendChild(el('span', 'bdg del', '已刪除'));
+        if (parts.head.length) { const t = el('div', 'ms-title'); renderRuns(t, parts.head, kw); who.appendChild(t); }
+        hr.append(avatar(m, it.name), who);
+        const body = el('div', 'ms-body content'); renderRuns(body, parts.body, kw);
+        row.append(hr, body);
       } else if (m.type === T.MEMBERSHIP || m.type === T.MILESTONE) {
         row = el('div', 'msg member-ev' + (m.deleted ? ' deleted' : ''));
         const body = el('div', 'body');

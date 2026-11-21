@@ -134,6 +134,18 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
 .giftcard .gname { color: var(--ytcas-gift); font-weight: 700; }
 .giftcard .jw { flex: none; color: var(--ytcas-gift); font-size: var(--ytcas-fs-sm); font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* v46（T5.5，審查十一 24.6）會員里程碑卡：深會員色標題列（頭像、名稱、月數／徽章名稱）＋淡會員色留言區；
+   新會員（沒有留言）維持 .msg.member-ev 的左側色條，兩者一眼可分 */
+.milestone { margin: 4px 10px; border-radius: var(--ytcas-radius-md); overflow: hidden; box-shadow: var(--ytcas-shadow-1); }
+.milestone .ms-head { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; background: var(--ytcas-member-strong); color: var(--ytcas-on-member); }
+.milestone .ms-who { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.milestone .ms-head .tc, .milestone .ms-head .nm, .milestone .ms-head .hd { color: inherit; }
+.milestone .ms-head .bdg.member { color: var(--ytcas-member); background: var(--ytcas-member-soft); }
+.milestone .ms-title { font-size: var(--ytcas-fs-sm); font-weight: 700; margin-top: 1px; }
+.milestone .ms-body { padding: 6px 10px 7px; background: var(--ytcas-member-soft); color: var(--ytcas-text); }
+.milestone .ms-body:empty { display: none; }
+.milestone .av { background: var(--ytcas-overlay); }
+
 /* 時段分隔線（F-14）：直播開始前（待機室）／直播中／直播結束後 */
 .phase { display: flex; align-items: center; gap: 8px; margin: 8px 12px; color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); font-weight: 700; }
 .phase::before, .phase::after { content: ""; flex: 1; border-top: 1px solid var(--ytcas-border); }

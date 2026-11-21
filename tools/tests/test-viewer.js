@@ -864,6 +864,40 @@
     eq(ids, ['gd1', 'tx1'], '同一位使用者的禮物與訊息');
   });
 
+  test('T5.5 會員里程碑卡（24.6）：有留言＝會員色卡片（標題列：名稱、里程碑、月數／徽章名稱；下方留言），新會員（沒有留言）維持左側色條；深淺色都用 tokens', async () => {
+    const ms = mk({ id: 'ms1', type: 'membership', authorName: '桑抹', authorHandle: '@sangmo', timestampAbs: T0 + 1000,
+      runs: [{ text: '已加入會員 33 個月 黃金會員' }, { text: '\n' }, { text: '謝謝主播' }, { emoji: { alt: ':heart:' } }] });
+    const nw = mk({ id: 'nm1', type: 'membership', authorHandle: '@newbie', timestampAbs: T0 + 2000, runs: [{ text: '歡迎新會員！' }] });
+    eq([CORE.isMilestone(ms), CORE.isMilestone(nw), CORE.isMilestone(mk({ type: 'membership', runs: [{ text: '標題' }, { text: '\n' }, { text: '  ' }] }))], [true, false, false]);
+    eq(CORE.memberParts(ms), { head: [{ text: '已加入會員 33 個月 黃金會員' }], body: [{ text: '謝謝主播' }, { emoji: { alt: ':heart:' } }] });
+    await resetDb();
+    const VM = 'vidMILEST01';
+    await put({ videoId: VM, title: 'm', versions: [], linkedVideos: [] }, [Object.assign(ms, { videoId: VM }), Object.assign(nw, { videoId: VM })]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VM });
+    await c.ready; await frame(); await frame();
+    const row = (id) => c.els.list.querySelector('[data-id="' + id + '"]');
+    const r = row('ms1');
+    assert(r.classList.contains('milestone'), '里程碑卡 ' + r.className);
+    eq([r.querySelector('.ms-head .nm').textContent, r.querySelector('.ms-head .hd').textContent, r.querySelector('.ms-head .bdg.member').textContent, r.querySelector('.ms-title').textContent],
+      ['桑抹', '@sangmo', '里程碑', '已加入會員 33 個月 黃金會員']);
+    eq(r.querySelector('.ms-body').textContent, '謝謝主播:heart:', '留言');
+    const n = row('nm1');
+    assert(n.classList.contains('member-ev') && !n.classList.contains('milestone'), '新會員維持左側色條');
+    const bg = (el) => getComputedStyle(el).backgroundColor;
+    const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+    for (const theme of ['light', 'dark']) {
+      document.documentElement.setAttribute('data-theme', theme);
+      const probe = document.createElement('div'); document.body.append(probe);
+      probe.style.background = css('--ytcas-member-strong'); const strong = getComputedStyle(probe).backgroundColor;
+      probe.style.background = css('--ytcas-member-soft'); const soft = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      eq([bg(r.querySelector('.ms-head')), bg(r.querySelector('.ms-body'))], [strong, soft], theme + '：標題列與留言區用 tokens');
+      assert(bg(n) !== strong, theme + '：新會員不是會員色卡片');
+    }
+    document.documentElement.removeAttribute('data-theme');
+  });
+
   test('T5.4 已結束場次（21.2、21.3）：依 phase 分段（提示 → pre → live → post）、每段標題一次；超出影片長度的時間碼面板與後台都不可點並說明；頁面狀態提示在最上方、不參與同步', async () => {
     await resetDb();
     const VE = 'vidENDED001';

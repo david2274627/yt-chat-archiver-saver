@@ -251,6 +251,19 @@
     keyed.sort((a, b) => (a.r - b.r) || (a.k - b.k) || (a.i - b.i));
     return keyed.map((x) => x.it);
   }
+  // v46（T5.5，審查十一 24.6）會員訊息（yt-live-chat-membership-item-renderer）的 runs＝標題（#header-primary-text＋#header-subtext）
+  //＋{ text: '\n' }＋使用者留言（#message；capture.js）。有留言＝里程碑（「已加入會員 N 個月」＋留言），沒有＝新會員等公告
+  function memberParts(m) {
+    const runs = (m && m.runs) || [];
+    const i = runs.findIndex((r) => r && r.text === '\n' && !r.emoji && !r.link);
+    return i < 0 ? { head: runs, body: [] } : { head: runs.slice(0, i), body: runs.slice(i + 1) };
+  }
+  const hasContent = (runs) => runs.some((r) => r && (r.emoji || (typeof r.text === 'string' && r.text.trim())));
+  function isMilestone(m) {
+    if (!m) return false;
+    if (m.type === T.MILESTONE) return true;
+    return m.type === T.MEMBERSHIP && hasContent(memberParts(m).body);
+  }
   // v46（T5.5，審查十一第 23 節第 2 點）待機室：不論播放器回報什麼（待機室的播放器可能在播預告／倒數，currentTime 會走、
   // 徽章顯示「非最新」）一律不做時間軸同步。判定只看場次與訊息：
   //   場次還沒載入 → 視為待機室（保守，不同步）；已結束 → 否；等待開播確認 → 是；已開播 → 否；
@@ -456,6 +469,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);
