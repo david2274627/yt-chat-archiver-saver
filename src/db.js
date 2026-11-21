@@ -951,8 +951,8 @@
     }
     r.runs = (r.runs || []).map((x) => {
       if (!x || !x.link || typeof x.text !== 'string') return x;
-      const h = C.handleOf(x.text);
-      if (!h || h !== x.text.trim() || x.link.url === C.handleUrl(h)) return x;
+      const h = C.domHandle(x.text); // v48（28.2）連結文字＝DOM 給的 handle
+      if (!h || x.link.url === C.handleUrl(h)) return x;
       changed = true;
       return { text: x.text, link: { url: C.handleUrl(h) } };
     });

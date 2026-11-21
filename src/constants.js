@@ -389,10 +389,19 @@
   };
 
   // v45（T5.4，審查十一 20.4）文字開頭的 @handle（YouTube handle：3～30 個字母、數字、. _ -，可含各語系文字）→ '@handle'；不是 → ''。
-  // 只看 @ 與 handle 的字元格式，不比對任何語言的文字
+  // 只看 @ 與 handle 的字元格式，不比對任何語言的文字。
+  // v48（T5.7，審查十一 28.2）**只用於「從內文推出 handle」等後備**（嚴格：3～30 字，且後面要接空白或標點）。
   C.handleOf = function (text) {
     const m = /^\s*(@[\p{L}\p{N}\p{M}._\-·]{3,30})(?=$|[\s:：,，、)）])/u.exec(String(text == null ? '' : text));
     return m ? m[1] : '';
+  };
+  // v48（T5.7，審查十一 28.2）聊天室 DOM 給的 @handle（作者名稱元件、@提及連結的文字、已存的 authorHandle）：YouTube 已驗證，
+  // 長度下限 1（實機：`@无恋`、`@魚` 這類非拉丁文字的 handle 短於 3 個字元）、上限 100；字元類別與 handleOf 相同。
+  // 整個字串（去掉前後空白）必須就是 handle → '@handle'；不是 → ''。background 的頻道解析佇列（HANDLE_RE）也用這條
+  C.DOM_HANDLE_RE = /^@[\p{L}\p{N}\p{M}._\-·]{1,100}$/u;
+  C.domHandle = function (text) {
+    const t = String(text == null ? '' : text).trim();
+    return C.DOM_HANDLE_RE.test(t) ? t : '';
   };
   C.handleUrl = function (h) {
     return h && h[0] === '@' ? 'https://www.youtube.com/@' + encodeURIComponent(h.slice(1)) : '';

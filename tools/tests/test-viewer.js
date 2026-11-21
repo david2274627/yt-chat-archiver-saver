@@ -899,6 +899,30 @@
     eq(rgb(r2.querySelector('.amt')), 'rgb(0, 0, 0)', '舊資料：黑字');
   });
 
+  test('T5.7 短 handle（28.2、27 第 2 點）：DOM 給的 @handle 長度下限 1（@无恋、@魚、@a、含 ·）、路徑段編碼；內文推斷維持 3～30', async () => {
+    const enc = (s) => 'https://www.youtube.com/@' + encodeURIComponent(s);
+    for (const h of ['无恋', '魚', 'a', 'ナナ·ミ', '又新-david', '魚_5123'])
+      eq(CORE.channelUrl({ authorHandle: '@' + h }), enc(h), '@' + h);
+    eq(CORE.channelUrl({ authorHandle: '@魚' }), 'https://www.youtube.com/@%E9%AD%9A', '編碼');
+    eq(CORE.channelUrl({ authorUrl: 'https://www.youtube.com/@%E6%97%A0%E6%81%8B' }), enc('无恋'), 'authorUrl 的短 handle');
+    eq(CORE.channelUrl({ authorHandle: '@' }), '', '只有 @');
+    eq(CORE.channelUrl({ authorHandle: '@有 空白' }), '', '含空白');
+    const K = self.YTCAS_CONST;
+    eq(K.domHandle(' @无恋 '), '@无恋');
+    eq([K.handleOf('@无恋 謝謝'), K.handleOf('@abc 謝謝')], ['', '@abc'], '內文推斷維持嚴格規則');
+    // 訊息內的 @提及連結（文字＝短 handle）→ youtube.com/@handle
+    await resetDb();
+    const VH = 'vidSHORTHD1';
+    await put({ videoId: VH, title: 'H', isLive: true, startedAt: T0 - 60e3, endedAt: T0 + 60e3, lastMessageAt: T0, messageCount: 1, versions: [], linkedVideos: [] },
+      [mk({ id: 'sh1', videoId: VH, authorHandle: '@无恋', runs: [{ text: '@魚', link: { url: 'https://evil.example/x' } }, { text: ' 你好' }] })]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VH });
+    await c.ready; await frame(); await frame();
+    const r = c.els.list.querySelector('[data-id="sh1"]');
+    eq(r.querySelector('a.av-link').getAttribute('href'), enc('无恋'), '@无恋 的頭像可點');
+    eq(r.querySelector('.content a.lnk').getAttribute('href'), 'https://www.youtube.com/@%E9%AD%9A', '@魚 的提及連結');
+  });
+
   test('T5.5 待機室（第 23 節）：播放器時間比資料先到、預告影片 currentTime 前進＋「非最新」→ 不同步、不提示、沒有「回到播放位置」與 current 標記、時間碼不可點', async () => {
     await resetDb();
     const VW = 'vidWAITRM02';

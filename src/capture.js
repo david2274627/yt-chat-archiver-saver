@@ -118,8 +118,8 @@
             // v44（17.1）：{ text, link: { url } }；網址不合格 → 只留文字
             // v45（20.4 第 4 點）文字就是 @handle 的連結：一律連到 https://www.youtube.com/@handle（不管 href 指向哪裡）
             const text = n.textContent || '';
-            const h = C.handleOf(text);
-            const url = h && h === text.trim() ? C.handleUrl(h) : linkUrl(n.getAttribute('href') || '');
+            const h = C.domHandle(text); // v48（28.2）連結文字是 DOM 給的：短 handle（@无恋）也算
+            const url = h ? C.handleUrl(h) : linkUrl(n.getAttribute('href') || '');
             if (url && text) out.push({ text, link: { url } });
             else if (url) out.push({ text: url, link: { url } });
             else push(text);
@@ -204,7 +204,7 @@
       type,
       authorHandle: handle,
       authorChannelId: '',
-      authorUrl: handle ? 'https://www.youtube.com/' + handle : '',
+      authorUrl: C.handleUrl(handle), // v48（27 第 2 點）路徑段以 encodeURIComponent 編碼（@又新-david、@魚_5123）
       authorAvatar: imgUrl(photo),
       authorBadges: badgesOf(el),
       runs: [],
@@ -240,7 +240,7 @@
       const G = S.chat.gift;
       const an = clean((el.querySelector(G.author) || {}).textContent);
       if (an) {
-        const h = C.handleOf(an);
+        const h = C.domHandle(an); // v48（28.2）DOM 給的送禮者：短 handle 也算
         if (h) { m.authorHandle = h; m.authorUrl = C.handleUrl(h); delete m.authorName; } else { m.authorName = an; }
         m.authorSource = 'dom';
       }

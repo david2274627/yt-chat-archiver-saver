@@ -864,6 +864,22 @@
     e.stop();
   });
 
+  test('T5.7 handle（28.2、27 第 2 點）：作者網址的路徑段編碼（@又新-david、@无恋）；@提及連結文字是短 handle → youtube.com/@handle', () => {
+    let m = CAP.parseMessage(textMsg({ author: '@又新-david' }), { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq([m.authorHandle, m.authorUrl], ['@又新-david', 'https://www.youtube.com/@' + encodeURIComponent('又新-david')]);
+    m = CAP.parseMessage(textMsg({ author: '@无恋' }), { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq(m.authorUrl, 'https://www.youtube.com/@%E6%97%A0%E6%81%8B');
+    const el = textMsg({ runs: [{ text: '' }] });
+    const msg = el.querySelector('#message');
+    const a = document.createElement('a'); a.setAttribute('href', '/channel/UCxxxxxxxxxxxxxxxxxxxxxx'); a.textContent = '@魚';
+    msg.append(a, document.createTextNode(' 你好'));
+    m = CAP.parseMessage(el, { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq(m.runs[0], { text: '@魚', link: { url: 'https://www.youtube.com/@%E9%AD%9A' } });
+    // 禮物送禮者（#author-name-v2）是短 handle
+    m = CAP.parseMessage(realGift('ChwKgiftSH1', { author: '@魚' }), { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq([m.authorHandle, m.authorUrl, m.authorSource], ['@魚', 'https://www.youtube.com/@%E9%AD%9A', 'dom'], '禮物短 handle');
+  });
+
   test('F-20 P7（AC 2）：注入未知元件與禮物元件 → 自動留下結構紀錄（只有標籤、id、屬性名稱、img 網域，沒有文字）；同一標籤每場最多 3 次', async () => {
     const { items } = buildChat();
     const send = mockSend();

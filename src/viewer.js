@@ -593,8 +593,8 @@
         } else if (r && r.text) {
           // v44（17.1）連結：<a target="_blank" rel="noopener noreferrer">，文字照原樣（可能是截斷的），title 顯示完整網址
           // v45（20.4 第 4 點）文字是 @handle 的連結：一律連到 https://www.youtube.com/@handle（舊紀錄的網址可能指向別處，點了沒反應）
-          const hd = r.link ? C.handleOf(r.text) : '';
-          const url = r.link ? (hd && hd === r.text.trim() ? C.handleUrl(hd) : CORE.safeLink(r.link.url)) : '';
+          const hd = r.link ? C.domHandle(r.text) : ''; // v48（28.2）連結文字＝DOM 給的 handle：短 handle 也算
+          const url = r.link ? (hd ? C.handleUrl(hd) : CORE.safeLink(r.link.url)) : '';
           let target = box;
           if (url) {
             const a = el('a', 'lnk'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.title = url;

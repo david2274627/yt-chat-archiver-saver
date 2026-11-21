@@ -58,7 +58,9 @@ function broadcast(msg) {
 }
 
 // ---------------------------------------------------------------- 頻道名稱解析（F-03）
-const HANDLE_RE = /^@[\p{L}\p{N}._\-·]{1,100}$/u;
+// v48（T5.7，審查十一 28.2 第 4 點）與 C.domHandle 同一條規則（聊天室 DOM 給的 handle：1～100 字，字元類別含 \p{M} 組合符號）。
+// v47 以前這裡少了 \p{M}（含組合符號的 handle 不會排入頻道解析），而 constants 的 handleOf 是 3～30 字（內文推斷用）
+const HANDLE_RE = C.DOM_HANDLE_RE;
 let queueChain = Promise.resolve();
 const inflight = new Set();
 let kickTimer = null;

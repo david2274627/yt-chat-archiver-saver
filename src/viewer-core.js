@@ -576,12 +576,13 @@
           const cm = /^\/channel\/(UC[\w-]{22})$/.exec(p);
           if (cm) return 'https://www.youtube.com/channel/' + cm[1];
           const hm = /^\/(@[^/]+)$/.exec(p);
-          if (hm) { let h = hm[1]; try { h = decodeURIComponent(h); } catch (_) { /* 原樣 */ } if (C.handleOf(h) === h) return C.handleUrl(h); }
+          if (hm) { let h = hm[1]; try { h = decodeURIComponent(h); } catch (_) { /* 原樣 */ } if (C.domHandle(h)) return C.handleUrl(h); }
         }
       } catch (_) { /* 不是網址 */ }
     }
-    const h = typeof m.authorHandle === 'string' ? m.authorHandle.trim() : '';
-    return h && C.handleOf(h) === h ? C.handleUrl(h) : '';
+    // v48（T5.7，審查十一 28.2）authorHandle 是聊天室 DOM 給的值：長度下限 1（@无恋、@魚），不用內文推斷的嚴格規則
+    const h = C.domHandle(m.authorHandle);
+    return h ? C.handleUrl(h) : '';
   }
 
   root.YTCAS_VIEWER_CORE = Object.freeze({
