@@ -194,6 +194,13 @@
       post(FM.CAPTURE_STATUS, Object.assign({}, lastCap, f));
     }
     if (env === 'chatframe') headerButton(post); // T5.1：post 是 runChat 內的區域函式，需傳入
+    // v49（T6，SPEC 6.3）F-10：底部互動區量測與彈窗偵測 → CHAT_INPUT_STATE；面板開啟時隱藏原生訊息列表與頂部列（嵌入式才有面板）
+    if (env === 'chatframe' && globalThis.YTCAS_CHAT_INPUT) {
+      const ci = globalThis.YTCAS_CHAT_INPUT.create({ doc: document, win: window, S, C, post,
+        accept: (e) => !retired && e.origin === YT && e.source === window.parent && !!e.data && e.data.__ytcas === true });
+      ci.start();
+      retireHooks.push(() => ci.stop());
+    }
     if (env === 'popout') dlog('P6', 'popout-open', { urlHasV: !!urlVid }, { source, videoId: isVideoId(urlVid) ? urlVid : null });
     setTimeout(() => diag(null), 10000);
     engine.start();

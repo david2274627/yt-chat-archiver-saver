@@ -136,10 +136,22 @@
       PANEL_READY: 'PANEL_READY',
       PANEL_CLOSE: 'PANEL_CLOSE',
       PANEL_STATE: 'PANEL_STATE',
+      // v49（T6，SPEC 6.3、6.4）chat frame → top：底部互動區與彈窗狀態 CHAT_INPUT_STATE（上面）；top → chat：重新量測並回報
+      CHAT_INPUT_REQUEST: 'CHAT_INPUT_REQUEST',
+      // v49（T6，6.2 第 5 點）top → 面板 iframe：{ bottom: px } 面板底部被原生互動區蓋住的高度（面板底部留白）
+      PANEL_INSET: 'PANEL_INSET',
     }),
     // v41（T5）優化面板（F-08、F-09、6.2）
     PANEL: Object.freeze({
-      COLLAPSE_MIN_H: 200,     // iframe#chatframe 高度低於此值視為摺疊 → 退讓（6.2；T6 定案）
+      COLLAPSE_MIN_H: 200,     // iframe#chatframe 高度低於此值視為摺疊 → 退讓（6.2；v49 T6 定案為 200：劇院模式小框 152、一般最矮約 300）
+      // v49（T6，SPEC 6.2、6.3）clip 狀態機與底部互動區量測
+      PANEL_MIN_REMAIN_PX: 80,   // 面板剩餘高度（iframe 高度 − bottomZoneHeight）低於此值 → 視同摺疊退讓（v26）
+      POPUP_GAP_PX: 8,           // 彈窗展開：inset(max(0, popupTop − 8)px 0 0 0)
+      INPUT_POLL_MS: 500,        // chat frame 量測與彈窗偵測的保底輪詢
+      INPUT_DEBOUNCE_MS: 50,     // 相同狀態合併
+      TOP_POPUP_POLL_MS: 500,    // top frame 頁面層付款視窗的保底輪詢
+      OVERLAY_MAX_RATIO: 0.6,    // 覆蓋層子元素（非白名單）量出的高度 > iframe 高度 × 0.6 → 不採計
+      INPUT_STALE_PX: 2,         // 量測時的 iframe 高度與目前相差超過此值 → 視為過期（等重新量測，不套用舊值）
       VOD_TIME_MS: 250,        // VOD_TIME 送出間隔（4.3）
       LIVE_EDGE_SEC: 15,       // 直播中距離直播邊緣幾秒內視為「在最新」：一般跟隨到底；超過則依時間軸同步
       ANCHOR_GRACE_MS: 8000,   // 頁面載入後多久仍找不到任何開關錨點才 warnOnce

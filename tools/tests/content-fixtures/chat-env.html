@@ -38,7 +38,7 @@
     const patched = src.replace("YT_ORIGIN: 'https://www.youtube.com'", "YT_ORIGIN: " + JSON.stringify(location.origin));
     if (patched === src) throw new Error('constants.js 的 YT_ORIGIN 格式改變，測試需要更新');
     await load(URL.createObjectURL(new Blob([patched], { type: 'text/javascript' })));
-    for (const f of ['/src/selectors.js', '/src/capture.js', '/src/panel.js', '/src/content.js']) await load(f);
+    for (const f of ['/src/selectors.js', '/src/capture.js', '/src/chat-input.js', '/src/panel.js', '/src/content.js']) await load(f); // 與 manifest 的順序相同
     window.__loaded = true;
   })().catch((e) => { window.__errors.push('fixture: ' + e.message); window.__loaded = true; });
 </script>

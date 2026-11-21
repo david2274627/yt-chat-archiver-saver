@@ -1,0 +1,142 @@
+// T6 chat frame 端（src/chat-input.js）測試：SPEC 6.2 第 2 點、6.3。結果顯示在頁面並存於 window.__results。
+(function () {
+  'use strict';
+  const tests = [];
+  const test = (name, fn) => tests.push({ name, fn });
+  function assert(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
+  function eq(a, b, m) { const x = JSON.stringify(a), y = JSON.stringify(b); if (x !== y) throw new Error((m || 'not equal') + '：實際 ' + x + '，預期 ' + y); }
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function until(fn, ms, msg) { const t0 = performance.now(); while (!(await fn())) { if (performance.now() - t0 > (ms || 3000)) throw new Error('逾時：' + (msg || '')); await sleep(20); } }
+
+  const frame = document.getElementById('chat');
+  const W = () => frame.contentWindow;
+  const D = () => frame.contentDocument;
+  const q = (sel) => D().querySelector(sel);
+  const M = () => W().YTCAS_CHAT_INPUT.measure(D(), W(), W().YTCAS_SEL, W().YTCAS_CONST);
+  // 以 iframe 內的絕對位置（px，相對 iframe 頂端）放元素；#chat 從 40px 開始
+  const place = (el, top, h) => { el.hidden = false; el.style.top = (top - 40) + 'px'; el.style.height = h + 'px'; };
+  const placeAbs = (el, top, h) => { el.hidden = false; el.style.top = top + 'px'; el.style.height = h + 'px'; };
+  function reset() {
+    place(q('yt-live-chat-banner-manager'), 485, 53);
+    const pp = q('#panel-pages'); place(pp, 538, 62);
+    q('#input-panel').style.height = '62px';
+    q('#action-panel').hidden = true;
+    q('#ov-child').hidden = true;
+    for (const s of ['yt-emoji-picker-renderer', 'yt-live-chat-message-buy-flow-renderer', '#hdr-dd', '#product-picker']) q(s).hidden = true;
+  }
+
+  test('白名單量測（6.3 v25／v26）：置頂列＋輸入列 → iframe 底邊 − 置頂列頂端；投票卡（#chat > #action-panel）完整露出', async () => {
+    await until(() => W() && W().YTCAS_CHAT_INPUT && q('#input-panel'), 3000, 'fixture 載入');
+    eq(W().innerHeight, 600);
+    reset();
+    let m = M();
+    eq([m.vh, m.hasInput, m.bottomZoneHeight, m.src, m.inputH, m.popupOpen], [600, true, 115, 'whitelist', 62, false], '置頂列＋輸入列');
+    place(q('#action-panel'), 355, 130);
+    m = M();
+    eq([m.bottomZoneHeight, m.src], [245, 'whitelist'], '投票卡：600 − 355');
+    q('#action-panel').hidden = true;
+    q('yt-live-chat-banner-manager').style.height = '0px';
+    eq(M().bottomZoneHeight, 62, '沒有置頂訊息：只有輸入列');
+  });
+
+  test('覆蓋層（ytls-widget-overlay-manager）：容器本身不計、只計可見子元素；子元素量出 > 60% → 不採計', () => {
+    reset();
+    placeAbs(q('#ov-child'), 450, 100);
+    let m = M();
+    eq([m.bottomZoneHeight, m.src, m.overlayIgnored], [150, 'overlay', false], '覆蓋層子元素比白名單高');
+    placeAbs(q('#ov-child'), 100, 400);
+    m = M();
+    eq([m.bottomZoneHeight, m.src, m.overlayIgnored], [115, 'whitelist', true], '> 60%：不採計（白名單不受此限）');
+    q('#ov-child').hidden = true;
+    place(q('#action-panel'), 150, 300);
+    eq(M().bottomZoneHeight, 450, '白名單（投票卡）不套用 60% 規則');
+  });
+
+  test('VOD 重播（6.3 v26）：#input-panel 與置頂列高度 0 → 沒有輸入區（hasInput false、0）', () => {
+    reset();
+    q('yt-live-chat-banner-manager').style.height = '0px';
+    q('#panel-pages').style.height = '0px';
+    q('#input-panel').style.height = '0px';
+    const m = M();
+    eq([m.hasInput, m.bottomZoneHeight, m.src], [false, 0, 'none']);
+  });
+
+  test('彈窗偵測（6.3）：表符選單、購買流程 → popupOpen＋popupTop（最上方者）；$ 選單在 #input-panel 內不算（已含在高度內）；頂部列的下拉選單不算', () => {
+    reset();
+    placeAbs(q('yt-emoji-picker-renderer'), 250, 290);
+    let m = M();
+    eq([m.popupOpen, m.popupTop], [true, 250], '表符選單');
+    placeAbs(q('yt-live-chat-message-buy-flow-renderer'), 120, 400);
+    eq(M().popupTop, 120, '購買流程（較上方）');
+    q('yt-emoji-picker-renderer').hidden = true; q('yt-live-chat-message-buy-flow-renderer').hidden = true;
+    const pk = q('#product-picker'); pk.hidden = false;
+    q('#input-panel').style.height = '';
+    q('#panel-pages').style.top = (400 - 40) + 'px'; q('#panel-pages').style.height = '200px';
+    m = M();
+    eq([m.popupOpen, m.bottomZoneHeight > 115], [false, true], '$ 選單：不算彈窗，底部互動區變高');
+    pk.hidden = true;
+    q('#hdr-dd').hidden = false;
+    eq(M().popupOpen, false, '頂部列內的下拉選單（F-12 自動切換時）不算');
+  });
+
+  test('回報（6.3）：只在變化時送 CHAT_INPUT_STATE；CHAT_INPUT_REQUEST 強制重送；PANEL_STATE on → 隱藏原生列表與頂部列（visibility）、退讓或關閉 → 還原；stop 後全部還原', async () => {
+    reset();
+    const sent = [];
+    const CI = W().YTCAS_CHAT_INPUT;
+    const ci = CI.create({ doc: D(), win: W(), S: W().YTCAS_SEL, C: W().YTCAS_CONST, post: (type, d) => sent.push([type, d]),
+      accept: (e) => e.source === W().parent && !!e.data && e.data.__ytcas === true });
+    ci.start();
+    eq(sent.length, 1, '開始時送一次');
+    eq([sent[0][0], sent[0][1].bottomZoneHeight], ['CHAT_INPUT_STATE', 115]);
+    await sleep(700); // 保底輪詢 500ms：狀態沒變 → 不重送
+    eq(sent.length, 1, '沒有變化不重送');
+    place(q('#action-panel'), 355, 130);
+    await until(() => sent.length === 2, 2000, '投票卡出現 → 重送');
+    eq(sent[1][1].bottomZoneHeight, 245);
+    W().__selfPost({ __ytcas: true, type: 'CHAT_INPUT_REQUEST' }); // 來源是 iframe 自己 → 不接受
+    await sleep(150);
+    eq(sent.length, 2, '只接受 parent 的要求');
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'CHAT_INPUT_REQUEST' }, location.origin);
+    await sleep(150);
+    // 上一行同樣是從本頁（parent）送出：e.source＝parent
+    eq(sent.length, 3, 'CHAT_INPUT_REQUEST 強制重送');
+    // 面板開啟 → 隱藏原生訊息列表與頂部列（visibility，不改 height／display）
+    const vis = (s) => W().getComputedStyle(q(s)).visibility;
+    const disp = (s) => W().getComputedStyle(q(s)).display;
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
+    await until(() => vis('#item-list') === 'hidden', 1000, '隱藏列表');
+    eq([vis('yt-live-chat-header-renderer'), disp('#item-list'), vis('#input-panel')], ['hidden', 'block', 'visible'], '只用 visibility、輸入區照常');
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: true, reason: 'theater' }, location.origin);
+    await until(() => vis('#item-list') === 'visible', 1000, '退讓 → 還原');
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
+    await until(() => vis('#item-list') === 'hidden', 1000);
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: false, paused: false }, location.origin);
+    await until(() => vis('#item-list') === 'visible', 1000, '關閉面板 → 還原（6.5 AC 7）');
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
+    await until(() => vis('#item-list') === 'hidden', 1000);
+    ci.stop();
+    eq([vis('#item-list'), !!D().getElementById(CI.HIDE_STYLE_ID)], ['visible', false], 'stop 後還原');
+    const n = sent.length;
+    q('#action-panel').hidden = true;
+    await sleep(700);
+    eq(sent.length, n, 'stop 後不再回報');
+    // 隱私：只有數字、布林與來源代碼
+    for (const [, d] of sent) assert(Object.values(d).every((v) => v === null || ['number', 'boolean'].includes(typeof v) || ['whitelist', 'overlay', 'fallback', 'none'].includes(v)), JSON.stringify(d));
+  });
+
+  // ---------------------------------------------------------------- 執行
+  (async () => {
+    const list = document.getElementById('list');
+    const results = [];
+    for (const t of tests) {
+      const li = document.createElement('li');
+      const t0 = performance.now();
+      try { await t.fn(); li.className = 'ok'; li.textContent = '✅ ' + t.name + '（' + Math.round(performance.now() - t0) + ' ms）'; results.push({ name: t.name, ok: true }); }
+      catch (e) { li.className = 'ng'; li.textContent = '❌ ' + t.name + ' — ' + (e && e.message); results.push({ name: t.name, ok: false, error: String(e && e.message) }); console.error(e); }
+      list.appendChild(li);
+    }
+    const ok = results.filter((r) => r.ok).length;
+    document.getElementById('summary').textContent = '通過 ' + ok + ' / ' + results.length;
+    window.__results = results;
+  })();
+})();

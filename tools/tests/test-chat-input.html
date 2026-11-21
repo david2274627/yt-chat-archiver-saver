@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- 只連本機：本頁與 chat-input-fixtures/ 都是同源的模擬頁 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'">
+<title>T6 chat frame 底部互動區量測測試</title>
+<style>
+  body { margin: 16px; font: 14px/1.5 system-ui, "Microsoft JhengHei", sans-serif; }
+  .ok { color: #0a7552; } .ng { color: #c9362f; } .mut { color: #766e8c; }
+  #stage iframe { width: 360px; height: 600px; border: 0; outline: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h1>T6 chat frame 底部互動區量測測試</h1>
+<p class="mut">以同源模擬頁驗證 <code>src/chat-input.js</code>：白名單量測、覆蓋層 60% 規則、VOD（無輸入區）、彈窗偵測（$ 選單與頂部列下拉不算）、只在變化時回報、面板開啟時隱藏原生列表。模擬頁：邏輯檢查通過；真實結構待實機。</p>
+<p id="summary">執行中…</p>
+<div id="stage"><iframe id="chat" src="chat-input-fixtures/chat.html"></iframe></div>
+<ol id="list"></ol>
+<script src="mock-chrome.js"></script>
+<script src="test-chat-input.js"></script>
+</body>
+</html>

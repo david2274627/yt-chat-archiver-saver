@@ -75,6 +75,22 @@
     assert('f12' in cs && 'viewMode' in cs, 'CAPTURE_STATUS 帶 F-12 欄位：' + JSON.stringify(Object.keys(cs)));
   });
 
+  test('T6（6.3）：chat frame 送 CHAT_INPUT_STATE（只有數字與布林）；CHAT_INPUT_REQUEST 重送；PANEL_STATE on → 隱藏原生列表、關閉 → 還原', async () => {
+    await until(() => got.some((m) => m.type === 'CHAT_INPUT_STATE'), 2000, 'CHAT_INPUT_STATE');
+    const s = got.filter((m) => m.type === 'CHAT_INPUT_STATE').pop();
+    eq([typeof s.vh, typeof s.hasInput, typeof s.bottomZoneHeight, typeof s.popupOpen], ['number', 'boolean', 'number', 'boolean']);
+    eq(s.hasInput, false, 'fixture 的 #input-panel 沒有高度 → 沒有輸入區');
+    const n = got.filter((m) => m.type === 'CHAT_INPUT_STATE').length;
+    toChat({ type: 'CHAT_INPUT_REQUEST' });
+    await until(() => got.filter((m) => m.type === 'CHAT_INPUT_STATE').length === n + 1, 2000, '重送');
+    const vis = () => w().getComputedStyle(d().getElementById('item-list')).visibility;
+    toChat({ type: 'PANEL_STATE', on: true, paused: false, reason: null });
+    await until(() => vis() === 'hidden', 2000, '隱藏原生列表');
+    toChat({ type: 'PANEL_STATE', on: false, paused: false, reason: null });
+    await until(() => vis() === 'visible', 2000, '還原');
+    eq(w().__errors, []);
+  });
+
   test('整段過程沒有未捕捉的例外（等 F-12 結果與一輪定時工作）', async () => {
     await sleep(6000);
     eq(w().__errors, []);

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<!-- 只連本機 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>模擬 chat frame（底部互動區量測）</title>
+<style>
+  /* 依 docs/youtube-dom-notes.md 2.1 的結構與實機位置（iframe 594～600px）排版；位置由測試頁調整 */
+  html, body { margin: 0; height: 100%; overflow: hidden; font: 12px system-ui; }
+  yt-live-chat-app, yt-live-chat-renderer { display: block; position: relative; height: 100%; }
+  yt-live-chat-header-renderer { position: absolute; left: 0; right: 0; top: 0; height: 40px; display: block; }
+  #chat { position: absolute; inset: 40px 0 0 0; }
+  #chat > * { position: absolute; left: 0; right: 0; display: block; }
+  #item-list { top: 0; bottom: 115px; }
+  ytls-widget-overlay-manager { position: absolute; inset: 0; display: block; pointer-events: none; }
+  ytls-widget-overlay-manager > div { position: absolute; left: 0; right: 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<yt-live-chat-app>
+  <yt-live-chat-renderer>
+    <yt-live-chat-header-renderer><span>聊天室</span><tp-yt-iron-dropdown id="hdr-dd" hidden style="position:absolute;top:40px;left:0;width:200px;height:120px"></tp-yt-iron-dropdown></yt-live-chat-header-renderer>
+    <div id="chat">
+      <div id="item-list"><div id="items"></div></div>
+      <div id="action-panel" hidden></div>
+      <yt-live-chat-banner-manager></yt-live-chat-banner-manager>
+      <div id="panel-pages">
+        <div id="input-panel">
+          <tp-yt-iron-pages id="pickers"><yt-live-chat-product-picker-panel-view-model id="product-picker" hidden style="display:block;height:80px"></yt-live-chat-product-picker-panel-view-model></tp-yt-iron-pages>
+        </div>
+      </div>
+    </div>
+    <ytls-widget-overlay-manager><div id="ov-child" hidden></div></ytls-widget-overlay-manager>
+    <yt-emoji-picker-renderer hidden style="position:absolute;left:0;right:0;display:block"></yt-emoji-picker-renderer>
+    <yt-live-chat-message-buy-flow-renderer hidden style="position:absolute;left:0;right:0;display:block"></yt-live-chat-message-buy-flow-renderer>
+  </yt-live-chat-renderer>
+</yt-live-chat-app>
+<script src="/src/constants.js"></script>
+<script src="/src/selectors.js"></script>
+<script src="/src/chat-input.js"></script>
+<script src="self-post.js"></script>
+</body>
+</html>
