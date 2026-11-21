@@ -266,17 +266,35 @@
     const ed = typeof o.endDate === 'number' && Number.isFinite(o.endDate) ? o.endDate : null;
     const sch = typeof o.knownScheduled === 'number' ? o.knownScheduled : null;
     const now = typeof o.now === 'number' ? o.now : Date.now();
-    const t = { startedAt: null, startedAtSource: null, endedAt: null, endedAtSource: null, scheduledStartAt: null, startPending: false };
+    // v47（T5.6，審查十一 26.1）scheduledFuture：這份 meta 說「預定開播時間在未來、沒有 endDate」（true）／
+    // 說已開播或已結束（false）／沒有 startDate（null）。true 時一律是待機室（C.effectiveStart）
+    const t = { startedAt: null, startedAtSource: null, endedAt: null, endedAtSource: null, scheduledStartAt: null, startPending: false, scheduledFuture: null };
     if (ed != null) {
-      t.endedAt = ed; t.endedAtSource = 'meta-actual';
+      t.endedAt = ed; t.endedAtSource = 'meta-actual'; t.scheduledFuture = false;
       if (sd != null) { t.startedAt = sd; t.startedAtSource = 'meta-actual'; }
       return t;
     }
     if (sd == null) return t;
-    if (sd > now) { t.scheduledStartAt = sd; return t; }
+    if (sd > now) { t.scheduledStartAt = sd; t.scheduledFuture = true; return t; }
+    t.scheduledFuture = false;
     if (sd % 60000 !== 0 || (sch != null && sd !== sch)) { t.startedAt = sd; t.startedAtSource = 'meta-actual'; return t; }
     t.scheduledStartAt = sd; t.startPending = true;
     return t;
+  };
+
+  // v47（T5.6，審查十一 26.1）硬性規則：最近一次看到的頁面 meta 說「預定開播時間在未來、沒有 endDate」→ 待機室，
+  // 不論 startedAt 是否已有值（重播來源 replay 例外）。startedAtSuspect：曾在待機室狀態下發現已有 startedAt（降級，視同沒有；
+  // 之後由實際開播時間 meta-actual／replay 覆蓋，或以 YTCAS_BG.fixPhases() 兩段式清除）
+  C.isFutureScheduled = function (s, now) {
+    if (!s || s.endedAt != null || !s.scheduledFuture) return false;
+    return typeof s.scheduledStartAt === 'number' && s.scheduledStartAt > (typeof now === 'number' ? now : Date.now());
+  };
+  // 實際採用的開播時間：待機室（上一條）或已降級 → null
+  C.effectiveStart = function (s, now) {
+    if (!s || s.startedAt == null) return null;
+    if (s.startedAtSource === 'replay') return s.startedAt;
+    if (s.startedAtSuspect || C.isFutureScheduled(s, now)) return null;
+    return s.startedAt;
   };
 
   // T3.8（審查十追加七 B-1）F-20 P8：只記 warnOnce 的 key（ASCII）＋等級＋這裡預先定義的說明，不取執行期字串。

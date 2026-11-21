@@ -1113,9 +1113,11 @@
       meta.textContent = '';
       const s = S.stream;
       if (!s) return;
-      const liveNow = s.isLive && s.endedAt == null && s.startedAt != null;
+      // v47（26.1）預定開播時間在未來 → 待機室（不論 startedAt）；已降級的 startedAt 視同沒有
+      const eff = C.effectiveStart(s);
+      const liveNow = s.isLive && s.endedAt == null && eff != null;
       if (liveNow) { const d = el('span', 'live-dot'); d.setAttribute('aria-hidden', 'true'); meta.appendChild(d); }
-      const status = liveNow ? '直播中' : s.startPending ? '等待開播' : (s.startedAt == null && s.scheduledStartAt) ? '待機室' : s.endedAt ? '已結束' : '';
+      const status = liveNow ? '直播中' : C.isFutureScheduled(s) ? '待機室' : s.startPending ? '等待開播' : (eff == null && s.scheduledStartAt) ? '待機室' : s.endedAt ? '已結束' : '';
       const parts = [];
       if (embed && status) parts.push(status);
       if (!embed) parts.push(s.title || s.videoId);
@@ -1307,7 +1309,8 @@
       try {
         const [s, pinned] = await Promise.all([DB.getStream(S.videoId), DB.queryPinned(S.videoId)]);
         const old = S.stream || {};
-        if (s && (s.startedAt !== old.startedAt || s.endedAt !== old.endedAt || !!s.startPending !== !!old.startPending)) { load(S.videoId); return; }
+        if (s && (s.startedAt !== old.startedAt || s.endedAt !== old.endedAt || !!s.startPending !== !!old.startPending
+          || !!s.scheduledFuture !== !!old.scheduledFuture || !!s.startedAtSuspect !== !!old.startedAtSuspect)) { load(S.videoId); return; }
         if (s) { S.stream = s; renderMeta(); }
         S.pinned = CORE.dedupePinned(pinned); renderPin();
       } catch (_) { /* 下次再試 */ }

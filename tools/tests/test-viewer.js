@@ -714,6 +714,32 @@
     eq(CORE.isWaitingRoom({ videoId: 'x' }, []), false, '沒有任何資訊：視為直播中');
   });
 
+  test('T5.6 待機室（26.1）：預定開播時間在未來（meta）→ 不論 startedAt 一律待機室；降落事件不是開播訊號；標頭「待機室」、不同步', async () => {
+    const now = Date.now();
+    const fut = { startedAt: now - 3941e3, startedAtSource: 'signal', scheduledStartAt: now + 25 * 3600e3, scheduledFuture: true, isLive: true };
+    const raid = [{ m: mk({ id: 'ytcas-raid-1', type: 'raid', phase: 'live' }) }];
+    eq(CORE.isWaitingRoom(fut, raid), true, '有 startedAt 也是待機室');
+    eq(CORE.isWaitingRoom(Object.assign({}, fut, { startedAtSource: 'replay' }), raid), false, '重播來源例外');
+    eq(CORE.isWaitingRoom(Object.assign({}, fut, { scheduledFuture: false }), raid), false, 'meta 沒說在未來（提早開播）→ 依 startedAt');
+    eq(CORE.isWaitingRoom(Object.assign({}, fut, { scheduledStartAt: now - 1000 }), raid), false, '預定時間已過 → 不套用硬性規則');
+    eq(CORE.isWaitingRoom({ startedAt: now - 1000, startedAtSuspect: true, scheduledStartAt: now - 60e3 }, raid), true, '已降級的 startedAt 視同沒有');
+    await resetDb();
+    const VW = 'vidWAITRM03';
+    await put(Object.assign({ videoId: VW, title: 'wait3', lastMessageAt: now, messageCount: 2, versions: [], linkedVideos: [] }, fut),
+      [mk({ id: 'ytcas-raid-1', videoId: VW, type: 'raid', phase: 'pre', timestampAbs: now - 60e3, videoOffsetSec: null, runs: [{ text: '@raider 降落' }] }),
+        mk({ id: 'wz1', videoId: VW, phase: 'pre', timestampAbs: now - 30e3, videoOffsetSec: null })]);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VW });
+    await c.ready; await frame();
+    let t = now, ct = 100;
+    for (let k = 0; k < 8; k++) { t += 1000; ct += 1; c._onClock({ currentTime: ct, paused: false, duration: null, seekStart: 0, seekEnd: 3600, live: true, at: t, liveHead: k < 4, badge: k < 4 ? 'class' : 'behind' }); }
+    await frame();
+    eq([c.state.mode, c.state.currentId, c.state.wallA], ['tail', null, null], '不同步、不量錨點');
+    assert(/待機室/.test(c.els.meta.textContent) && !/直播中/.test(c.els.meta.textContent), '標頭 ' + c.els.meta.textContent);
+    assert(c.els.syncHint.hidden && c.els.latBox.hidden, '沒有同步提示與同步微調');
+    assert(!c.els.list.querySelector('.live-dot'), '沒有直播中的紅點');
+  });
+
   test('T5.5 待機室（第 23 節）：播放器時間比資料先到、預告影片 currentTime 前進＋「非最新」→ 不同步、不提示、沒有「回到播放位置」與 current 標記、時間碼不可點', async () => {
     await resetDb();
     const VW = 'vidWAITRM02';

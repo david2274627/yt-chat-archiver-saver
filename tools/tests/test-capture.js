@@ -778,6 +778,48 @@
   });
 
   // ---------------------------------------------------------------- F-20 診斷探針（T3.7）
+  test('T5.6 待機室（26.1）：預定開播時間在未來 → background 回傳的錯誤 startedAt、播放器訊號都不採用；已採用的清除；降落事件 phase pre、offset null', async () => {
+    const { items } = buildChat();
+    const future = Math.ceil((NOW + 25 * 3600e3) / 60000) * 60000; // 「25 小時後開始直播」
+    const wrong = NOW - 3941e3; // 錯誤的開播時間（圖4：時間碼 1:05:41）
+    const send = mockSend(async (msg) => {
+      const r = defaultReply(msg);
+      if (msg.type === RT.CAPTURE_START || msg.type === RT.SAVE_MESSAGES) r.stream = { startedAt: wrong, startedAtSource: 'signal', scheduledStartAt: NOW - 600e3, startPending: false };
+      return r;
+    });
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidWAIT1', startDate: future, isLiveBroadcast: true, liveSignalAt: NOW - 1000 });
+    await until(() => e.state().mode === 'capturing');
+    const s = e.state().stream;
+    eq([s.startedAt ?? null, s.scheduledStartAt, s.scheduledFuture, s.startPending], [null, future, true, false], '不採用 background 回傳的 startedAt、預定時間以 meta 為準');
+    items.append(textMsg({ id: 'W1', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('W1'), 2000);
+    const w1 = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'W1');
+    eq([w1.phase, w1.videoOffsetSec], ['pre', null]);
+    const last = send.of(RT.SAVE_MESSAGES).pop().msg.stream;
+    eq([last.startedAt, last.scheduledFuture, last.scheduledStartAt], [undefined, true, future], 'SAVE_MESSAGES 帶 scheduledFuture');
+    e.stop();
+    // 已採用（頁面曾說已開播）之後，重新整理看到預定時間在未來（延期）→ 清除
+    const e2 = engine({ send: mockSend() });
+    e2.start();
+    e2.setInfo({ videoId: 'testVidWAIT2', startDate: NOW - 3600e3 + 7000, isLiveBroadcast: true });
+    await until(() => e2.state().mode === 'capturing');
+    eq(e2.state().stream.startedAtSource, 'meta-actual');
+    e2.setInfo({ videoId: 'testVidWAIT2', startDate: future, isLiveBroadcast: true });
+    eq([e2.state().stream.startedAt, e2.state().stream.scheduledFuture], [null, true], '延期 → 清除開播時間');
+    e2.stop();
+    // 降落事件：與其他訊息同一規則（v46 一律 live）
+    const raid = document.createElement('div');
+    raid.textContent = '@raider 和他們的觀眾剛剛加入';
+    let r = CAP.parseRaid(raid, { source: 'live', now: NOW, startedAt: null, endedAt: null, scheduledStartAt: future }, 'testVidWAIT1');
+    eq([r.phase, r.videoOffsetSec], ['pre', null], '待機室的降落：pre');
+    r = CAP.parseRaid(raid, { source: 'live', now: NOW, startedAt: null, endedAt: null, scheduledStartAt: NOW - 60e3, startPending: true }, 'testVidWAIT1');
+    eq(r.phase, 'pre', '等待開播確認：pre');
+    r = CAP.parseRaid(raid, { source: 'live', now: NOW, startedAt: NOW - 60e3, endedAt: null }, 'testVidWAIT1');
+    eq([r.phase, r.videoOffsetSec], ['live', 60]);
+  });
+
   test('F-20 P7（AC 2）：注入未知元件與禮物元件 → 自動留下結構紀錄（只有標籤、id、屬性名稱、img 網域，沒有文字）；同一標籤每場最多 3 次', async () => {
     const { items } = buildChat();
     const send = mockSend();

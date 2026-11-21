@@ -280,14 +280,10 @@
         m.timestampAbs = ts == null ? ctx.now : ts;
         m.tsSource = ts == null ? 'capture' : 'clock';
       }
-      if (ctx.startedAt != null) {
-        m.videoOffsetSec = Math.round((m.timestampAbs - ctx.startedAt) / 100) / 10;
-        m.phase = m.timestampAbs < ctx.startedAt ? 'pre' : (ctx.endedAt != null && m.timestampAbs > ctx.endedAt ? 'post' : 'live');
-      } else {
-        m.videoOffsetSec = null; // 開播時間未定：先存 null，開播後由 background 回填（F-14）
-        // T3.6：預定時間未到，或預定時間已過但尚未確認開播（startPending）→ pre、offset 留空（開播時間確認後 background 重算）
-        m.phase = ctx.startPending || (ctx.scheduledStartAt != null && ctx.now < ctx.scheduledStartAt) ? 'pre' : 'live';
-      }
+      // 開播時間未定：offset 先存 null，開播後由 background 回填（F-14）。
+      // T3.6：預定時間未到，或預定時間已過但尚未確認開播（startPending）→ pre（livePhase）
+      m.videoOffsetSec = ctx.startedAt != null ? Math.round((m.timestampAbs - ctx.startedAt) / 100) / 10 : null;
+      m.phase = livePhase(m.timestampAbs, ctx);
     }
     if (isDeletedEl(el)) { m.deleted = true; m.deletedAt = ctx.now; }
     // T3.5：歡迎／守則提示每次重新整理 id 都不同 → 同一場次以內容產生固定 id（只存一筆）
@@ -297,14 +293,20 @@
     return m;
   }
 
+  // 直播收錄的 phase（F-14）：有開播時間 → 依時間；沒有 → 預定時間未到或等待開播確認 = pre，否則 live
+  function livePhase(ts, ctx) {
+    if (ctx.startedAt != null) return ts < ctx.startedAt ? 'pre' : (ctx.endedAt != null && ts > ctx.endedAt ? 'post' : 'live');
+    return ctx.startPending || (ctx.scheduledStartAt != null && ts < ctx.scheduledStartAt) ? 'pre' : 'live';
+  }
   // 降落橫幅（取不到 id）：同一場同一段文字視為同一則，id 以內容雜湊產生（SPEC 4.3 補救 id）
+  // v47（T5.6，審查十一 26.1）phase 與其他訊息同一規則（v46 以前一律 live：待機室的降落被放進「直播中」段）
   function parseRaid(el, ctx, videoId) {
     const runs = textRuns(clean(el.textContent).slice(0, 300));
     if (!runs.length) return null;
     return { id: 'ytcas-raid-' + hash(videoId + '\u0001' + runs[0].text), type: T.RAID, authorHandle: '', authorChannelId: '',
       authorUrl: '', authorAvatar: '', authorBadges: [], runs, timestampAbs: ctx.now,
       videoOffsetSec: ctx.startedAt != null ? Math.round((ctx.now - ctx.startedAt) / 100) / 10 : null,
-      phase: ctx.source === 'replay' ? 'live' : (ctx.startedAt != null && ctx.endedAt != null && ctx.now > ctx.endedAt ? 'post' : 'live') };
+      phase: ctx.source === 'replay' ? 'live' : livePhase(ctx.now, ctx) };
   }
 
   // ---------------------------------------------------------------- F-20 結構探針（P7，同 docs/poc-clip-path.md 附錄 C／E）
@@ -709,6 +711,7 @@
       for (const k of ['title', 'channelName', 'channelHandle', 'channelUrl']) if (i[k]) m[k] = i[k];
       for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt']) if (st.stream[k] != null) m[k] = st.stream[k];
       if (st.stream.startPending) m.startPending = true;
+      if (typeof st.stream.scheduledFuture === 'boolean') m.scheduledFuture = st.stream.scheduledFuture; // v47（26.1）
       return m;
     }
 
@@ -719,18 +722,30 @@
 
     // T3.6：依來源等級採用開播／結束時間（C.START_SOURCE_RANK）。來源：STREAM_INFO、CAPTURE_START／SAVE_MESSAGES 的回應、
     // 播放器訊號。等級較高者覆蓋較低者；預定時間（scheduled）不得寫入 startedAt。回傳是否有變動
+    // v47（T5.6，審查十一 26.1）頁面 meta 說預定開播時間在未來（scheduledFuture）→ 待機室：預定時間以最新的為準、
+    // 已採用的開播時間（重播以外）清除，之後也不採用（background 回傳的、播放器訊號都一樣）；降落、會員、禮物等事件從來不是開播訊號
     function adoptTimes(t) {
       if (!t) return { start: false, end: false };
       const out = { start: false, end: false };
+      if (t.scheduledFuture === true && typeof t.scheduledStartAt === 'number') {
+        st.stream.scheduledStartAt = t.scheduledStartAt;
+        st.stream.scheduledFuture = true;
+        if (st.stream.startedAt != null && st.stream.startedAtSource !== 'replay' && st.stream.endedAt == null) {
+          console.info('[ytcas] 待機室（預定開播時間在未來）：不採用已記錄的開播時間', { videoId: st.videoId, source: st.stream.startedAtSource || null });
+          st.stream.startedAt = null; st.stream.startedAtSource = null; out.start = true;
+        }
+      } else if (t.scheduledFuture === false) st.stream.scheduledFuture = false;
+      const future = C.isFutureScheduled(st.stream, now());
       for (const [k, flag] of [['startedAt', 'start'], ['endedAt', 'end']]) {
         const v = typeof t[k] === 'number' ? t[k] : null;
         const src = t[k + 'Source'] || null;
         if (v == null || src === 'scheduled') continue;
+        if (k === 'startedAt' && future && src !== 'replay') continue;
         const cur = st.stream[k] == null ? -1 : C.startRank(st.stream[k + 'Source']);
         if (C.startRank(src) > cur && st.stream[k] !== v) { st.stream[k] = v; st.stream[k + 'Source'] = src; out[flag] = true; }
       }
       if (st.stream.scheduledStartAt == null && typeof t.scheduledStartAt === 'number') st.stream.scheduledStartAt = t.scheduledStartAt;
-      st.stream.startPending = st.stream.startedAt == null && !!(t.startPending || st.stream.startPending);
+      st.stream.startPending = st.stream.startedAt == null && !future && !!(t.startPending || st.stream.startPending);
       return out;
     }
 
@@ -874,7 +889,7 @@
         const ch = adoptTimes(deriveTimes(st.info));
         // T3.6 E-3 第 2 點：播放器長度由無變有（top frame 偵測，頁面載入 60 秒後才送）→ 開播訊號（signal，誤差 ≤ 30 秒），
         // 只在等待開播確認時採用；之後由 background 重新抓取的實際時間（meta-actual）覆蓋
-        if (typeof info.liveSignalAt === 'number' && source !== 'replay' && st.stream.startedAt == null
+        if (typeof info.liveSignalAt === 'number' && source !== 'replay' && st.stream.startedAt == null && !C.isFutureScheduled(st.stream, now())
           && (st.stream.startPending || (st.stream.scheduledStartAt != null && st.stream.scheduledStartAt <= now()))) {
           if (adoptTimes({ startedAt: info.liveSignalAt, startedAtSource: 'signal' }).start) {
             console.info('[ytcas] 偵測到開播訊號（播放器），暫以偵測時間為開播時間，待 background 確認', { videoId: st.videoId });
@@ -931,5 +946,5 @@
     return api;
   }
 
-  root.YTCAS_CAPTURE = { createEngine, parseMessage, parseClock, parseOffset, runsOf, hash, structureOf, observers: () => liveObservers };
+  root.YTCAS_CAPTURE = { createEngine, parseMessage, parseRaid, parseClock, parseOffset, runsOf, hash, structureOf, observers: () => liveObservers };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

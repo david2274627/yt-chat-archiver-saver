@@ -192,23 +192,38 @@
     for (const k of ['title', 'channelName', 'channelHandle', 'channelUrl']) {
       if (isEmpty(s[k]) && typeof meta[k] === 'string' && meta[k]) s[k] = meta[k];
     }
+    // v47（T5.6，審查十一 26.1）頁面 meta 說預定開播時間在未來（scheduledFuture）→ 待機室：預定時間以最新的為準（延期），
+    // 已有的 startedAt（重播來源除外）降級為 startedAtSuspect（視同沒有，C.effectiveStart）；說已開播／已結束 → 解除
+    if (meta.scheduledFuture === true && num(meta.scheduledStartAt) !== null) {
+      s.scheduledStartAt = meta.scheduledStartAt;
+      s.scheduledFuture = true;
+      if (s.startedAt != null && s.endedAt == null && s.startedAtSource !== 'replay' && !s.startedAtSuspect) {
+        s.startedAtSuspect = true;
+        timesChanged = true;
+      }
+    } else if (meta.scheduledFuture === false || num(meta.endedAt) !== null) s.scheduledFuture = false;
     // T3.6：startedAt／endedAt 依來源等級覆蓋（C.START_SOURCE_RANK）；預定時間（scheduled）不得寫入 startedAt
+    // v47：待機室中（預定時間在未來）不接受重播以外的開播時間；已降級的 startedAt 視同沒有（任何來源都可覆蓋）
+    const future = C.isFutureScheduled(s);
     for (const k of ['startedAt', 'endedAt']) {
       const v = num(meta[k]);
       const srcKey = k + 'Source';
       const inc = typeof meta[srcKey] === 'string' ? meta[srcKey] : null;
       if (v === null || inc === 'scheduled') continue;
-      const curRank = s[k] == null ? -1 : C.startRank(s[srcKey]);
-      if (C.startRank(inc) > curRank && s[k] !== v) {
+      if (k === 'startedAt' && future && inc !== 'replay') continue;
+      const suspect = k === 'startedAt' && s.startedAtSuspect;
+      const curRank = s[k] == null || suspect ? -1 : C.startRank(s[srcKey]);
+      if (C.startRank(inc) > curRank && (s[k] !== v || suspect)) {
         s[k] = v;
         s[srcKey] = inc;
+        if (k === 'startedAt') { s.startedAtSuspect = false; s.scheduledFuture = false; }
         timesChanged = true;
       } else if (s[k] === v && inc && C.startRank(inc) > C.startRank(s[srcKey])) {
         s[srcKey] = inc;
       }
     }
     if (s.scheduledStartAt == null && num(meta.scheduledStartAt) !== null) s.scheduledStartAt = meta.scheduledStartAt;
-    if (s.startedAt != null) s.startPending = false;
+    if (C.effectiveStart(s) != null) s.startPending = false;
     else if (typeof meta.startPending === 'boolean') s.startPending = meta.startPending;
     if (typeof meta.isLive === 'boolean') s.isLive = meta.isLive;
     if (Array.isArray(meta.versions)) {
@@ -223,8 +238,12 @@
   // T3.6：場次的時間與來源（回傳給 content script，讓擷取端採用 background 確認的開播／結束時間）
   function pickStreamTimes(s) {
     if (!s) return null;
-    return { startedAt: s.startedAt ?? null, startedAtSource: s.startedAtSource ?? null, endedAt: s.endedAt ?? null,
+    // v47（26.1）startedAt 回傳「實際採用」的值（待機室或已降級 → null），擷取端不會再採用錯誤的開播時間
+    const eff = C.effectiveStart(s);
+    return { startedAt: eff, startedAtSource: eff == null ? null : s.startedAtSource ?? null, endedAt: s.endedAt ?? null,
       endedAtSource: s.endedAtSource ?? null, scheduledStartAt: s.scheduledStartAt ?? null, startPending: !!s.startPending,
+      scheduledFuture: !!s.scheduledFuture, startedAtSuspect: !!s.startedAtSuspect,
+      suspectSource: s.startedAt != null && eff == null ? s.startedAtSource ?? '(無)' : null, // 診斷：被降級的 startedAt 的來源
       channelHandle: s.channelHandle || '', isLive: !!s.isLive };
   }
 
@@ -668,16 +687,17 @@
   //   遷移／匯入的 offset（不是由本套件的 startedAt 推算）只在為空時補上。
   // 回傳更新後的紀錄（複本），沒有變動回傳 null
   function recomputeRecord(rec, s) {
-    if (!s || s.startedAt == null) return null;
+    const st0 = C.effectiveStart(s); // v47（26.1）待機室或已降級的 startedAt 不重算
+    if (st0 == null) return null;
     if (C.isNotice(rec)) return null; // v45（21.3）頁面狀態提示不參與 phase
     const fromLive = (rec.sources || []).some((x) => x === 'live' || x === 'legacy' || x === 'import');
     if (rec.offsetSource === 'replay' || !fromLive) return null;
     const v = clone(rec);
     const ts = v.timestampAbs;
-    v.phase = ts < s.startedAt ? 'pre' : (s.endedAt != null && ts > s.endedAt ? 'post' : 'live');
+    v.phase = ts < st0 ? 'pre' : (s.endedAt != null && ts > s.endedAt ? 'post' : 'live');
     const ownEstimate = (v.sources || []).includes('live');
     if (num(v.videoOffsetSec) === null || ownEstimate) {
-      v.videoOffsetSec = Math.round((ts - s.startedAt) / 100) / 10;
+      v.videoOffsetSec = Math.round((ts - st0) / 100) / 10;
       v.offsets = Object.assign({}, v.offsets, { v1: v.videoOffsetSec });
       v.offsetSource = 'estimated';
     }
@@ -695,7 +715,7 @@
     const s0 = await getStream(videoId);
     if (!s0) return { ok: false, error: 'no-stream', videoId };
     const s = Object.assign({}, s0);
-    if (num(p.startedAt) !== null) { s.startedAt = p.startedAt; s.startedAtSource = p.source || 'meta-actual'; s.startPending = false; }
+    if (num(p.startedAt) !== null) { s.startedAt = p.startedAt; s.startedAtSource = p.source || 'meta-actual'; s.startPending = false; s.startedAtSuspect = false; s.scheduledFuture = false; }
     if (num(p.endedAt) !== null) { s.endedAt = p.endedAt; s.endedAtSource = p.source || 'meta-actual'; }
     const list = await req(db.transaction('messages').objectStore('messages').index('videoId').getAll(videoId));
     const tally = (arr) => arr.reduce((o, m) => { o[m.phase || '(無)'] = (o[m.phase || '(無)'] || 0) + 1; return o; }, {});
@@ -713,7 +733,7 @@
     await withLock(videoId, async () => {
       const t = db.transaction(['streams'], 'readwrite');
       const cur = await req(t.objectStore('streams').get(videoId));
-      for (const k of ['startedAt', 'startedAtSource', 'startPending', 'endedAt', 'endedAtSource']) cur[k] = s[k] ?? cur[k] ?? null;
+      for (const k of ['startedAt', 'startedAtSource', 'startPending', 'endedAt', 'endedAtSource', 'startedAtSuspect', 'scheduledFuture']) cur[k] = s[k] ?? cur[k] ?? null;
       t.objectStore('streams').put(cur);
       await done(t);
       out.updated = await recomputePhasesUnlocked(videoId);
@@ -723,11 +743,70 @@
 
   // v45（T5.4，審查十一 21.2 第 1 點）既有資料：所有已知開播時間的場次，依目前的 startedAt／endedAt 重算 phase（與寫入時的自動重算同一規則）。
   // dryRun：只回傳各場會改變的筆數與 phase 分布（videoId 只留 4 碼）；{ dryRun: false } 才寫入
+  // v47（T5.6，審查十一 26.1）一併處理「待機室被記了開播時間」：startedAtSuspect，或預定時間在未來、還沒結束、
+  // startedAt 不是重播來源 → 清除 startedAt，本套件直播收錄的訊息改回 pre、推算的 offset 清空（waiting 清單）。
+  // 例外：meta-actual（頁面 meta 說已開播）且最近一次 meta 沒有說「在未來」＝提早開播，不動
+  function waitingWrongStart(s, now) {
+    if (!s || s.startedAt == null || s.endedAt != null || s.startedAtSource === 'replay') return false;
+    if (s.startedAtSuspect || C.isFutureScheduled(s, now)) return true;
+    return typeof s.scheduledStartAt === 'number' && s.scheduledStartAt > now && s.startedAtSource !== 'meta-actual';
+  }
+  function toWaitingRecord(rec) {
+    if (C.isNotice(rec) || rec.offsetSource === 'replay' || !(rec.sources || []).includes('live')) return null;
+    const v = clone(rec);
+    v.phase = 'pre';
+    if (v.offsetSource === 'estimated' || v.offsetSource == null) {
+      v.videoOffsetSec = null;
+      if (v.offsets) { v.offsets = Object.assign({}, v.offsets); delete v.offsets.v1; }
+      delete v.offsetSource;
+    }
+    v.fp = makeFp(v);
+    return JSON.stringify(v) !== JSON.stringify(rec) ? v : null;
+  }
   async function recomputeAllPhases(opts) {
     const dryRun = !opts || opts.dryRun !== false;
     const db = await open();
-    const streams = (await req(db.transaction('streams').objectStore('streams').getAll())).filter((s) => s.startedAt != null);
-    const out = { dryRun, streams: 0, changed: 0, updated: 0, list: [] };
+    const all = await req(db.transaction('streams').objectStore('streams').getAll());
+    const now = Date.now();
+    const out = { dryRun, streams: 0, changed: 0, updated: 0, list: [], waiting: [] };
+    for (const s of all.filter((x) => waitingWrongStart(x, now))) {
+      const msgs = await req(db.transaction('messages').objectStore('messages').index('videoId').getAll(s.videoId));
+      const moves = {};
+      let n = 0;
+      for (const m of msgs) {
+        const nv = toWaitingRecord(m);
+        if (!nv) continue;
+        n++;
+        if (nv.phase !== m.phase) { const k = (m.phase || '(無)') + '→pre'; moves[k] = (moves[k] || 0) + 1; }
+      }
+      out.waiting.push({ vid: String(s.videoId).slice(0, 4), startedAtSource: s.startedAtSource || '(無)', suspect: !!s.startedAtSuspect,
+        scheduledInHours: typeof s.scheduledStartAt === 'number' ? Math.round((s.scheduledStartAt - now) / 360000) / 10 : null, changed: n, moves });
+      if (dryRun) continue;
+      await withLock(s.videoId, async () => {
+        const t = db.transaction(['messages', 'streams'], 'readwrite');
+        const work = (async () => {
+          const cur = await req(t.objectStore('streams').get(s.videoId));
+          if (!cur || !waitingWrongStart(cur, now)) return;
+          cur.startedAt = null; cur.startedAtSource = null; cur.startedAtSuspect = false;
+          if (typeof cur.scheduledStartAt === 'number' && cur.scheduledStartAt > now) cur.scheduledFuture = true;
+          t.objectStore('streams').put(cur);
+          await new Promise((res, rej) => {
+            const r = t.objectStore('messages').index('videoId').openCursor(s.videoId);
+            r.onerror = () => rej(r.error);
+            r.onsuccess = () => {
+              const c = r.result;
+              if (!c) return res();
+              const nv = toWaitingRecord(c.value);
+              if (nv) { c.update(nv); out.updated++; }
+              c.continue();
+            };
+          });
+        })();
+        await Promise.all([work, done(t)]);
+      });
+    }
+    const streams = (dryRun ? all.filter((x) => !waitingWrongStart(x, now)) : await req(db.transaction('streams').objectStore('streams').getAll()))
+      .filter((s) => C.effectiveStart(s) != null);
     for (const s of streams) {
       const msgs = await req(db.transaction('messages').objectStore('messages').index('videoId').getAll(s.videoId));
       const moves = {};

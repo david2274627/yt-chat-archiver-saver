@@ -257,10 +257,23 @@ async function fillAvatars(opts) {
   return r;
 }
 // v45（T5.4，審查十一 21.2）既有資料的 phase 重算。用法：await YTCAS_BG.fixPhases()（預覽，只有筆數）→ { dryRun: false }
+// v47（T5.6，審查十一 26.1）waiting：待機室被記了開播時間的場次（清除 startedAt、訊息改回 pre）
 async function fixPhases(opts) {
   const r = await DB.recomputeAllPhases({ dryRun: !(opts && opts.dryRun === false) });
   console.info('[ytcas] phase 重算' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
+}
+// v47（T5.6，審查十一 26.1 第 1 點）單一場次的時間與來源（SW Console）：await YTCAS_BG.streamTimes('videoId')
+// 只有時間（ISO）、來源代碼與旗標，不含標題與頻道
+async function streamTimes(videoId) {
+  vid({ videoId });
+  const s = await DB.getStream(videoId);
+  if (!s) return { ok: false, error: 'no-stream' };
+  const iso = (t) => (typeof t === 'number' ? new Date(t).toISOString() : null);
+  return { ok: true, vid: String(videoId).slice(0, 4), startedAt: iso(s.startedAt), startedAtSource: s.startedAtSource || null,
+    startedAtSuspect: !!s.startedAtSuspect, scheduledStartAt: iso(s.scheduledStartAt), scheduledFuture: !!s.scheduledFuture,
+    startPending: !!s.startPending, endedAt: iso(s.endedAt), endedAtSource: s.endedAtSource || null, isLive: !!s.isLive,
+    effectiveStart: iso(C.effectiveStart(s)), createdAt: iso(s.createdAt) };
 }
 // v45（T5.4，審查十一 20.4 第 5 點）既有禮物的作者與 @handle 連結。用法：await YTCAS_BG.fixGiftAuthors()（預覽）→ { dryRun: false }
 async function fixGiftAuthors(opts) {
@@ -626,6 +639,7 @@ function parseWatchHtml(html, knownScheduled) {
   const d = C.deriveStartTimes({ startDate: sd, endDate: ed, knownScheduled });
   for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt']) if (d[k] != null) meta[k] = d[k];
   if (d.startPending) meta.startPending = true;
+  if (typeof d.scheduledFuture === 'boolean') meta.scheduledFuture = d.scheduledFuture; // v47（26.1）
   if (out.title) meta.title = out.title.slice(0, 500);
   if (out.isLiveBroadcast != null) meta.isLive = /^true$/i.test(out.isLiveBroadcast) && ed == null;
   const block = W.authorBlock.exec(html);
@@ -700,7 +714,7 @@ async function maybeRefetchMeta(videoId, times, source) {
   let meta;
   try { meta = await fetchStreamMeta(videoId, times.scheduledStartAt); } catch (e) { console.info('[ytcas] 重新抓取場次資訊失敗', String(e && e.message)); return null; }
   const upd = {};
-  for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt', 'startPending']) if (meta[k] != null) upd[k] = meta[k];
+  for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt', 'startPending', 'scheduledFuture']) if (meta[k] != null) upd[k] = meta[k];
   if (!Object.keys(upd).length) return null;
   const r = await DB.saveMessages({ videoId, stream: upd, messages: [], source }); // 依來源等級合併並重算 phase／offset
   const got = r.stream || {};
@@ -1147,4 +1161,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, giftStructures, fixPhases, systemTags: () => DB.systemTagStats(), channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

@@ -587,19 +587,19 @@
       '<meta itemprop="startDate" content="2026-11-15T12:00:00+00:00"><meta itemprop="endDate" content="2026-11-15T14:00:00+00:00"></span>';
     const m = BG.parseWatchHtml(html);
     eq(m, { startedAt: Date.parse('2026-11-15T12:00:00Z'), startedAtSource: 'meta-actual', endedAt: Date.parse('2026-11-15T14:00:00Z'),
-      endedAtSource: 'meta-actual', title: '測試 & 直播', isLive: false,
+      endedAtSource: 'meta-actual', scheduledFuture: false, title: '測試 & 直播', isLive: false,
       channelHandle: '@Host台', channelUrl: 'https://www.youtube.com/@Host%E5%8F%B0', channelName: '主播台' }, '已結束：startDate 為實際開播時間');
     const future = new Date(Math.ceil((Date.now() + 3600e3) / 60000) * 60000).toISOString();
     eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + future + '"><meta itemprop="isLiveBroadcast" content="True">'),
-      { scheduledStartAt: Date.parse(future), isLive: true }, '待機室：預定時間');
+      { scheduledStartAt: Date.parse(future), scheduledFuture: true, isLive: true }, '待機室：預定時間（v47 scheduledFuture）');
     eq(BG.parseWatchHtml('<html></html>'), {});
     // T3.6（追加五 E-2）：預定時間已過、整分、與已知預定相同 → startPending（不得寫入 startedAt）
     const sch = '2026-11-16T11:15:00Z';
-    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + sch + '">', Date.parse(sch)), { scheduledStartAt: Date.parse(sch), startPending: true });
-    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + sch + '">'), { scheduledStartAt: Date.parse(sch), startPending: true }, '不知道預定時間時，整分也視為未確認');
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + sch + '">', Date.parse(sch)), { scheduledStartAt: Date.parse(sch), startPending: true, scheduledFuture: false });
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + sch + '">'), { scheduledStartAt: Date.parse(sch), startPending: true, scheduledFuture: false }, '不知道預定時間時，整分也視為未確認');
     // 重新取得頁面後為實際開播時間（有秒數）
     eq(BG.parseWatchHtml('<meta itemprop="startDate" content="2026-11-16T11:24:38Z">', Date.parse(sch)),
-      { startedAt: Date.parse('2026-11-16T11:24:38Z'), startedAtSource: 'meta-actual' });
+      { startedAt: Date.parse('2026-11-16T11:24:38Z'), startedAtSource: 'meta-actual', scheduledFuture: false });
     // 剛好整分開播但與已知預定不同 → 實際
     eq(BG.parseWatchHtml('<meta itemprop="startDate" content="2026-11-16T11:25:00Z">', Date.parse(sch)).startedAtSource, 'meta-actual');
   });
@@ -1310,6 +1310,49 @@
     const tags = await BG.systemTags();
     eq([tags.system, tags.notice], [1, 1]);
     assert(!JSON.stringify(tags).includes('提示'.repeat(2)) && Object.keys(tags.byTag)[0].endsWith('（提示）'), JSON.stringify(tags));
+  });
+
+  test('T5.6 待機室被記了開播時間（26.1）：meta 說預定時間在未來 → startedAt 降級（視同沒有）、預定時間改為最新、不接受 signal；之後 meta-actual 可覆蓋；fixPhases 兩段式清除並把訊息改回 pre', async () => {
+    await resetAll();
+    const C = self.YTCAS_CONST;
+    const now = Date.now();
+    const wrong = now - 3941e3;
+    const future = Math.ceil((now + 25 * 3600e3) / 60000) * 60000;
+    // 舊版：等待開播確認時以播放器訊號寫入 startedAt；降落事件（v46 一律 live）
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: now - 7200e3, startPending: true, isLive: true }, messages: [] });
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: wrong, startedAtSource: 'signal' }, messages: [
+      msg({ id: 'ytcas-raid-1', type: 'raid', timestampAbs: now - 60e3, videoOffsetSec: 3881, phase: 'live', runs: [{ text: '降落' }] }),
+      msg({ id: 'w2', timestampAbs: now - 30e3, videoOffsetSec: 3911, phase: 'live' })] });
+    eq(DB.pickStreamTimes(await DB.getStream(V)).startedAt, wrong, '前提：舊版記下的錯誤開播時間');
+    // 重新整理待機室：meta 說「25 小時後」
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: future, scheduledFuture: true, isLive: true }, messages: [] });
+    let s = await DB.getStream(V);
+    eq([s.startedAt, s.startedAtSuspect, s.scheduledFuture, s.scheduledStartAt], [wrong, true, true, future], '降級（原值保留供預覽）、預定時間改為最新');
+    const pt = DB.pickStreamTimes(s);
+    eq([pt.startedAt, pt.startedAtSource, pt.suspectSource, C.effectiveStart(s)], [null, null, 'signal', null], '回傳給擷取端的是 null');
+    // 待機室中再送 signal：不接受
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: now, startedAtSource: 'signal' }, messages: [] });
+    eq(C.effectiveStart(await DB.getStream(V)), null, '待機室中不接受 signal');
+    const tm = await BG.streamTimes(V);
+    eq([tm.startedAtSource, tm.startedAtSuspect, tm.scheduledFuture, tm.effectiveStart], ['signal', true, true, null], 'SW Console 查詢');
+    assert(!('title' in tm) && !('channelHandle' in tm), '不含標題與頻道');
+    // fixPhases：預覽 → 執行
+    const pre = await BG.fixPhases();
+    eq(pre.waiting.length, 1);
+    eq([pre.waiting[0].vid, pre.waiting[0].startedAtSource, pre.waiting[0].suspect, pre.waiting[0].changed, pre.waiting[0].moves], [V.slice(0, 4), 'signal', true, 2, { 'live→pre': 2 }]);
+    eq((await DB.getStream(V)).startedAt, wrong, '預覽不改資料');
+    await BG.fixPhases({ dryRun: false });
+    s = await DB.getStream(V);
+    eq([s.startedAt, s.startedAtSource, s.startedAtSuspect, s.scheduledFuture], [null, null, false, true]);
+    const ms = await DB.queryMessages(V);
+    eq(ms.map((m) => [m.id, m.phase, m.videoOffsetSec]).sort(), [['w2', 'pre', null], ['ytcas-raid-1', 'pre', null]]);
+    eq((await BG.fixPhases()).waiting.length, 0, '再跑一次沒有要改的');
+    // 實際開播（預定時間到了、meta 說已開播）→ 解除待機室並採用
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: future - 3000, startedAtSource: 'meta-actual', scheduledFuture: false }, messages: [] });
+    s = await DB.getStream(V);
+    eq([C.effectiveStart(s), s.scheduledFuture], [future - 3000, false], '提早開播（meta-actual）可覆蓋');
+    // 提早開播的場次：fixPhases 不動
+    eq((await BG.fixPhases()).waiting.length, 0, 'meta-actual 的提早開播不列入');
   });
 
   test('權限：管理操作只接受擴充功能頁面，content script 被拒', async () => {

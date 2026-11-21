@@ -288,11 +288,14 @@
   // 徽章顯示「非最新」）一律不做時間軸同步。判定只看場次與訊息：
   //   場次還沒載入 → 視為待機室（保守，不同步）；已結束 → 否；等待開播確認 → 是；已開播 → 否；
   //   沒有開播時間但有預定開播時間 → 是；兩者都沒有（場次資訊抓取失敗）→ 有訊息且全部是 pre（收錄時判定為待機室）→ 是
-  function isWaitingRoom(stream, items) {
+  // v47（T5.6，審查十一 26.1）預定開播時間在未來（頁面 meta）→ 一律待機室，不論 startedAt（C.effectiveStart）
+  function isWaitingRoom(stream, items, now) {
     if (!stream) return true;
     if (stream.endedAt != null) return false;
+    if (stream.startedAt != null && stream.startedAtSource === 'replay') return false; // 重播來源例外
+    if (C.isFutureScheduled(stream, now)) return true;
     if (stream.startPending) return true;
-    if (stream.startedAt != null) return false;
+    if (C.effectiveStart(stream, now) != null) return false;
     if (stream.scheduledStartAt != null) return true;
     let pre = 0;
     for (const it of items || []) {
