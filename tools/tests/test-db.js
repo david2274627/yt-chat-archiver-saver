@@ -1025,7 +1025,7 @@
       for (const f of M.listeners.installed) f({ reason: 'update' });
       await until(() => chrome.scripting._calls.length === 3, 2000);
       eq(chrome.scripting._calls.map((c) => [c.target.tabId, c.target.allFrames]), [[10, true], [11, true], [12, true]]);
-      eq(chrome.scripting._calls[0].files, ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/panel.js', 'src/content.js'], '與 manifest 的 content script 相同順序，不含 PoC');
+      eq(chrome.scripting._calls[0].files, ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/chat-input.js', 'src/panel.js', 'src/content.js'], '與 manifest 的 content script 相同順序，不含 PoC');
       chrome.scripting._calls.length = 0;
       for (const f of M.listeners.installed) f({ reason: 'chrome_update' });
       await sleep(50);
