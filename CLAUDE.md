@@ -44,6 +44,7 @@
 
 ## 工作流程
 - 依 SPEC 第 8 節任務順序（T0 → T1 → D1 → D2 → T2 … T9）；每個任務一個（或數個）小 commit。
+- **commit 訊息檔不得含 BOM**（審查十一第 25 節，2026-11-21；`ba61d58` 曾因 PowerShell `Set-Content` 寫出 UTF-8 BOM）：多行訊息以不加 BOM 的方式寫成檔案（例如編輯器工具直接寫檔），再 `git commit -F <檔案>`；不用 `Set-Content`／`Out-File`（Windows PowerShell 5.1 預設會加 BOM）。commit 後以 `git cat-file -p HEAD` 確認訊息開頭不是 `EF BB BF`。
 - 標示 ⏸ 的任務完成後必須停下，給使用者具體測試步驟，等回覆再繼續。
 - 每完成一項 F-xx 或 T-xx，更新 `docs/test-checklist.md` 對應項目狀態。
 - 無法自動化驗證的項目（需真實直播）列在 PR / 回報中，請使用者手動驗證，不可宣稱已通過。
