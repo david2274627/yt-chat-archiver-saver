@@ -249,6 +249,10 @@
     return C.NOTICE_ID_PREFIX + fnv(String(videoId || '') + '\u0001' + C.runsKeyText(runs));
   };
 
+  // v48（T5.7，審查十一 28.3）分頁在背景時，同一次 MutationObserver 回呼新增超過這麼多則 → 視為「一批到達」（Chrome 節流），
+  // 這批訊息不用到達時間、改用顯示時間（只到分鐘）
+  C.ARRIVAL_HIDDEN_BATCH_MAX = 2;
+
   // v45（T5.4，審查十一 21.3）頁面狀態提示（歡迎／守則、聊天室模式、重播已啟用等「每次載入聊天室都會出現」的提示）：
   // 擷取時依元件標籤（selectors.js 的 viewerEngagement）標 notice: true；既有紀錄以 T3.5 起的內容 id（ytcas-ve-…）判斷。不比對任何文字
   C.NOTICE_ID_PREFIX = 'ytcas-ve-';

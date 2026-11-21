@@ -379,7 +379,9 @@
       queue: [], unflushed: new Set(), sending: null, batchTimer: 0, trimTimer: 0, pollTimer: 0, statsTimer: 0,
       pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
-        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0, giftLate: 0, giftMissing: 0, scTotal: 0, scTextColors: 0 },
+        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0, giftLate: 0, giftMissing: 0, scTotal: 0, scTextColors: 0,
+        // v48（T5.7，28.3）時間來源、背景擷取
+        itemsSwaps: 0, itemsStaleHeals: 0, ts_arrival: 0, ts_clock: 0, ts_capture: 0, hiddenCaptured: 0, hiddenBatches: 0, hiddenBulk: 0, hiddenBulkMsgs: 0, hiddenBatchMax: 0 },
       seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
@@ -559,14 +561,23 @@
     // ------------------------------------------------ 擷取
     // how：observer／backfill／sweep（定時補掃）／trim（修剪前補擷取）／pending（等待期超過上限）
     // force：等待場次資訊期間（pending）也解析並排入佇列（收錄開始後才送出）
-    function captureNode(el, how, force) {
+    function captureNode(el, how, force, batch) {
       if (el.nodeType !== 1 || el.dataset[SAVED]) return;
       if (!st.items || el.parentElement !== st.items) return; // T3.4 防呆：只擷取 #items 的直接子節點
       if (st.mode !== 'capturing' && !(force && st.mode === 'pending')) return;
+      // v48（T5.7，審查十一 28.3）分頁在背景（document.hidden）時，Chrome 節流讓聊天室更新成批到達：
+      // 同一次回呼新增超過 ARRIVAL_HIDDEN_BATCH_MAX 則 → 到達時間不是發送時間，改用顯示時間（clock，只到分鐘）。
+      // 背景時仍逐則插入（批次小）→ 照常用到達時間
+      const hidden = !!doc.hidden;
+      const bulk = hidden && how === 'observer' && (batch || 0) > C.ARRIVAL_HIDDEN_BATCH_MAX;
       let m = null;
-      try { m = parseMessage(el, Object.assign(ctxNow(), { arrival: how === 'observer' })); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
+      try { m = parseMessage(el, Object.assign(ctxNow(), { arrival: how === 'observer' && !bulk })); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
       if (!m) { el.dataset[SAVED] = 'skip'; return; }
       el.dataset[SAVED] = '1';
+      // v48（28.3）P1：時間來源分布、背景擷取筆數
+      if (m.tsSource) st.stats['ts_' + m.tsSource] = (st.stats['ts_' + m.tsSource] || 0) + 1;
+      if (hidden) st.stats.hiddenCaptured++;
+      if (bulk) st.stats.hiddenBulkMsgs++;
       // F-20 P7：未知元件、禮物元件 → 結構紀錄（同一標籤每場最多 3 次）
       if (opts.onDiag && ((m.type === T.SYSTEM && m.rawTag && !KNOWN_SYSTEM_TAGS.has(m.rawTag)) || m.type === T.GIFT)) {
         probeStructure(m.type === T.GIFT ? 'gift' : 'unknown', el);
@@ -674,14 +685,22 @@
       }
     }
 
+    // v48（T5.7，審查十一 28.3）這次回呼新增到 #items 的訊息數（背景分頁「一批到達」的判斷與統計）
     function onItemsMutation(records) {
+      let batch = 0;
+      for (const r of records) if (r.type === 'childList' && r.target === st.items) for (const n of r.addedNodes) if (n.nodeType === 1) batch++;
+      if (batch && doc.hidden) {
+        st.stats.hiddenBatches++;
+        if (batch > C.ARRIVAL_HIDDEN_BATCH_MAX) st.stats.hiddenBulk++;
+        if (batch > st.stats.hiddenBatchMax) st.stats.hiddenBatchMax = batch;
+      }
       for (const r of records) {
         // T3.4：observer 為了刪除偵測帶 subtree，childList 也會回報訊息內部的後代（徽章、圖示、span…）；
         // 只有 #items 的直接子節點才是訊息
         if (r.type === 'childList') {
           if (r.target !== st.items) continue;
           st.stats.observedAdded += r.addedNodes.length;
-          r.addedNodes.forEach((n) => captureNode(n, 'observer'));
+          r.addedNodes.forEach((n) => captureNode(n, 'observer', false, batch));
         }
         else if (r.type === 'attributes' && st.mode === 'capturing') {
           const el = r.target.closest && r.target.closest('[data-ytcas-saved="1"]');
@@ -882,7 +901,14 @@
         unmarkedNodes: box ? Array.from(box.children).filter((el) => !el.dataset[SAVED]).length : null,
         observedAdded: s.observedAdded, backfillRuns: s.backfillRuns, backfillCaptured: s.backfillCaptured,
         lateCaptured: s.lateCaptured, dupCaptured: s.dupCaptured, f12: st.f12,
-        scTotal: s.scTotal, scTextColors: s.scTextColors }; // v47（26.4）SC 中取得 YouTube 文字色的筆數
+        scTotal: s.scTotal, scTextColors: s.scTextColors, // v47（26.4）SC 中取得 YouTube 文字色的筆數
+        // v48（T5.7，28.3、28.4）時間來源分布（arrival＝到達時間、clock＝顯示的分鐘、capture＝讀不到時間）、
+        // 背景（document.hidden）擷取筆數、背景回呼數／一批超過門檻的回呼數與訊息數／最大批次、禮物圖片延遲補送成功／放棄
+        tsSource: { arrival: s.ts_arrival, clock: s.ts_clock, capture: s.ts_capture },
+        hidden: { captured: s.hiddenCaptured, batches: s.hiddenBatches, bulk: s.hiddenBulk, bulkMsgs: s.hiddenBulkMsgs, batchMax: s.hiddenBatchMax },
+        giftLate: s.giftLate, giftMissing: s.giftMissing,
+        // v48（28.1）itemsSwaps：YouTube 換掉 #items 的次數（重新掛上並回溯擷取）；itemsStaleHeals：統計當下發現沒掛在目前列表、立即重新掛上的次數
+        itemsSwaps: s.itemsSwaps, itemsStaleHeals: s.itemsStaleHeals };
       if (s.captured || final) console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), obj);
       // F-20 P1／P2：同一份統計寫入診斷記錄（只有筆數）；時間來源一併記錄，供開播判斷驗證
       diag('P1', final ? 'stats-final' : 'stats', Object.assign({}, obj, { times: {
@@ -890,6 +916,9 @@
         hasStartedAt: st.stream.startedAt != null, hasEndedAt: st.stream.endedAt != null } }));
       diag('P2', 'items', itemsBreakdown());
       s.observedAdded = 0; // 每分鐘歸零
+      // v48（T5.7，審查十一 28.1）統計當下 observer 沒掛在目前的 #items（YouTube 換了列表、下一次定時檢查還沒跑；
+      // 背景分頁的計時器被節流時可能長達 1 分鐘）→ 立即重新掛上並回溯擷取，不等下一次 tick
+      if (!final && st.mode === 'capturing' && !obj.itemsIsCurrent && cur) { s.itemsStaleHeals++; tick(); }
     }
 
     // ------------------------------------------------ 對外
@@ -898,6 +927,7 @@
     function tick() {
       const prev = st.items;
       const ok = attach();
+      if (ok && prev && st.items !== prev) st.stats.itemsSwaps++; // v48（28.1）YouTube 換掉了 #items
       if (ok && st.items !== prev && st.mode === 'capturing') backfill('backfill');
       else if (ok && st.mode === 'capturing') backfill('sweep');
       // 聊天室已渲染（有 renderer）且超過 10 秒仍找不到訊息列表才是問題：warn；載入中不輸出

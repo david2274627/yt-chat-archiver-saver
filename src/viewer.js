@@ -628,7 +628,19 @@
       }
       return out;
     }
+    // v48（T5.7，審查十一 28.3，使用者 2026-11-22 同意）直播訊息的時間只精確到分鐘（tsSource: 'clock'，YouTube 只顯示到分鐘）：
+    // 時間碼前加淡色「≈」，title 說明。面板與後台一致；VOD 排序時顯示的是影片時間、重播來源的 offset 是精確值 → 不加
     function tcNode(m) {
+      const n = tcNode0(m);
+      if (m.tsSource === 'clock' && m.offsetSource !== 'replay' && !vodOrder()) {
+        const ap = el('span', 'approx', '≈'); ap.setAttribute('aria-hidden', 'true');
+        n.prepend(ap);
+        const why = '只精確到分鐘（YouTube 只顯示到分鐘）';
+        n.title = n.title ? n.title + '；' + why : why;
+      }
+      return n;
+    }
+    function tcNode0(m) {
       const tc = CORE.timecode(m, S.stream, { long: S.long, refMs: S.refMs });
       // T5：內嵌面板收到播放器時間後，可點與否、跳到哪裡依時間軸換算（VOD：版本 offset＋連結時間差；直播：DVR 範圍）
       // v45（21.2 第 3 點）不可點的時間碼在 title 說明原因；VOD 的長度判斷面板與後台一致

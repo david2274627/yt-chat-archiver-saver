@@ -923,6 +923,35 @@
     eq(r.querySelector('.content a.lnk').getAttribute('href'), 'https://www.youtube.com/@%E9%AD%9A', '@魚 的提及連結');
   });
 
+  test('T5.7「≈」（28.3）：tsSource clock 的直播訊息時間碼前加淡色「≈」與說明；arrival、重播來源、VOD 排序時不加；面板與後台一致', async () => {
+    await resetDb();
+    const VC = 'vidAPPROX01';
+    const now = Date.now();
+    await put({ videoId: VC, title: 'C', isLive: true, startedAt: now - 3600e3, lastMessageAt: now, messageCount: 3, versions: [], linkedVideos: [] }, [
+      mk({ id: 'ck', videoId: VC, tsSource: 'clock', timestampAbs: now - 120e3, videoOffsetSec: 3480 }),
+      mk({ id: 'ar', videoId: VC, tsSource: 'arrival', timestampAbs: now - 60e3, videoOffsetSec: 3540 }),
+      mk({ id: 'rp', videoId: VC, tsSource: 'clock', offsetSource: 'replay', sources: ['live', 'replay'], timestampAbs: now - 30e3, videoOffsetSec: 3570 }),
+    ]);
+    await DB.close();
+    for (const embed of [false, true]) {
+      const c = V.mount(host, { embed, videoId: VC });
+      await c.ready; await frame(); await frame();
+      const tc = (id) => c.els.list.querySelector('[data-id="' + id + '"] .tc');
+      const ap = tc('ck').querySelector('.approx');
+      assert(ap && ap.textContent === '≈' && /只精確到分鐘（YouTube 只顯示到分鐘）/.test(tc('ck').title), (embed ? '面板' : '後台') + '：clock 有「≈」 ' + tc('ck').title);
+      assert(getComputedStyle(ap).color !== getComputedStyle(tc('ck')).color, '淡色（與時間碼顏色不同）');
+      assert(!tc('ar').querySelector('.approx') && !tc('rp').querySelector('.approx'), 'arrival／重播來源不加');
+    }
+    // 已結束場次的 VOD（後台依影片時間排序）：不加
+    await resetDb();
+    await put({ videoId: VC, title: 'C', isLive: false, startedAt: now - 3600e3, endedAt: now - 10e3, lastMessageAt: now, messageCount: 1, versions: [], linkedVideos: [] },
+      [mk({ id: 'ck2', videoId: VC, tsSource: 'clock', timestampAbs: now - 120e3, videoOffsetSec: 3480 })]);
+    await DB.close();
+    const c2 = V.mount(host, { embed: false, videoId: VC });
+    await c2.ready; await frame(); await frame();
+    assert(!c2.els.list.querySelector('[data-id="ck2"] .tc .approx'), 'VOD：不加');
+  });
+
   test('T5.5 待機室（第 23 節）：播放器時間比資料先到、預告影片 currentTime 前進＋「非最新」→ 不同步、不提示、沒有「回到播放位置」與 current 標記、時間碼不可點', async () => {
     await resetDb();
     const VW = 'vidWAITRM02';

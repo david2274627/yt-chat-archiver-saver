@@ -36,6 +36,8 @@ const PAIRS = [
   ['on-member', 'member-strong', 4.5, '里程碑標題列（名稱、月數、時間碼）'], ['member', 'member-soft', 4.5, '里程碑徽章'],
   ['text', 'member-soft', 4.5, '里程碑留言'], ['member-strong', 'surface', 3, '里程碑標題列與面板底的區隔（非文字）'],
   ['text', 'accent-soft', 4.5, '會員列／目前訊息本文'],
+  // v48（T5.7，28.3）時間碼前的「≈」（只精確到分鐘）：一般列、hover、目前訊息、降落列、禮物卡
+  ['text-3', 'accent-soft', 3, '「≈」（目前訊息）'],
 ];
 let fail = 0;
 const rows = [];

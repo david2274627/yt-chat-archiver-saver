@@ -47,7 +47,10 @@ mark .emo-img { vertical-align: -5px; }
 .card .tx { background: color-mix(in srgb, currentColor 12%, transparent); }
 .card .tc, .card .nm, .card .bdg.del { color: inherit; }
 .card .tc { opacity: .85; }
-.card.yt-colors .tc { opacity: 1; } /* v47（26.4）YouTube 的時間色本身已帶透明度 */
+.card.yt-colors .tc { opacity: 1; }
+/* v48（T5.7，28.3）「≈」只精確到分鐘：淡色（--ytcas-text-3，對比 ≥ 3）；卡片內跟著卡片的文字色 */
+.tc .approx { color: var(--ytcas-text-3); margin-right: 1px; font-weight: 400; }
+.card .tc .approx, .milestone .tc .approx { color: inherit; opacity: .8; } /* v47（26.4）YouTube 的時間色本身已帶透明度 */
 .card .nm { font-weight: 700; }
 .card.nocolor { background: var(--ytcas-surface-2); color: var(--ytcas-text); }
 .card .stk img { width: 72px; height: 72px; object-fit: contain; }

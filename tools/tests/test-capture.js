@@ -1046,6 +1046,40 @@
     e.stop();
   });
 
+  test('T5.7 背景分頁的時間精度（28.3、28.4）：背景時一批到達（> 2 則）→ 顯示時間（clock）；背景時逐則到達 → 到達時間；P1 記 tsSource 分布、背景擷取筆數、giftLate／giftMissing', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const recs = [];
+    const e = engine({ send, onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidHide1', startDate: NOW - 60000, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    let hidden = false;
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    try {
+      // 前景：一次 3 則 → 到達時間
+      items.append(textMsg({ id: 'HV1', ts: '下午10:23' }), textMsg({ id: 'HV2', ts: '下午10:23' }), textMsg({ id: 'HV3', ts: '下午10:23' }));
+      await until(() => savedIds(send).includes('HV3'), 3000);
+      hidden = true;
+      // 背景：一次 4 則（節流後一批到達）→ 顯示時間
+      items.append(textMsg({ id: 'HB1', ts: '下午10:22' }), textMsg({ id: 'HB2', ts: '下午10:23' }), textMsg({ id: 'HB3', ts: '下午10:23' }), textMsg({ id: 'HB4', ts: '下午10:23' }));
+      await until(() => savedIds(send).includes('HB4'), 3000);
+      // 背景：逐則 → 到達時間
+      items.append(textMsg({ id: 'HS1', ts: '下午10:23' }));
+      await until(() => savedIds(send).includes('HS1'), 3000);
+      const all = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+      const src = (id) => all.find((x) => x.id === id).tsSource;
+      eq(['HV1', 'HV3', 'HB1', 'HB4', 'HS1'].map(src), ['arrival', 'arrival', 'clock', 'clock', 'arrival']);
+      e.stop();
+      const p1 = recs.filter((r) => r.p === 'P1').pop();
+      assert(p1, 'P1');
+      const ts = p1.d.tsSource;
+      assert(ts.arrival === 4 && ts.clock >= 4 && ts.capture === 0, 'tsSource 分布（clock 含開始時回溯的既有訊息）' + JSON.stringify(ts));
+      eq([p1.d.hidden.captured, p1.d.hidden.batches, p1.d.hidden.bulk, p1.d.hidden.bulkMsgs, p1.d.hidden.batchMax], [5, 2, 1, 4, 4]);
+      assert(typeof p1.d.giftLate === 'number' && typeof p1.d.giftMissing === 'number', 'giftLate／giftMissing');
+    } finally { delete document.hidden; }
+  });
+
   test('T5.1 頭像延遲載入（審查十一第 10 節）：擷取時還是佔位圖 → src 變成 https 後補送同一則（帶頭像）；10 秒內沒有就放棄', async () => {
     const { items } = buildChat();
     const send = mockSend();

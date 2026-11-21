@@ -36,6 +36,7 @@ function report(data) {
   L();
 
   const anomalies = [];
+  const notes = []; // v48：暫時狀態等不需處理、但值得記下的事
 
   // ---- P1 收錄統計：各聊天室（videoId × source × 分頁）
   const p1 = byProbe.P1 || [];
@@ -66,7 +67,12 @@ function report(data) {
       if (maxUn > 5) anomalies.push('P1 ' + vid + '（' + src + '）：未擷取節點最大 ' + maxUn + '（AC ≤ 5）');
       if (last.dropped > 0) anomalies.push('P1 ' + vid + '（' + src + '）：dropped ' + last.dropped);
       if (last.rejected > 0) anomalies.push('P1 ' + vid + '（' + src + '）：rejected ' + last.rejected);
-      if (list.some((r) => r.data.itemsIsCurrent === false && r.data.mode === 'capturing')) anomalies.push('P1 ' + vid + '：收錄中出現 itemsIsCurrent: false');
+      // v48（T5.7，審查十一 28.1）itemsIsCurrent: false＝統計當下 observer 沒掛在目前的 #items（YouTube 換了列表、下一次定時檢查還沒跑）。
+      // 單次是暫時狀態（v48 起統計時立即重新掛上並回溯擷取）；連續 2 筆以上才列入異常
+      const stale = list.map((r) => r.data.itemsIsCurrent === false && r.data.mode === 'capturing');
+      const staleRun = stale.reduce((a, x) => (x ? { cur: a.cur + 1, max: Math.max(a.max, a.cur + 1) } : { cur: 0, max: a.max }), { cur: 0, max: 0 }).max;
+      if (staleRun >= 2) anomalies.push('P1 ' + vid + '：收錄中連續 ' + staleRun + ' 筆 itemsIsCurrent: false（observer 沒跟上 YouTube 換掉的列表）');
+      else if (staleRun === 1) notes.push('P1 ' + vid + '：收錄中出現 1 次 itemsIsCurrent: false（YouTube 換了列表，下一次檢查已重新掛上；不影響收錄）');
       if (typeof last.f12 === 'string' && last.f12.startsWith('failed')) anomalies.push('P1 ' + vid + '：F-12 ' + last.f12);
       // 間隔：每分鐘一筆，超過 3 分鐘視為空檔（分頁被節流、SW 無回應、頁面關閉等）
       for (let i = 1; i < list.length; i++) {
@@ -75,6 +81,24 @@ function report(data) {
       }
     }
     L();
+    // v48（T5.7，審查十一 28.1、28.3、28.4）時間來源、背景擷取、禮物圖片延遲補送、列表更換（最後一筆的累計值；v47 以前的記錄沒有這些欄位）
+    const ext = [...groups].filter(([, list]) => list[list.length - 1].data.tsSource);
+    if (ext.length) {
+      L('### P1 時間來源與背景擷取（v48）');
+      L();
+      L('arrival＝到達時間（秒級）、clock＝聊天室顯示的分鐘（面板顯示「≈」）、capture＝讀不到時間。背景＝擷取當下分頁在背景（`document.hidden`）；一批＝同一次回呼新增超過 2 則（節流後成批到達，改用顯示時間）。');
+      L();
+      L('| videoId | 來源 | arrival | clock | capture | clock 比例 | 背景擷取 | 背景回呼 | 一批（回呼／訊息） | 最大批次 | 禮物圖片補送／放棄 | 換列表／統計時補掛 |');
+      L('|---|---|---|---|---|---|---|---|---|---|---|---|');
+      for (const [k, list] of ext) {
+        const [vidFull, src] = k.split('|');
+        const d = list[list.length - 1].data, t = d.tsSource || {}, h = d.hidden || {};
+        const tot = (t.arrival || 0) + (t.clock || 0) + (t.capture || 0);
+        L('| ' + [vid4(vidFull), src, t.arrival, t.clock, t.capture, tot ? Math.round((t.clock || 0) / tot * 100) + '%' : '—', h.captured, h.batches, (h.bulk || 0) + '／' + (h.bulkMsgs || 0), h.batchMax,
+          (d.giftLate ?? '—') + '／' + (d.giftMissing ?? '—'), (d.itemsSwaps ?? '—') + '／' + (d.itemsStaleHeals ?? '—')].map(esc).join(' | ') + ' |');
+      }
+      L();
+    }
   }
 
   // ---- P2 節點分類
@@ -332,6 +356,12 @@ function report(data) {
   if (!anomalies.length) L('沒有偵測到異常。');
   for (const a of anomalies) L('- ' + a);
   L();
+  if (notes.length) {
+    L('## 備註（不是異常）');
+    L();
+    for (const a of notes) L('- ' + a);
+    L();
+  }
   return out.join('\n');
 }
 
