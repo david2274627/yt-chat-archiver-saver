@@ -228,6 +228,26 @@ function report(data) {
       L();
     }
   }
+  // ---- v47（T5.6，審查十一 26.2 第 4 點）P10 事件：seek、錨點採用、錨點作廢（立即一筆）的時間序列
+  const p10ev = (byProbe.P10 || []).filter((r) => r.kind !== 'live-clock' && r.data && typeof r.data.now === 'number');
+  if (p10ev.length) {
+    const EVN = { 'live-seek': 'seek', 'anchor-ok': '錨點採用', 'anchor-void': '錨點作廢' };
+    L('## P10 事件（seek／錨點採用／作廢）');
+    L();
+    L('時間以第一筆為 0（秒）。網址帶 t= 的載入：預期先出現 seek（到 t= 的位置、徽章非最新），之後才有「錨點採用」；採用後 5 秒內被 seek 到非最新＝「錨點作廢」。');
+    L();
+    L('| 分頁 | videoId | 時間 | 事件 | 徽章 | currentTime | 模式 | 候選 | 樣本 | 作廢 | 等點直播 | urlT | seeks |');
+    L('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+    const t0 = p10ev[0].data.now;
+    for (const r of p10ev.slice(0, 200)) {
+      const c = r.ctx || {}, d = r.data;
+      L('| ' + [c.tab != null ? c.tab : '—', vid4(c.videoId || '—'), ((d.now - t0) / 1000).toFixed(1), EVN[r.kind] || String(r.kind).slice(0, 16), d.badge, d.currentTime, d.mode,
+        d.anchorCand, d.anchorN, d.anchorVoids, d.anchorStrict ? '是' : '否', d.urlT ? '是' : '否', d.seeks].map(esc).join(' | ') + ' |');
+    }
+    L();
+    const voids = p10ev.filter((r) => r.kind === 'anchor-void').length;
+    if (voids) anomalies.push('P10 錨點作廢 ' + voids + ' 次（採用後 5 秒內被 seek 到非最新；網址帶 t= 的載入屬預期）');
+  }
 
   // ---- P7 結構
   const p7 = byProbe.P7 || [];

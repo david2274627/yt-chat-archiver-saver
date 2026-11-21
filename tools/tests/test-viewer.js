@@ -405,7 +405,8 @@
     const c = V.mount(host, { embed: true, videoId: VL });
     await c.ready; await frame();
     // 直播邊緣：DVR 只有最近 1 小時（seekEnd − seekStart = 3600）
-    c._onClock({ currentTime: 9998, paused: false, duration: null, seekStart: 6400, seekEnd: 10000, live: true, at: now });
+    // v47（26.2）錨點要在最新穩定 3 秒才採用、採用後 5 秒內倒轉會作廢 → 在最新播放 10 秒
+    for (let k = 0; k <= 9; k++) c._onClock({ currentTime: 9998 - (9 - k), paused: false, duration: null, seekStart: 6400, seekEnd: 10000, live: true, at: now - (9 - k) * 1000, liveHead: true, badge: 'class' });
     await frame(); await frame();
     eq(c.state.mode, 'tail');
     assert(c.state.vl.follow, '跟隨到底');
@@ -413,7 +414,7 @@
     const last = c.els.list.querySelector('[data-id="l299"] .tc');
     assert(last && last.tagName === 'BUTTON', 'DVR 內可點');
     // 倒轉 30 分鐘
-    c._onClock({ currentTime: 10000 - 1800, paused: false, duration: null, seekStart: 6400, seekEnd: 10000, live: true, at: now });
+    c._onClock({ currentTime: 10000 - 1800, paused: false, duration: null, seekStart: 6400, seekEnd: 10000, live: true, at: now, liveHead: false, badge: 'behind' });
     await frame(); await frame();
     eq(c.state.mode, 'sync');
     const id = c.state.currentId;
@@ -457,7 +458,8 @@
       c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
     };
     // 在最新：延遲 40 秒（YouTube 一般延遲模式）→ 基準 40，tail
-    for (let k = 0; k < 8; k++) tick(40);
+    // v47（26.2）讀不到徽章：錨點要穩定 10 秒才採用、採用後 5 秒內倒轉會作廢 → 在最新播放 18 秒
+    for (let k = 0; k < 72; k++) tick(40);
     await frame(); await frame();
     eq(c.state.mode, 'tail', 'v42 會判成 sync（延遲 40 > 15）');
     assert(Math.abs(c.state.baseline - 40) < 0.01, '基準 ' + c.state.baseline);
@@ -624,10 +626,13 @@
         assert(near(back), '倒轉 ' + back + ' 秒 → ' + back + ' 秒前：' + c.state.currentId);
         for (let k = 0; k < 20; k++) tick(behind);
         assert(near(back), '播放 20 秒後仍是 ' + back + ' 秒前：' + c.state.currentId);
+        const a0 = c.state.wallA;
         seeks++; ct += back; tick({}, 0); // 點「直播」回到最新 → 重新量錨點
         eq(c.state.mode, 'tail');
-        eq(c.state.wallSamples.length, 1, '回到最新：重新量');
-        for (let k = 0; k < 5; k++) tick();
+        // v47（26.2）：新的一段要穩定 3 秒才採用；採用前沿用上一段的錨點
+        eq([c.state.anchor.cand.length, c.state.wallA], [1, a0], '回到最新：重新量（候選 1、錨點沿用上一段）');
+        for (let k = 0; k < 8; k++) tick(); // 採用後超過 5 秒才再倒轉（5 秒內倒轉到非最新＝作廢，見 T5.6 測試）
+        eq(c.state.wallSamples.length, 9, '新的一段已採用（穩定 3 秒後，候選一併採用）');
       }
       // 同步微調：倒轉 1 分鐘；按 +10 三次 → 藍框往較新的訊息移動 30 秒（提早 30 秒）
       seeks++; ct -= 60; tick(behind, 0); await frame();
@@ -647,8 +652,13 @@
       assert(dl.includes('錨點 ') && dl.includes('樣本、範圍 ') && dl.includes('同步微調 藍框延後 20 秒（本頻道）') && dl.includes('seekEnd 速度 0.00'), '連線狀態：' + dl);
       document.body.click();
       // P10：記錄中且選了 P10 → 每 10 秒一筆，只有數字與徽章代碼
-      const p10 = sent.filter((m) => m.type === 'DIAG_LOG').map((m) => m.records[0]).filter((r) => r.probe === 'P10');
-      assert(p10.length >= 8 && p10.length <= 14, 'P10 筆數 ' + p10.length);
+      const p10all = sent.filter((m) => m.type === 'DIAG_LOG').map((m) => m.records[0]).filter((r) => r.probe === 'P10');
+      const p10 = p10all.filter((r) => r.kind === 'live-clock');
+      assert(p10.length >= 8 && p10.length <= 16, 'P10 筆數 ' + p10.length);
+      // v47（26.2 第 4 點）seek 與錨點採用另記事件
+      const kinds = new Set(p10all.map((r) => r.kind));
+      assert(kinds.has('live-seek') && kinds.has('anchor-ok'), 'P10 事件 ' + [...kinds]);
+      assert(p10all.every((r) => typeof r.data.anchorCand === 'number' && typeof r.data.anchorVoids === 'number'), '錨點欄位');
       const r = p10[0];
       eq([r.kind, r.ctx.env, r.ctx.videoId], ['live-clock', 'panel', VL]);
       eq(r.data.seekEnd, SE);
@@ -670,7 +680,8 @@
       const tcb = c.els.list.querySelector('.vrow .tc');
       assert(tcb && tcb.tagName === 'SPAN', '沒量過錨點：時間碼不可點');
       // 回到最新一次後再倒轉 → 對齊
-      seeks++; ct = 5100; tick({}, 0); tick(); tick();
+      seeks++; ct = 5100; tick({}, 0);
+      for (let k = 0; k < 9; k++) tick(); // v47：穩定 3 秒才採用；採用後 5 秒內倒轉會作廢
       seeks++; ct -= 120; tick(behind, 0); await frame();
       assert(hint.hidden, '量到錨點後提示消失');
       const m = msgs.find((x) => x.id === c.state.currentId);
@@ -738,6 +749,72 @@
     assert(/待機室/.test(c.els.meta.textContent) && !/直播中/.test(c.els.meta.textContent), '標頭 ' + c.els.meta.textContent);
     assert(c.els.syncHint.hidden && c.els.latBox.hidden, '沒有同步提示與同步微調');
     assert(!c.els.list.querySelector('.live-dot'), '沒有直播中的紅點');
+  });
+
+  test('T5.6 錨點（26.2）：載入時先最新 → 2 秒後 seek 到 t=600 → 不同步、顯示提示；採用後 5 秒內被 seek 到非最新 → 作廢並重新提示；網址帶 t= 時等點「直播」或穩定 10 秒', async () => {
+    // 純函式
+    const P = { stableMs: 3000, guardMs: 5000, strictMs: 10000, maxN: 60 };
+    const step = (a, at, ct, o) => CORE.anchorStep(a, Object.assign({ live: true, paused: false, at, currentTime: ct, liveHead: true }, o && o.clock), Object.assign({ edge: true, seeked: false }, P, o));
+    let a = CORE.anchorInit(false), r;
+    for (let k = 0; k <= 2; k++) a = step(a, 1000e3 + k * 1000, 9000 + k).state;
+    eq([a.wallA, a.cand.length], [null, 3], '穩定 2 秒：還沒採用');
+    r = step(a, 1003e3, 9003 - 600 + 3, { seeked: true, edge: false, clock: { liveHead: false } });
+    eq([r.state.wallA, r.state.cand.length], [null, 0], 'seek 到非最新：候選丟掉');
+    // 讀不到徽章（liveHead null）：一律等 10 秒
+    a = CORE.anchorInit(false);
+    for (let k = 0; k <= 9; k++) a = step(a, 2000e3 + k * 1000, 100 + k, { clock: { liveHead: null } }).state;
+    eq(a.wallA, null, '讀不到徽章：9 秒還沒採用');
+    a = step(a, 2010e3, 110, { clock: { liveHead: null } }).state;
+    eq(a.wallA, 2000e3 - 100e3, '10 秒後採用');
+    // 網址帶 t=：最新穩定 5 秒不採用；從非最新點回「直播」後 3 秒採用
+    a = CORE.anchorInit(true);
+    for (let k = 0; k <= 5; k++) a = step(a, 3000e3 + k * 1000, 500 + k).state;
+    eq([a.wallA, a.strict], [null, true], 't=：穩定 5 秒不採用');
+    a = step(a, 3006e3, 300, { seeked: true, edge: false, clock: { liveHead: false } }).state; // YouTube 跳到 t=
+    a = step(a, 3007e3, 301, { edge: false, clock: { liveHead: false } }).state;
+    a = step(a, 3008e3, 700, { seeked: true }).state; // 使用者點「直播」
+    eq(a.liveClicked, true);
+    for (let k = 1; k <= 3; k++) a = step(a, 3008e3 + k * 1000, 700 + k).state;
+    eq([a.wallA, a.strict], [3008e3 - 700e3, false], '點「直播」後穩定 3 秒採用');
+    // 面板：先最新 2 秒 → seek 到 t=600（非最新）
+    await resetDb();
+    const VL = 'vidANCHOR01';
+    const now = Date.now();
+    const msgs = [];
+    for (let i = 0; i < 300; i++) msgs.push(mk({ id: 'an' + i, videoId: VL, timestampAbs: now - (300 - i) * 10e3, videoOffsetSec: 3000 + i * 10 }));
+    await put({ videoId: VL, title: 'A', isLive: true, startedAt: now - 7200e3, lastMessageAt: now, messageCount: 300, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    let c = V.mount(host, { embed: true, videoId: VL });
+    await c.ready; await frame();
+    let t = now, ct = 7200, seeks = 0;
+    const tick = (o, dt) => { dt = dt == null ? 1000 : dt; t += dt; if (!(o && o.paused)) ct += dt / 1000; c._onClock(Object.assign({ currentTime: ct, paused: false, duration: null, seekStart: 0, seekEnd: 7300, live: true, at: t, seeks, liveHead: true, badge: 'class' }, o)); };
+    const behind = { liveHead: false, badge: 'behind' };
+    tick({}, 0); tick(); tick();
+    seeks++; ct = 600; tick(behind, 0); await frame();
+    for (let k = 0; k < 5; k++) tick(behind);
+    await frame();
+    eq([c.state.mode, c.state.wallA, c.state.currentId], ['sync', null, null], '不同步（v46 會在最新一則加藍框）');
+    assert(!c.els.syncHint.hidden && /請先點播放器的「直播」/.test(c.els.syncHint.textContent), '顯示提示');
+    // 點「直播」回到最新、穩定 3 秒採用 → 2 秒後又被 seek 到非最新 → 作廢、提示重新出現（即使先前按過 ✕）
+    c.els.syncHint.querySelector('.note-x').click();
+    seeks++; ct = 7300; tick({}, 0);
+    for (let k = 0; k < 3; k++) tick();
+    assert(c.state.wallA != null, '採用');
+    tick(); tick();
+    seeks++; ct = 900; tick(behind, 0); await frame();
+    eq([c.state.wallA, c.state.anchor.voids, c.state.currentId], [null, 1, null], '作廢');
+    assert(!c.els.syncHint.hidden, '重新提示');
+    c.els.moreBtn.click();
+    assert(c.els.menu.querySelector('.diag-line').textContent.includes('作廢 1 次'), '連線狀態顯示作廢次數');
+    document.body.click();
+    // 網址帶 t=（panel 的 clock.urlT）：在最新穩定 5 秒仍不採用
+    c = V.mount(host, { embed: true, videoId: VL });
+    await c.ready; await frame();
+    t = Date.now(); ct = 7300; seeks = 0;
+    for (let k = 0; k < 6; k++) tick({ urlT: true });
+    eq([c.state.wallA, c.state.anchor.strict], [null, true], 't=：5 秒不採用');
+    for (let k = 0; k < 5; k++) tick({ urlT: true });
+    assert(c.state.wallA != null && !c.state.anchor.strict, 't=：穩定 10 秒後採用');
   });
 
   test('T5.5 待機室（第 23 節）：播放器時間比資料先到、預告影片 currentTime 前進＋「非最新」→ 不同步、不提示、沒有「回到播放位置」與 current 標記、時間碼不可點', async () => {
@@ -815,7 +892,7 @@
       assert(hint.hidden, '同一種提示本頁不再顯示');
       // 「↓ 回到播放位置」：回到最新、量錨點、倒轉、使用者捲動 → 顯示，清單底部留出等高空白，最後一列不被按鈕遮住
       tick({ liveHead: true, badge: 'class', seeks: 1 }, 0);
-      for (let k = 0; k < 3; k++) tick({ liveHead: true, badge: 'class', seeks: 1 });
+      for (let k = 0; k < 9; k++) tick({ liveHead: true, badge: 'class', seeks: 1 }); // v47：穩定 3 秒＋超過作廢期間
       ct -= 120; tick({ seeks: 2 }, 0); await frame(); await frame();
       eq(c.state.mode, 'sync');
       c.els.list.dispatchEvent(new Event('wheel'));

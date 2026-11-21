@@ -371,6 +371,56 @@
     const out = (samples || []).concat([wallSample(clock)]);
     return out.length > (maxN || 60) ? out.slice(out.length - (maxN || 60)) : out;
   }
+  // v47（T5.6，審查十一 26.2）錨點的取樣狀態機（純函式）。實機（圖6）：網址帶 &t=600s 載入時，播放器先短暫在最新、
+  // 之後才跳到 t= 的位置；v46 在那幾秒就取了樣本，之後把倒轉的位置當成最新。規則：
+  //   1. 樣本的有效條件：直播、播放中、在最新（徽章「最新」；讀不到徽章時依延遲基準）連續穩定 stableMs、期間沒有 seek，
+  //      之前取的候選樣本才採用（一段「穩定期」採用後，之後每秒的樣本直接加入）。任何 seek 都重新計時、丟掉候選。
+  //   2. 採用後 guardMs 內被 seek 到「非最新」→ 作廢這批樣本，退回上一段的錨點（沒有就 null：重新提示先點「直播」）。
+  //   3. strict（網址帶 t=、或剛作廢過）：要等使用者從「非最新」點回最新（liveClicked）後穩定 stableMs，或穩定 strictMs；
+  //      讀不到徽章時一律 strictMs。
+  function anchorInit(strict) {
+    return { cand: [], samples: [], wallA: null, prevWallA: null, stableSince: null, lastAt: 0, acceptedAt: null, committed: false,
+      lastSeekAt: null, fromBehindAt: null, prevBehind: false, strict: !!strict, liveClicked: false, voids: 0 };
+  }
+  function anchorStep(a, clock, o) {
+    const s = Object.assign({}, a || anchorInit(o && o.strict));
+    o = o || {};
+    const stableMs = o.stableMs || 3000, guardMs = o.guardMs || 5000, strictMs = o.strictMs || 10000, maxN = o.maxN || 60;
+    const now = clock.at;
+    let invalidated = false;
+    if (o.seeked) {
+      s.lastSeekAt = now;
+      if (s.prevBehind) s.fromBehindAt = now; // 從「非最新」跳轉（點「直播」或拖到最新）
+      s.stableSince = null; s.cand = []; s.lastAt = 0; s.committed = false;
+    }
+    // 2. 採用後短時間內被 seek 到非最新 → 作廢（徽章可能晚一拍才變：seek 後 2 秒內看到「非最新」都算）
+    if (s.acceptedAt != null && s.lastSeekAt != null && s.lastSeekAt >= s.acceptedAt && s.lastSeekAt - s.acceptedAt <= guardMs
+      && now - s.lastSeekAt <= 2000 && clock.live && clock.liveHead === false) {
+      s.wallA = s.prevWallA; s.prevWallA = null; s.samples = []; s.acceptedAt = null;
+      s.voids++; s.strict = true; s.liveClicked = false; s.fromBehindAt = null;
+      invalidated = true;
+    }
+    const eligible = !!clock.live && !clock.paused && !!o.edge && clock.liveHead !== false;
+    if (!eligible) {
+      s.stableSince = null; s.cand = []; s.committed = false;
+      s.prevBehind = !!clock.live && clock.liveHead === false;
+      return { state: s, invalidated };
+    }
+    s.prevBehind = false;
+    if (clock.liveHead === true && s.fromBehindAt != null && now - s.fromBehindAt <= 3000) s.liveClicked = true;
+    if (s.stableSince == null) s.stableSince = now;
+    if (now - s.lastAt >= 1000) { s.cand = s.cand.concat([wallSample(clock)]); s.lastAt = now; }
+    const need = clock.liveHead === true && (!s.strict || s.liveClicked) ? stableMs : strictMs;
+    if (now - s.stableSince >= need && s.cand.length) {
+      if (!s.committed) { s.prevWallA = s.wallA; s.samples = []; s.acceptedAt = now; s.committed = true; }
+      const all = s.samples.concat(s.cand);
+      s.samples = all.length > maxN ? all.slice(all.length - maxN) : all;
+      s.cand = [];
+      s.wallA = median(s.samples);
+      s.strict = false;
+    }
+    return { state: s, invalidated };
+  }
   function wallTarget(clock, wallA, latencySec) {
     if (typeof wallA !== 'number') return null;
     return wallA + clock.currentTime * 1000 - (latencySec || 0) * 1000;
@@ -496,6 +546,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

@@ -107,6 +107,13 @@
     await until(() => last().liveHead === true && last().badge === 'disabled', 2000, '徽章：在最新');
     badge.disabled = false;
     await until(() => last().liveHead === false && last().badge === 'behind', 2000, '徽章：不在最新');
+    // v47（T5.6，審查十一 26.2）網址帶 t=（或 start=、#t=）→ urlT: true
+    eq(last().urlT, false, '網址沒有 t=');
+    const href0 = location.href;
+    history.replaceState(null, '', location.pathname + '?v=x&t=600s');
+    await until(() => last().urlT === true, 2000, 'urlT');
+    history.replaceState(null, '', href0);
+    await until(() => last().urlT === false, 2000, 'urlT 還原');
     player.remove();
     info = { isLiveBroadcast: false, endDate: null }; vs.seek = null;
   });

@@ -37,10 +37,20 @@
   let info = { isLiveBroadcast: false, endDate: NOW - 86400e3 + 3000e3 };
   const video = document.querySelector('video');
   const vs = { t: 0, dur: 3000, seek: null, paused: false };
-  Object.defineProperty(video, 'currentTime', { get: () => vs.t, set: (v) => { vs.t = v; video.dispatchEvent(new Event('seeked')); } });
+  // v47（T5.6，審查十一 26.2）直播：播放器「直播」徽章（在最新時帶 liveHeadClass）＋ 直播中時間前進（錨點要穩定 3 秒才採用）
+  const player = document.createElement('div');
+  player.className = 'html5-video-player';
+  const badge = document.createElement('button');
+  badge.className = 'ytp-live-badge'; badge.textContent = 'LIVE';
+  player.appendChild(badge);
+  document.body.appendChild(player);
+  const syncBadge = () => { badge.classList.toggle(S.top.liveHeadClass, !!vs.seek && vs.t >= vs.seek[1] - 5); };
+  Object.defineProperty(video, 'currentTime', { get: () => vs.t, set: (v) => { vs.t = v; syncBadge(); video.dispatchEvent(new Event('seeked')); } });
   Object.defineProperty(video, 'duration', { get: () => vs.dur });
   Object.defineProperty(video, 'paused', { get: () => vs.paused });
   Object.defineProperty(video, 'seekable', { get: () => (vs.seek ? { length: 1, start: () => vs.seek[0], end: () => vs.seek[1] } : { length: 0 }) });
+  setInterval(() => { if (vs.seek && !vs.paused) { vs.t += 0.25; vs.seek[1] += 0.25; syncBadge(); } }, 250);
+  const edge = () => vs.seek[1] - 1;
 
   const panelFrame = () => { const p = document.getElementById(P.PANEL_ID); return p && p.querySelector('iframe'); };
   const vw = () => { const f = panelFrame(); try { return f && f.contentWindow && f.contentWindow.location.hostname === '127.0.0.1' ? f.contentWindow : null; } catch (_) { return null; } };
@@ -114,36 +124,39 @@
     eq(viewer().state.mode, 'tail');
     const fs = () => { const l = vd().querySelector('.list'); return JSON.stringify({ follow: viewer().state.vl.follow, loading: viewer().state.loading, items: viewer().state.items.length, top: l.scrollTop, max: l.scrollHeight - l.clientHeight, loads: viewer().state.diag.loads }); };
     await until(() => viewer().state.vl.follow, 1500, () => '跟隨到底 ' + fs());
-    video.currentTime = 3000; // 倒轉 600 秒
+    // v47（26.2）錨點：徽章「最新」穩定 3 秒才採用；採用後 5 秒內倒轉到非最新會作廢 → 等採用後再過 5 秒
+    await until(() => viewer().state.wallA != null, 6000, () => '錨點 ' + JSON.stringify(viewer().state.anchor));
+    await sleep(5300);
+    video.currentTime = vs.t - 600; // 倒轉 600 秒
     await until(() => viewer().state.mode === 'sync' && cur(), 4000, () => '倒轉後 ' + diag());
     const m = liveMsgs.find((x) => x.id === cur());
-    const target = NOW - 600e3;
+    const target = Date.now() - 600e3;
     assert(m && Math.abs(m.timestampAbs - target) <= 15e3, '同步到約 10 分鐘前：' + cur());
-    video.currentTime = 3599; // 回到直播邊緣
+    video.currentTime = edge(); // 回到直播邊緣
     await until(() => viewer().state.mode === 'tail' && !cur(), 4000, () => '回到最新 ' + diag());
     assert(viewer().state.vl.follow, '恢復跟隨到底');
   });
 
   // T5.2（審查十一 16.3）：v42 在直播 sync 中只要捲動過一次，之後的倒轉都不會再捲動（syncPaused 沒有解除）
   test('T5.2 直播：sync 中先手動捲動、再 seek（每次倒轉 1 分鐘）→ 面板跳到新位置', async () => {
-    const near = (back) => { const m = liveMsgs.find((x) => x.id === viewer().state.currentId); return !!m && Math.abs(m.timestampAbs - (NOW - back * 1000)) <= 15e3; };
+    const near = (back) => { const m = liveMsgs.find((x) => x.id === viewer().state.currentId); return !!m && Math.abs(m.timestampAbs - (Date.now() - back * 1000)) <= 15e3; };
     const visible = () => {
       const list = vd().querySelector('.list'), row = vd().querySelector('.vrow > .current');
       if (!row) return false;
       const lr = list.getBoundingClientRect(), rr = row.getBoundingClientRect();
       return rr.bottom > lr.top && rr.top < lr.bottom;
     };
-    video.currentTime = 3599 - 300; // 倒轉 5 分鐘
+    video.currentTime = edge() - 300; // 倒轉 5 分鐘
     await until(() => viewer().state.mode === 'sync' && near(300), 4000, () => '倒轉 5 分鐘 ' + diag());
     for (const back of [360, 420]) {
       userScrollTop(0);
       await until(() => viewer().state.syncPaused, 3000, () => '捲動 → 暫停 ' + diag());
-      video.currentTime = 3599 - back; // 再倒轉 1 分鐘（seeked）
+      video.currentTime = edge() - back; // 再倒轉 1 分鐘（seeked）
       await until(() => !viewer().state.syncPaused && near(back) && visible(), 4000, () => '倒轉後應跳到新位置 ' + back + ' ' + viewer().state.currentId + ' ' + diag());
       assert(vd().querySelector('.resume').hidden, '不再顯示「回到播放位置」');
     }
     assert(viewer().state.diag.seeks >= 3, 'seeked 次數 ' + viewer().state.diag.seeks);
-    video.currentTime = 3599; // 回到最新
+    video.currentTime = edge(); // 回到最新
     await until(() => viewer().state.mode === 'tail' && viewer().state.vl.follow, 4000, () => '回到最新 ' + diag());
   });
 

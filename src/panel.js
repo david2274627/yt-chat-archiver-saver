@@ -361,7 +361,14 @@
       const head = live ? liveHead() : { liveHead: null, badge: 'n/a' };
       // v43（T5.2）：seeks＝video 的 seeked 事件累計次數（面板據此解除同步暫停）；liveHead／badge＝「直播」徽章的判定（待實機確認）
       return { currentTime: v.currentTime, paused: !!v.paused, duration: dur, seekStart, seekEnd, live, at: Date.now(),
-        seeks: st.seeks || 0, liveHead: head.liveHead, badge: head.badge };
+        seeks: st.seeks || 0, liveHead: head.liveHead, badge: head.badge, urlT: live && urlHasT() };
+    }
+    // v47（T5.6，審查十一 26.2）網址帶 t=／start=（查詢字串或 #t=）：面板的第一個錨點要等使用者點過「直播」或穩定 10 秒
+    function urlHasT() {
+      try {
+        const u = new URL(win.location.href);
+        return u.searchParams.has('t') || u.searchParams.has('start') || /(^|[#&])t=/.test(u.hash.slice(1));
+      } catch (_) { return false; }
     }
     // 「直播」徽章：在最新時不可點（disabled 或 liveHeadClass）。找不到或沒顯示 → null（面板改用延遲基準判斷）
     function liveHead() {

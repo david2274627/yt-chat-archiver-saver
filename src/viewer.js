@@ -208,7 +208,7 @@
       // v44（T5.3 (L)）直播：倒轉時的錨點、同步微調（直播延遲，秒；依頻道記住）、記住的基準（進入頁面時已不在最新用）、seekEnd 前進速度
       latency: 0, latencyFrom: 'default', liveSync: null, seekEndRate: null,
       // v45（T5.4，審查十一 20.2）直播牆上時間錨點：在最新時的 now − currentTime×1000 樣本（ms）與其中位數 A；本頁沒量過時為 null
-      wallSamples: [], wallA: null, lastWallAt: 0,
+      wallSamples: [], wallA: null, lastWallAt: 0, anchor: null, // v47（26.2）anchor：CORE.anchorStep 的狀態
       // v46（T5.5，第 23 節）同步提示的種類與本頁已關閉的種類
       hintKind: '', hintOff: new Set(),
     };
@@ -414,8 +414,11 @@
           sync.push('延遲 ' + (lag == null ? '—' : lag.toFixed(1) + ' 秒') + '（基準 ' + (S.baseline == null ? '—' : S.baseline.toFixed(1)) + '）');
           sync.push('徽章 ' + (BADGE_NAME[c.badge] || '—'));
           // v45（T5.4，20.2）牆上時間錨點：樣本數與範圍（在最新期間應在數秒內）；沒量過時提示先回到最新
+          // v47（26.2）：等待穩定中的候選樣本數、作廢次數、網址帶 t= 時的嚴格模式
           const ws = S.wallSamples || [];
-          sync.push(S.wallA == null ? '錨點 未量（請先點「直播」回到最新）' : '錨點 ' + ws.length + ' 樣本、範圍 ' + ((Math.max(...ws) - Math.min(...ws)) / 1000).toFixed(1) + ' 秒');
+          const an = S.anchor || {};
+          const extra = (an.cand && an.cand.length ? '、候選 ' + an.cand.length : '') + (an.voids ? '、作廢 ' + an.voids + ' 次' : '') + (an.strict ? '、等點「直播」' : '');
+          sync.push((S.wallA == null ? '錨點 未量（請先點「直播」回到最新）' : '錨點 ' + ws.length + ' 樣本、範圍 ' + (ws.length ? (Math.max(...ws) - Math.min(...ws)) / 1000 : 0).toFixed(1) + ' 秒') + extra);
           // v44（T5.3 (L)）同步微調與 seekEnd 前進速度（每秒，正常約 1.00；只供參考，同步不再使用 seekEnd）
           sync.push('同步微調 ' + latLabel() + '（' + ({ channel: '本頻道', last: '沿用上次', default: '預設' }[S.latencyFrom] || '') + '）');
           if (S.seekEndRate != null) sync.push('seekEnd 速度 ' + S.seekEndRate.toFixed(2));
@@ -976,7 +979,8 @@
       const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
       S.clock = { currentTime: c.currentTime, paused: !!c.paused, duration: num(c.duration), seekStart: num(c.seekStart), seekEnd: num(c.seekEnd),
         live: !!c.live, at: num(c.at) || Date.now(), liveHead: c.liveHead === true || c.liveHead === false ? c.liveHead : null,
-        badge: typeof c.badge === 'string' ? c.badge.slice(0, 16) : null };
+        badge: typeof c.badge === 'string' ? c.badge.slice(0, 16) : null, urlT: c.urlT === true, seeks: num(c.seeks) };
+      let anchorEv = ''; // v47（26.2）P10 事件
       // v43（T5.2，審查十一 16.3）使用者在播放器上跳轉 → 視為要求重新跟隨，解除「同步暫停」。
       // 依據：top 的 seeked 累計次數（seeks）有變化；或播放位置與預期（上一次＋經過時間）差超過 SEEK_JUMP_SEC（seeked 沒觸發時的後備）
       let seeked = false;
@@ -1001,14 +1005,17 @@
       // v45（T5.4，審查十一 20.2）牆上時間錨點：每次回到最新（從倒轉回來、或在最新時跳轉）重新量；
       // 在最新、播放中時每秒取一個樣本（最多 60 個），A＝中位數。倒轉中不更新。
       // 已知是待機室時不量（還沒開播，沒有意義）；場次還在載入時照常量（模式維持 tail，載入後若是直播即可使用）
+      // v47（T5.6，審查十一 26.2）有效條件與作廢規則見 CORE.anchorStep：徽章「最新」且播放中穩定 3 秒、期間沒有 seek；
+      // 採用後 5 秒內被 seek 到非最新就作廢並重新提示；網址帶 t= 時等使用者點過「直播」或穩定 10 秒
       if (S.clock.live && !(S.stream && waiting())) {
-        if (liveChanged || (mode === 'tail' && (S.mode !== 'tail' || seeked))) { S.wallSamples = []; S.lastWallAt = 0; }
-        if (mode === 'tail' && !S.clock.paused && S.clock.at - S.lastWallAt >= 1000) {
-          S.wallSamples = CORE.nextWallSamples(S.wallSamples, S.clock, C.PANEL.WALL_ANCHOR_SAMPLES);
-          S.lastWallAt = S.clock.at;
-          S.wallA = CORE.median(S.wallSamples);
-        }
-      } else { S.wallSamples = []; S.wallA = null; S.lastWallAt = 0; }
+        if (!S.anchor || liveChanged) S.anchor = CORE.anchorInit(c.urlT === true);
+        const acc0 = S.anchor.acceptedAt;
+        const r = CORE.anchorStep(S.anchor, S.clock, { seeked, edge: CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline),
+          stableMs: C.PANEL.ANCHOR_STABLE_MS, guardMs: C.PANEL.ANCHOR_GUARD_MS, strictMs: C.PANEL.ANCHOR_URL_T_MS, maxN: C.PANEL.WALL_ANCHOR_SAMPLES });
+        S.anchor = r.state; S.wallA = r.state.wallA; S.wallSamples = r.state.samples;
+        if (r.invalidated) S.hintOff.delete('anchor'); // 作廢：重新顯示「請先點直播…」（即使先前按過 ✕）
+        anchorEv = r.invalidated ? 'anchor-void' : r.state.acceptedAt != null && r.state.acceptedAt !== acc0 ? 'anchor-ok' : seeked ? 'live-seek' : '';
+      } else { S.anchor = null; S.wallSamples = []; S.wallA = null; S.lastWallAt = 0; }
       if (setMode(mode)) { /* 已切換 */ } else if (seeked && mode === 'sync') setResume(false);
       else if (seeked && mode === 'tail' && S.clock.live) S.vl.toBottom(); // 跳回最新：回到跟隨到底
       // seekEnd 前進速度（連線狀態參考用；同步不使用 seekEnd）
@@ -1020,9 +1027,9 @@
       } else S.seekEndRate = null;
       // 時間碼的可點與文字依 clock 而定：重新繪製可見列；VOD 排序改變時重新套用（T5.3 (K)）
       if (vodOrder() !== S.sortedVod && !S.loading) apply({ reset: true });
-      else if (first || liveChanged) S.vl.refresh();
+      else if (first || liveChanged || anchorEv === 'anchor-ok' || anchorEv === 'anchor-void') S.vl.refresh(); // v47：錨點採用／作廢 → 時間碼可點與否改變
       if (mode === 'sync') doSync(!first && !seeked);
-      if (S.clock.live && embed) p10Tick();
+      if (S.clock.live && embed) { if (anchorEv) p10Tick(anchorEv); p10Tick(); }
     }
 
     // ---------------- T5：版本（F-18）與連結影片（F-18 第 6 點）
@@ -1397,16 +1404,21 @@
       if (!c || !c.live) return null;
       return { now: c.at, currentTime: Math.round(c.currentTime * 1000) / 1000, seekStart: c.seekStart, seekEnd: c.seekEnd,
         badge: c.badge || null, liveHead: c.liveHead, paused: c.paused, mode: S.mode, wallA: Math.round(c.at - c.currentTime * 1000),
-        anchorA: S.wallA != null ? Math.round(S.wallA) : null, anchorN: S.wallSamples ? S.wallSamples.length : 0, latency: S.latency };
+        anchorA: S.wallA != null ? Math.round(S.wallA) : null, anchorN: S.wallSamples ? S.wallSamples.length : 0, latency: S.latency,
+        // v47（26.2）候選樣本數、作廢次數、嚴格模式（網址帶 t=）、本次 seeked 累計
+        anchorCand: S.anchor && S.anchor.cand ? S.anchor.cand.length : 0, anchorVoids: S.anchor ? S.anchor.voids : 0,
+        anchorStrict: !!(S.anchor && S.anchor.strict), urlT: c.urlT === true, seeks: typeof c.seeks === 'number' ? c.seeks : null };
     }
-    function p10Tick() {
+    // v47（26.2 第 4 點）事件（seek、錨點採用、錨點作廢）立即記一筆（kind 'live-seek'／'anchor-ok'／'anchor-void'），
+    // 用來以時間序列確認「&t= 載入時先在最新、之後才跳」
+    function p10Tick(ev) {
       if (!probeOn('P10') || !S.clock) return;
       // 間隔依播放器時間的取樣時刻（at）計算
-      if (Math.abs(S.clock.at - lastP10) < DG.P10_SEC * 1000 - 200) return;
+      if (!ev && Math.abs(S.clock.at - lastP10) < DG.P10_SEC * 1000 - 200) return;
       const d = p10Sample();
       if (!d) return;
-      lastP10 = S.clock.at;
-      diagSend({ ts: lastP10, probe: 'P10', kind: 'live-clock', ctx: { env: 'panel', videoId: S.link ? S.link.orig : S.videoId }, data: d });
+      if (!ev) lastP10 = S.clock.at;
+      diagSend({ ts: S.clock.at, probe: 'P10', kind: ev || 'live-clock', ctx: { env: 'panel', videoId: S.link ? S.link.orig : S.videoId }, data: d });
     }
     function p9Sample() {
       const pm = (typeof performance !== 'undefined' && performance.memory) || null;
