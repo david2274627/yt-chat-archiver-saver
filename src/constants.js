@@ -157,6 +157,8 @@
       WALL_ANCHOR_SAMPLES: 60,
       // v45（審查十一 20.3）面板頭像快取上限（同場次同作者的後備；LRU）
       AVATAR_CACHE_MAX: 2000,
+      // v46（T5.5，審查十一第 23 節）「↓ 恢復自動捲動／回到播放位置」顯示時清單底部的留白（按鈕高度＋上下間距）
+      RESUME_PAD_PX: 44,
     }),
     // v29：chat frame 等 STREAM_INFO 的重送間隔與上限
     STREAM_INFO_RETRY_MS: 1000,

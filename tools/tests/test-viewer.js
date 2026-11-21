@@ -490,7 +490,7 @@
     // 倒轉到最早收錄的訊息之前 → 提示
     seeks++; tick(40 + 3600);
     await frame();
-    const hint = c.els.list.parentElement.querySelector('.sync-hint');
+    const hint = c.els.syncHint;
     assert(hint && !hint.hidden && hint.textContent.includes('之前沒有收錄'), '範圍外提示 ' + (hint && hint.textContent));
     // 連線狀態：模式、延遲與基準、seeked、目標 → 訊息
     c.els.moreBtn.click();
@@ -665,7 +665,7 @@
       tick(behind, 0); await frame();
       eq(c.state.mode, 'sync');
       eq([c.state.wallA, c.state.currentId], [null, null]);
-      const hint = c.els.list.parentElement.querySelector('.sync-hint');
+      const hint = c.els.syncHint;
       assert(hint && !hint.hidden && hint.textContent.includes('請先點播放器的「直播」回到最新一次'), '提示 ' + (hint && hint.textContent));
       const tcb = c.els.list.querySelector('.vrow .tc');
       assert(tcb && tcb.tagName === 'SPAN', '沒量過錨點：時間碼不可點');
@@ -695,8 +695,118 @@
     await frame();
     eq(c.state.mode, 'tail', '待機室：跟隨到底');
     assert(c.els.latBox.hidden, '待機室不顯示同步微調');
-    const hint = c.els.list.parentElement.querySelector('.sync-hint');
+    const hint = c.els.syncHint;
     assert(hint.hidden, '不提示回到最新');
+  });
+
+  // ================================================================ T5.5（審查十一第 23 節）
+  test('T5.5 待機室判定（第 23 節第 2 點）：預告／倒數影片 currentTime 前進＋徽章「非最新」、場次沒有預定時間但訊息全是 pre、播放器時間比資料先到、回報 live: false，都不同步', () => {
+    const pre = [0, 1].map((i) => ({ m: mk({ id: 'p' + i, phase: 'pre' }) }));
+    const live = [{ m: mk({ id: 'l0', phase: 'live' }) }];
+    const notice = [{ m: mk({ id: 'ytcas-ve-x', type: 'system', phase: 'live' }) }];
+    eq(CORE.isWaitingRoom(null, []), true, '場次還沒載入');
+    eq(CORE.isWaitingRoom({ scheduledStartAt: T0 }, live), true, '有預定時間、還沒開播');
+    eq(CORE.isWaitingRoom({ startPending: true, scheduledStartAt: T0 }, live), true, '等待開播確認');
+    eq(CORE.isWaitingRoom({ startedAt: T0 }, pre), false, '已開播');
+    eq(CORE.isWaitingRoom({ startedAt: T0, endedAt: T0 + 1 }, pre), false, '已結束');
+    eq(CORE.isWaitingRoom({ videoId: 'x' }, pre.concat(notice)), true, '沒有開播／預定時間：訊息全是 pre（提示不算）');
+    eq(CORE.isWaitingRoom({ videoId: 'x' }, pre.concat(live)), false, '有 live 訊息');
+    eq(CORE.isWaitingRoom({ videoId: 'x' }, []), false, '沒有任何資訊：視為直播中');
+  });
+
+  test('T5.5 待機室（第 23 節）：播放器時間比資料先到、預告影片 currentTime 前進＋「非最新」→ 不同步、不提示、沒有「回到播放位置」與 current 標記、時間碼不可點', async () => {
+    await resetDb();
+    const VW = 'vidWAITRM02';
+    const now = Date.now();
+    // 實機（第 23 節圖1）：場次沒有記到預定開播時間，訊息在收錄時判定為 pre
+    await put({ videoId: VW, title: 'wait2', isLive: true, startedAt: null, lastMessageAt: now, messageCount: 15, versions: [], linkedVideos: [] },
+      Array.from({ length: 15 }, (_, i) => mk({ id: 'wq' + i, videoId: VW, phase: 'pre', timestampAbs: now - (15 - i) * 3600e3, videoOffsetSec: null })));
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VW });
+    // 載入完成前就收到播放器時間（v45：場次未知 → 當成直播中 → sync，之後播放器不再回報就一直停在 sync）
+    c._onClock({ currentTime: 30, paused: false, duration: 120, seekStart: 0, seekEnd: 3600, live: true, at: now, liveHead: false, badge: 'behind' });
+    await c.ready; await frame(); await frame();
+    eq(c.state.mode, 'tail', '載入後依場次重新決定模式');
+    let t = now, ct = 30;
+    for (let k = 0; k < 10; k++) { t += 1000; ct += 1; c._onClock({ currentTime: ct, paused: false, duration: 120, seekStart: 0, seekEnd: 3600, live: true, at: t, liveHead: false, badge: 'behind' }); }
+    await frame();
+    eq([c.state.mode, c.state.currentId, c.state.wallA], ['tail', null, null], '待機室：不同步、不量錨點');
+    assert(c.els.syncHint.hidden && c.els.latBox.hidden, '不顯示提示與同步微調');
+    assert(c.els.resume.hidden || !/回到播放位置/.test(c.els.resume.textContent), '沒有「回到播放位置」');
+    assert(!c.els.list.querySelector('.current'), '沒有 current 標記');
+    const tc = c.els.list.querySelector('.vrow .tc');
+    assert(tc && tc.tagName === 'SPAN' && /待機室/.test(tc.title), '時間碼不可點並說明 ' + (tc && tc.title));
+    // 預告影片回報 live: false（VOD 形式）也不同步、不依 VOD 排序
+    c._onClock({ currentTime: 50, paused: false, duration: 120, live: false, at: t + 1000 });
+    await frame();
+    eq([c.state.mode, c.state.sortedVod], ['tail', false], 'live: false 也不同步');
+  });
+
+  test('T5.5 提示不得遮蓋清單與選單（第 23 節第 1 點、SPEC 10.1 原則 7）：同步提示是版面內的一列、文字完整可換行、✕ 本頁不再顯示；⋯ 選單在所有浮動元素之上；「回到播放位置」顯示時底部留白', async () => {
+    await resetDb();
+    const VL = 'vidHINTROW1';
+    const now = Date.now();
+    const msgs = [];
+    for (let i = 0; i < 200; i++) msgs.push(mk({ id: 'h' + i, videoId: VL, timestampAbs: now - (200 - i) * 5e3, videoOffsetSec: 50000 + i * 5 }));
+    await put({ videoId: VL, title: 'H', isLive: true, startedAt: now - 86400e3, lastMessageAt: now, messageCount: 200, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    host.style.width = '340px';
+    try {
+      const c = V.mount(host, { embed: true, videoId: VL });
+      await c.ready; await frame();
+      let t = now, ct = 5000;
+      const tick = (o, dt) => { dt = dt == null ? 1000 : dt; t += dt; ct += dt / 1000; c._onClock(Object.assign({ currentTime: ct, paused: false, seekStart: 0, seekEnd: 9000, live: true, at: t, liveHead: false, badge: 'behind' }, o)); };
+      tick(null, 0); await frame(); await frame();
+      const hint = c.els.syncHint;
+      assert(!hint.hidden && hint.textContent.includes('請先點播放器的「直播」回到最新一次，藍框才能對齊（本頁還沒量過直播的時間基準）'), '提示文字完整 ' + hint.textContent);
+      // 版面內：不在清單容器裡、不是 absolute／fixed、位在清單上方（把清單往下推，兩者不重疊）
+      const cs = getComputedStyle(hint);
+      assert(!c.els.list.parentElement.contains(hint) && cs.position !== 'absolute' && cs.position !== 'fixed', '版面內的一列 ' + cs.position);
+      assert(cs.whiteSpace !== 'nowrap' && cs.textOverflow !== 'ellipsis', '可換行、不截斷');
+      const hr = hint.getBoundingClientRect(), lr = c.els.list.getBoundingClientRect();
+      assert(hr.bottom <= lr.top + 0.5, '提示在清單上方、不重疊 ' + [hr.bottom, lr.top]);
+      const span = hint.querySelector('span');
+      assert(span.scrollWidth <= span.clientWidth + 1 && hr.height > 20, '340px 寬時換行顯示、沒有被截斷 ' + [span.scrollWidth, span.clientWidth, hr.height]);
+      // ⋯ 選單開著時：選單在提示與清單之上（點選單中央，最上層的元素屬於選單）
+      c.els.moreBtn.click();
+      // 面板內所有 absolute／fixed 元素：z-index 低於選單（清單列 .vrow 在清單自己的捲動容器內）。
+      // 不用 elementFromPoint：測試分頁在背景時可視範圍為 0
+      const mz = Number(getComputedStyle(c.els.menu).zIndex);
+      assert(!c.els.menu.hidden && mz >= 10, '選單開著且在最上層 ' + mz);
+      // 提示列與選單同時顯示時：提示列不是定位元素，不會蓋在選單上
+      eq(getComputedStyle(hint).zIndex, 'auto');
+      for (const n of c.els.panel.querySelectorAll('*')) {
+        if (n === c.els.menu || c.els.menu.contains(n) || n.closest('.vspace')) continue;
+        const s = getComputedStyle(n);
+        if (s.position === 'fixed') throw new Error('不得使用 position: fixed：' + n.className);
+        if (s.position === 'absolute' && s.zIndex !== 'auto') assert(Number(s.zIndex) < mz, n.className + ' 的 z-index ' + s.zIndex + ' 不低於選單 ' + mz);
+      }
+      document.body.click();
+      // ✕ 關閉：本頁不再顯示同一種提示
+      hint.querySelector('.note-x').click();
+      assert(hint.hidden, '關閉');
+      tick(); tick(); await frame();
+      assert(hint.hidden, '同一種提示本頁不再顯示');
+      // 「↓ 回到播放位置」：回到最新、量錨點、倒轉、使用者捲動 → 顯示，清單底部留出等高空白，最後一列不被按鈕遮住
+      tick({ liveHead: true, badge: 'class', seeks: 1 }, 0);
+      for (let k = 0; k < 3; k++) tick({ liveHead: true, badge: 'class', seeks: 1 });
+      ct -= 120; tick({ seeks: 2 }, 0); await frame(); await frame();
+      eq(c.state.mode, 'sync');
+      c.els.list.dispatchEvent(new Event('wheel'));
+      c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
+      eq(c.state.syncPaused, true, '使用者捲動 → 同步暫停 ' + c.state.currentId);
+      assert(!c.els.resume.hidden && /回到播放位置/.test(c.els.resume.textContent), '顯示「回到播放位置」');
+      eq(c.state.vl.padBottom, self.YTCAS_CONST.PANEL.RESUME_PAD_PX, '底部留白');
+      c.els.list.dispatchEvent(new Event('wheel'));
+      c.els.list.scrollTop = c.els.list.scrollHeight; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
+      const rows = c.els.list.querySelectorAll('.vrow');
+      let lastRow = rows[0];
+      for (const r of rows) if (parseFloat(r.style.top) > parseFloat(lastRow.style.top)) lastRow = r;
+      const br = c.els.resume.getBoundingClientRect(), rr = lastRow.getBoundingClientRect();
+      assert(rr.bottom <= br.top + 0.5, '捲到最底時最後一則在按鈕上方 ' + [rr.bottom, br.top]);
+      c.els.resume.click(); await frame();
+      eq(c.state.vl.padBottom, 0, '按鈕隱藏後取消留白');
+    } finally { host.style.width = ''; }
   });
 
   test('T5.4 禮物顯示（20.4）：送禮者從內文推出時顯示為名稱、內文去掉開頭的 @handle；@handle 連結一律指向 youtube.com/@handle', async () => {

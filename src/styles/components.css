@@ -42,7 +42,7 @@ button { font: inherit; color: inherit; }
 .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ytcas-danger); margin-right: 4px; }
 
 /* ⋯ 選單（只出現在面板內，10.1 原則 6） */
-.menu { position: absolute; z-index: 2; right: 8px; top: 40px; min-width: 210px; padding: 4px; background: var(--ytcas-surface);
+.menu { position: absolute; z-index: 10; right: 8px; top: 40px; min-width: 210px; padding: 4px; background: var(--ytcas-surface);
   border-radius: var(--ytcas-radius-sm); box-shadow: var(--ytcas-shadow-2); }
 .menu button { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 10px; border: 0; background: transparent;
   border-radius: 6px; cursor: pointer; text-align: left; }
@@ -139,13 +139,11 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
 .phase::before, .phase::after { content: ""; flex: 1; border-top: 1px solid var(--ytcas-border); }
 .phase span { padding: 1px 8px; border-radius: var(--ytcas-radius-pill); background: var(--ytcas-surface-2); white-space: nowrap; }
 
-.resume { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: var(--ytcas-accent); color: var(--ytcas-on-accent);
+/* 「↓ 恢復自動捲動／回到播放位置」：面板內唯一浮在清單上的元素。顯示時清單底部留出等高空白（PANEL.RESUME_PAD_PX），
+   z-index 低於 ⋯ 選單（SPEC 10.1 原則 7：提示不得遮蓋聊天內容與選單） */
+.resume { position: absolute; z-index: 1; left: 50%; bottom: 8px; transform: translateX(-50%); background: var(--ytcas-accent); color: var(--ytcas-on-accent);
   border: 0; border-radius: var(--ytcas-radius-pill); padding: 5px 14px; font-weight: 700; font-size: var(--ytcas-fs-sm); box-shadow: var(--ytcas-shadow-2); cursor: pointer; white-space: nowrap; }
-/* v43（T5.2）直播倒轉到最早收錄之前的提示（面板內，absolute） */
-.sync-hint { position: absolute; left: 8px; right: 8px; top: 8px; z-index: 2; background: var(--ytcas-surface-2); color: var(--ytcas-text-2);
-  border-radius: var(--ytcas-radius-pill); padding: 4px 12px; font-size: var(--ytcas-fs-sm); text-align: center; box-shadow: var(--ytcas-shadow-2);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-.sync-hint[hidden] { display: none; }
+/* v46（T5.5，審查十一第 23 節）同步提示：版面內的一列（.p-note），不再浮在清單上；文字換行、不截斷 */
 .empty { display: grid; place-items: center; gap: 6px; padding: var(--ytcas-space-6); color: var(--ytcas-text-3); text-align: center; }
 .empty .ico { width: 40px; height: 40px; border-radius: 50%; background: var(--ytcas-surface-2); display: grid; place-items: center; font-size: 18px; }
 

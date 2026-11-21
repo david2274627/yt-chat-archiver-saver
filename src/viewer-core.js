@@ -251,6 +251,24 @@
     keyed.sort((a, b) => (a.r - b.r) || (a.k - b.k) || (a.i - b.i));
     return keyed.map((x) => x.it);
   }
+  // v46（T5.5，審查十一第 23 節第 2 點）待機室：不論播放器回報什麼（待機室的播放器可能在播預告／倒數，currentTime 會走、
+  // 徽章顯示「非最新」）一律不做時間軸同步。判定只看場次與訊息：
+  //   場次還沒載入 → 視為待機室（保守，不同步）；已結束 → 否；等待開播確認 → 是；已開播 → 否；
+  //   沒有開播時間但有預定開播時間 → 是；兩者都沒有（場次資訊抓取失敗）→ 有訊息且全部是 pre（收錄時判定為待機室）→ 是
+  function isWaitingRoom(stream, items) {
+    if (!stream) return true;
+    if (stream.endedAt != null) return false;
+    if (stream.startPending) return true;
+    if (stream.startedAt != null) return false;
+    if (stream.scheduledStartAt != null) return true;
+    let pre = 0;
+    for (const it of items || []) {
+      const p = phaseOf(it && it.m ? it.m : it);
+      if (p === 'pre') pre++;
+      else if (p !== 'notice') return false;
+    }
+    return pre > 0;
+  }
   function videoTimeOf(m, clock, o) {
     if (!m || !clock || phaseOf(m) !== 'live') return null;
     if (clock.live) {
@@ -438,6 +456,6 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

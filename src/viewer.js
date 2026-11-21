@@ -43,6 +43,7 @@
     let onFollow = null;
     let onUserScroll = null;
     let width = 0;
+    let pad = 0; // v46（第 23 節）底部留白（浮動的「↓ 恢復自動捲動／回到播放位置」顯示時），最後一則不被遮住
     let smoothUntil = 0; // T5：時間軸同步的平滑捲動中（到達目標、使用者操作或 2 秒逾時前），捲動事件不視為使用者捲動
 
     const keyOf = (e) => e.key;
@@ -51,7 +52,7 @@
       const n = entries.length;
       off = new Float64Array(n + 1);
       for (let i = 0; i < n; i++) off[i + 1] = off[i] + hOf(i);
-      space.style.height = off[n] + 'px';
+      space.style.height = (off[n] + pad) + 'px';
     }
     function find(y) { // 最後一個 off[i] <= y 的 i
       let lo = 0, hi = entries.length - 1;
@@ -59,7 +60,7 @@
       while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (off[mid] <= y) lo = mid; else hi = mid - 1; }
       return lo;
     }
-    const maxTop = () => Math.max(0, off[entries.length] - scroller.clientHeight);
+    const maxTop = () => Math.max(0, off[entries.length] + pad - scroller.clientHeight);
     function setTop(y) { progTop = Math.round(Math.min(maxTop(), Math.max(0, y))); scroller.scrollTop = progTop; }
 
     function draw() {
@@ -161,7 +162,7 @@
       reveal(i, smooth) {
         if (i < 0 || i >= entries.length) return;
         if (follow) { follow = false; if (onFollow) onFollow(false); }
-        const y = Math.round(Math.min(maxTop(), Math.max(0, off[i + 1] - scroller.clientHeight + 8)));
+        const y = Math.round(Math.min(maxTop(), Math.max(0, off[i + 1] + pad - scroller.clientHeight + 8)));
         if (Math.abs(y - scroller.scrollTop) < 2) { draw(); return; }
         if (smooth && Math.abs(y - scroller.scrollTop) <= (C.PANEL ? C.PANEL.SYNC_SMOOTH_MAX_PX : 1500) && scroller.scrollTo) {
           smoothUntil = Date.now() + 2000;
@@ -171,6 +172,8 @@
         } else { setTop(y); draw(); }
       },
       setFollow(v) { if (follow !== !!v) { follow = !!v; if (onFollow) onFollow(follow); } },
+      setPadBottom(px) { px = Math.max(0, px | 0); if (px === pad) return; pad = px; rebuild(); schedule(); },
+      get padBottom() { return pad; },
       get follow() { return follow; },
       set onFollow(f) { onFollow = f; },
       set onUserScroll(f) { onUserScroll = f; },
@@ -206,6 +209,8 @@
       latency: 0, latencyFrom: 'default', liveSync: null, seekEndRate: null,
       // v45（T5.4，審查十一 20.2）直播牆上時間錨點：在最新時的 now − currentTime×1000 樣本（ms）與其中位數 A；本頁沒量過時為 null
       wallSamples: [], wallA: null, lastWallAt: 0,
+      // v46（T5.5，第 23 節）同步提示的種類與本頁已關閉的種類
+      hintKind: '', hintOff: new Set(),
     };
 
     // ---------------- 版面
@@ -323,20 +328,32 @@
     list.setAttribute('role', 'log'); list.setAttribute('aria-label', '聊天訊息'); list.tabIndex = 0;
     const empty = el('div', 'empty'); empty.hidden = true;
     const resume = el('button', 'resume', '↓ 恢復自動捲動'); resume.type = 'button'; resume.hidden = true;
-    const syncHint = el('div', 'sync-hint'); syncHint.hidden = true; syncHint.setAttribute('role', 'status');
+    // v46（T5.5，審查十一第 23 節）同步提示（先回到最新／此時間點之前沒有收錄）：版面內的一列（與 F-12 說明列相同），
+    // 把清單往下推，不浮在清單或 ⋯ 選單上；文字可換行、不截斷；✕ 關閉後本頁不再顯示同一種提示
+    const syncHint = el('div', 'p-note sync-hint'); syncHint.hidden = true; syncHint.setAttribute('role', 'status');
+    const hintText = el('span');
+    const hintX = el('button', 'note-x', '×'); hintX.type = 'button'; hintX.setAttribute('aria-label', '關閉提示（本頁不再顯示）');
+    hintX.addEventListener('click', () => { if (S.hintKind) S.hintOff.add(S.hintKind); syncHint.hidden = true; });
+    syncHint.append(hintText, hintX);
+    panel.appendChild(syncHint);
     const listWrap = el('div', 'list-wrap');
-    listWrap.append(list, empty, syncHint, resume);
+    listWrap.append(list, empty, resume);
     panel.appendChild(listWrap);
 
     S.vl = VList(list, renderEntry, estimate);
-    S.vl.onFollow = (f) => { resume.hidden = S.mode === 'sync' ? !S.syncPaused : (f || !S.items.length); };
+    // 「↓ 恢復自動捲動／回到播放位置」浮在清單底部：顯示時清單底部留出等高的空白，最後一則不會被遮住（第 23 節第 1 點）
+    function setResume(show) {
+      resume.hidden = !show;
+      S.vl.setPadBottom(show ? C.PANEL.RESUME_PAD_PX : 0);
+    }
+    S.vl.onFollow = (f) => { setResume(S.mode === 'sync' ? S.syncPaused : !(f || !S.items.length)); };
     // T5：時間軸同步中使用者自己捲動 → 暫停同步（F-08）
     S.vl.onUserScroll = () => {
       if (S.mode !== 'sync') return;
-      S.syncPaused = true; S.vl.setFollow(false); resume.hidden = false;
+      S.syncPaused = true; S.vl.setFollow(false); setResume(true);
     };
     resume.addEventListener('click', () => {
-      if (S.mode === 'sync') { S.syncPaused = false; resume.hidden = true; doSync(false); } else S.vl.toBottom();
+      if (S.mode === 'sync') { S.syncPaused = false; setResume(false); doSync(false); } else S.vl.toBottom();
     });
 
     function searchField(icon, placeholder, label) {
@@ -604,6 +621,7 @@
       const stat = (text, why) => { const s = el('span', 'tc static', text); if (why) s.title = why; return s; };
       const dur = vodDuration();
       if (embed && S.clock) {
+        if (waiting()) return stat(tc.text, '待機室（還沒開播），不能跳轉');
         const vt = CORE.videoTimeOf(m, S.clock, syncOpts());
         if (vt == null) return stat(tc.text, S.clock.live && S.wallA == null && CORE.phaseOf(m) === 'live' ? '先點播放器的「直播」回到最新一次，才能跳轉' : '');
         if (!CORE.inRange(vt, S.clock)) {
@@ -775,7 +793,7 @@
       if (S.mode === 'sync') o = Object.assign({}, o, { toBottom: false });
       S.vl.set(entries, o);
       showEmpty(entries.length ? null : (S.items.length ? 'nomatch' : 'none'));
-      resume.hidden = S.mode === 'sync' ? !S.syncPaused : (S.vl.follow || !entries.length);
+      setResume(S.mode === 'sync' ? S.syncPaused : !(S.vl.follow || !entries.length));
       renderMeta();
       if (S.mode === 'sync') doSync(false);
     }
@@ -787,10 +805,26 @@
       latency: S.latency, wallA: S.wallA,
       target: S.clock && S.clock.live && S.mode === 'sync' ? CORE.wallTarget(S.clock, S.wallA, S.latency) : undefined });
     // v45（審查十一 21.1）直播中：不是待機室（預定時間未到／等待開播確認）、也還沒結束
+    // v46（第 23 節第 2 點）待機室判定改用 CORE.isWaitingRoom：場次還沒載入、或沒有開播／預定時間但訊息全是 pre 也算待機室
+    const waiting = () => CORE.isWaitingRoom(S.stream, S.items);
     function onAir() {
-      const st = S.stream || {};
-      if (st.endedAt != null || st.startPending) return false;
-      return !(st.startedAt == null && st.scheduledStartAt != null);
+      if (waiting()) return false;
+      return !(S.stream && S.stream.endedAt != null);
+    }
+    // 依播放器時間與場次決定模式：待機室一律 tail（不論播放器回報 live 與否）；VOD → sync；直播在最新或不在直播中 → tail
+    function wantMode() {
+      if (!S.clock || waiting()) return 'tail';
+      if (!S.clock.live) return 'sync';
+      return !onAir() || CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline) ? 'tail' : 'sync';
+    }
+    function setMode(mode) {
+      if (mode === S.mode) return false;
+      S.mode = mode; S.syncPaused = false;
+      if (mode === 'tail') { setCurrent(null); setHint(''); S.diag.target = null; S.diag.targetMsg = null; resume.textContent = '↓ 恢復自動捲動'; S.vl.toBottom(); }
+      else resume.textContent = '↓ 回到播放位置';
+      setResume(false);
+      renderSub(); // 同步微調只在直播倒轉時顯示
+      return true;
     }
     // 「藍框提早／延後 N 秒」：提早＝−直播延遲
     function latLabel() {
@@ -836,7 +870,7 @@
     // v45（21.2 第 3 點）後台（獨立分頁）看已結束場次時也依同一規則（排序、校正後的影片時間、超出影片長度不可點），與面板一致
     function vodOrder() {
       if (S.ver && S.ver !== 'v1') return false;
-      if (embed) return !!(S.clock && !S.clock.live);
+      if (embed) return !!(S.clock && !S.clock.live) && !waiting();
       return !!(S.stream && S.stream.endedAt != null);
     }
     // 影片長度：面板用播放器回報的；後台用場次記錄的版本長度
@@ -847,9 +881,12 @@
       return v && typeof v.duration === 'number' ? v.duration : null;
     }
     // v43（16.1 (F)）直播倒轉到最早收錄的訊息之前：提示，不要看起來像停著不動
-    function setHint(text) {
-      if (syncHint.textContent !== text) syncHint.textContent = text;
-      syncHint.hidden = !text;
+    // v46（第 23 節）kind：'anchor'（先回到最新）／'range'（此時間點之前沒有收錄）；✕ 關閉過的種類本頁不再顯示
+    function setHint(text, kind) {
+      S.hintKind = text ? kind || 'other' : '';
+      const show = !!text && !S.hintOff.has(S.hintKind);
+      if (show && hintText.textContent !== text) hintText.textContent = text;
+      syncHint.hidden = !show;
     }
     function rowOf(id) {
       for (const n of list.querySelectorAll('.vrow > [data-id]')) if (n.dataset.id === id) return n;
@@ -887,14 +924,14 @@
       let hint = '';
       // v45（20.2 第 4 點）進入頁面時就不在最新、本頁沒量過錨點：提示先回到最新一次；清單不動
       if (S.clock.live && S.wallA == null) {
-        setHint('請先點播放器的「直播」回到最新一次，藍框才能對齊（本頁還沒量過直播的時間基準）');
+        setHint('請先點播放器的「直播」回到最新一次，藍框才能對齊（本頁還沒量過直播的時間基準）', 'anchor');
         return;
       }
       if (S.clock.live && i < 0 && S.entries.length) {
-        const firstLive = S.entries.find((e) => e.kind === 'msg' && (e.it.m.phase || 'live') === 'live');
+        const firstLive = S.entries.find((e) => e.kind === 'msg' && CORE.phaseOf(e.it.m) === 'live');
         if (firstLive) hint = '此時間點之前沒有收錄（最早 ' + CORE.fmtClock(firstLive.it.m.timestampAbs, S.refMs) + '）';
       }
-      setHint(hint);
+      setHint(hint, 'range');
       if (!S.syncPaused && S.entries.length) S.vl.reveal(Math.max(0, i), smooth);
     }
     function onClock(c) {
@@ -925,10 +962,12 @@
         if (v && v !== S.ver) { S.ver = v; S.points = null; renderSub(); S.vl.refresh(); }
       }
       // v45（21.1）待機室（還沒開播）時播放器也可能回報 live：不做時間軸同步，一律跟隨到底
-      const mode = S.clock.live && (!onAir() || CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline)) ? 'tail' : 'sync';
+      // v46（第 23 節）不論播放器回報 live 與否（預告／倒數影片 currentTime 會走、徽章「非最新」）
+      const mode = wantMode();
       // v45（T5.4，審查十一 20.2）牆上時間錨點：每次回到最新（從倒轉回來、或在最新時跳轉）重新量；
-      // 在最新、播放中時每秒取一個樣本（最多 60 個），A＝中位數。倒轉中不更新
-      if (S.clock.live) {
+      // 在最新、播放中時每秒取一個樣本（最多 60 個），A＝中位數。倒轉中不更新。
+      // 已知是待機室時不量（還沒開播，沒有意義）；場次還在載入時照常量（模式維持 tail，載入後若是直播即可使用）
+      if (S.clock.live && !(S.stream && waiting())) {
         if (liveChanged || (mode === 'tail' && (S.mode !== 'tail' || seeked))) { S.wallSamples = []; S.lastWallAt = 0; }
         if (mode === 'tail' && !S.clock.paused && S.clock.at - S.lastWallAt >= 1000) {
           S.wallSamples = CORE.nextWallSamples(S.wallSamples, S.clock, C.PANEL.WALL_ANCHOR_SAMPLES);
@@ -936,13 +975,7 @@
           S.wallA = CORE.median(S.wallSamples);
         }
       } else { S.wallSamples = []; S.wallA = null; S.lastWallAt = 0; }
-      if (mode !== S.mode) {
-        S.mode = mode; S.syncPaused = false;
-        if (mode === 'tail') { setCurrent(null); setHint(''); S.diag.target = null; S.diag.targetMsg = null; resume.textContent = '↓ 恢復自動捲動'; S.vl.toBottom(); }
-        else resume.textContent = '↓ 回到播放位置';
-        resume.hidden = true;
-        renderSub(); // 同步微調只在直播倒轉時顯示
-      } else if (seeked && mode === 'sync') resume.hidden = true;
+      if (setMode(mode)) { /* 已切換 */ } else if (seeked && mode === 'sync') setResume(false);
       else if (seeked && mode === 'tail' && S.clock.live) S.vl.toBottom(); // 跳回最新：回到跟隨到底
       // seekEnd 前進速度（連線狀態參考用；同步不使用 seekEnd）
       if (S.clock.live) {
@@ -1115,6 +1148,8 @@
         // T5.1：時間軸同步中（播放器時間比資料先到）不覆寫「↓ 回到播放位置」
         if (S.mode !== 'sync') resume.textContent = embed || liveNow ? '↓ 恢復自動捲動' : '↓ 跳到最新';
         apply({ reset: true, toBottom: embed || liveNow, toTop: !(embed || liveNow) });
+        // v46（第 23 節）播放器時間比資料先到時，模式是在場次未知時決定的：載入後依場次重新決定（待機室的播放器可能之後不再回報）
+        if (S.clock) setMode(wantMode());
         setCurrentCount();
         S.timings.firstScreenMs = performance.now() - t0;
       } catch (e) {
@@ -1365,7 +1400,7 @@
 
     return {
       ready, load, state: S, _onRuntime: onRuntime, _shiftLatency: shiftLatency, _p9Sample: p9Sample, _p9Tick: p9Tick, _p10Sample: p10Sample, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
-      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText },
+      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText, syncHint },
     };
   }
 
