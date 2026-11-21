@@ -774,7 +774,9 @@
     function adoptTimes(t) {
       if (!t) return { start: false, end: false };
       const out = { start: false, end: false };
-      if (t.scheduledFuture === true && typeof t.scheduledStartAt === 'number') {
+      // v48（T5.7，審查十一 27 第 1 點）background 重新抓取確認正在直播（提早開播）→ 本分頁沒重新整理的舊 meta 說「在未來」不再當成待機室
+      if (typeof t.liveConfirmedAt === 'number' && !st.stream.liveConfirmedAt) { st.stream.liveConfirmedAt = t.liveConfirmedAt; st.stream.scheduledFuture = false; }
+      if (t.scheduledFuture === true && typeof t.scheduledStartAt === 'number' && !st.stream.liveConfirmedAt) {
         st.stream.scheduledStartAt = t.scheduledStartAt;
         st.stream.scheduledFuture = true;
         if (st.stream.startedAt != null && st.stream.startedAtSource !== 'replay' && st.stream.endedAt == null) {

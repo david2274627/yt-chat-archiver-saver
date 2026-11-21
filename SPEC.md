@@ -185,7 +185,8 @@ yt-chat-archiver-saver/
   startPending: boolean /* 預定時間已過、尚未確認實際開播；期間 startedAt 為 null */,
   // v47（T5.6，F-14 審查十一 26.1）
   scheduledFuture?: boolean /* 最近一次 meta 說預定開播時間在未來（待機室，不論 startedAt） */,
-  startedAtSuspect?: boolean /* 待機室狀態下發現的 startedAt（降級，視同沒有；fixPhases 清除） */ }
+  startedAtSuspect?: boolean /* 待機室狀態下發現的 startedAt（降級，視同沒有；fixPhases 清除） */,
+  liveConfirmedAt?: number /* v48（T5.7）background 重新抓取確認正在直播（isLiveNow＋實際開播時間）的時間；之後舊 meta 說「在未來」不再當成待機室 */ }
 ```
 
 **messages**（keyPath `id`；索引 `videoId`, `[videoId+videoOffsetSec]`, `[videoId+type]`, `[videoId+fp]`（v27）, `aliasIds`（multiEntry，v28））
@@ -437,6 +438,13 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - （v47，審查十一 26.1 第 2 點）**硬性規則：預定開播時間在未來＝待機室**。最近一次看到的 meta（擷取端的 `STREAM_INFO` 或 background 重新抓取）`startDate > now` 且沒有 `endDate` → `scheduledFuture: true`、`scheduledStartAt` 改為這個時間（延期時以最新的為準）；此時**不論 `startedAt` 是否已有值都是待機室**（重播來源 `replay` 例外）：擷取端清除已採用的開播時間、不採用 background 回傳的值與播放器訊號，訊息一律 `pre`；background 不接受重播以外的 `startedAt`，已存的 `startedAt` **降級**為 `startedAtSuspect: true`（保留原值供預覽，`C.effectiveStart` 視同沒有；之後的實際開播時間可直接覆蓋）。meta 說已開播或已結束 → `scheduledFuture: false`（提早開播依 `meta-actual` 照常採用）。
     - 既有的錯誤資料：先重新整理該待機室（讓 v47 降級），再 `YTCAS_BG.fixPhases()` 預覽 `waiting` 清單（`videoId` 4 碼、`startedAtSource`、距預定時間幾小時、`live→pre` 筆數）→ `{ dryRun: false }` 執行：清除 `startedAt`、本套件直播收錄的訊息改回 `pre`、推算的 offset 清空。`meta-actual` 且 meta 沒說在未來的（提早開播）不列入。單一場次的時間與來源：`await YTCAS_BG.streamTimes('videoId')`（只有時間與來源代碼）。
     - AC（26.1 第 4 點）：預定時間在未來的待機室收到降落事件 → 仍是待機室、`phase: 'pre'`、不同步；background 先前記下的 `signal` 開播時間不被採用。
+    - （v48，T5.7，審查十一 27.1）**`meta-actual` 的判定必須同時確認 `scheduledFuture` 為 false**（實機：待機室的 `startDate` 可能是過去、帶秒數的時間，dom-notes 5.1）。background 重新抓取時另讀播放器資料的 `isLiveNow`：`false` 且沒有 `endDate` → 不採用 `startDate`（改為等待開播確認）；讀不到時維持原判斷。
+    - （v48，審查十一 27 第 1 點）**待機室 → 開播，分頁不重新整理**：
+      1. **準時或延後開播**：預定時間一到變成 `startPending`，background 每 60 秒重新抓取（`chrome.alarms` 每 1 分鐘檢查有分頁開著的場次）；開播後下一次抓取取得實際開播時間（`meta-actual`）。**延遲：開播後約 1～2 分鐘**轉為「直播中」。
+      2. **提早開播**（頁面上的 meta 仍說預定時間在未來）：v47 在預定時間到之前完全不重新抓取，最多延遲到預定時間。v48 起**待機室也重新抓取**：預定時間前 `META_POLL_SOON_WINDOW_MS` = 30 分鐘內每 `META_POLL_SOON_MS` = 2 分鐘、更早每 `META_POLL_FUTURE_MS` = 15 分鐘（只限有分頁開著的場次，`credentials: 'omit'`）。**延遲：預定前 30 分鐘內提早開播約 2～3 分鐘；更早開播最多約 15～16 分鐘**。重新抓到 `isLiveNow: true` 且有實際開播時間 → 採用並記 `liveConfirmedAt`；之後分頁上沒重新整理的舊 meta 仍說「在未來」時，擷取端與 background 都**不再**當成待機室（`C.isFutureScheduled` 在有 `liveConfirmedAt` 時為 false）。
+      3. **期間收到的訊息**：擷取端在得知開播時間前存成 `pre`、offset 空。`startedAt` 確定時依時間重算（`pre→live`，本套件直播收錄的推算 offset 一併算出）；之後擷取端還不知道、但 background 已知開播時間時送來的 `pre`／offset 空的訊息，寫入時直接依已知的開播時間重算（`SAVE_MESSAGES` 回應的 `phaseFixed`）。
+      4. 擷取端從 `SAVE_MESSAGES`／`CAPTURE_START` 的回應得知（`liveConfirmedAt`、`startedAt`）。待機室裡沒有人留言時，第一則訊息送出後才會得知；在那之前不影響資料（沒有訊息要算）。
+      5. AC（測試）：提早開播 → 待機室重新抓取 → 採用、`pre→live`；之後分頁的舊 meta 不降級；之後送來的 `pre` 改為 `live`。
   - （v33，`docs/review-2026-11-16.md` 追加三 F-2）**直播結束偵測**：頁面沒有重新整理時，`endDate` meta 不一定會出現。目前做法：top frame 每 30 秒重讀場次資訊並送 `STREAM_INFO`；`endDate` 出現時 chat frame 之後的訊息標 `post`，並在送出時帶 `endedAt`，background 依本節重算（結束時間取 meta 的值）。其他候選訊號只記屬性名稱作為診斷（`ytd-watch-flexy`、`yt-live-chat-renderer` 屬性變化，各頁最多 30 筆；結束提示若是新的訊息元件，以「未知訊息元件」記錄標籤）。**尚無實機確認的結束訊號**：取得結構前，沒有重新整理就結束的直播，結束後的訊息可能仍標 `live`，之後看重播或重新整理取得 `endDate` 時由 background 重算更正。
   4. **檢視器**：訊息清單以分隔線區隔「直播開始前（待機室）」「直播中」「直播結束後」；VOD 時間軸同步（F-08）只作用於 `live` 段，`pre`／`post` 不參與跟隨與跳轉，時間碼顯示為「開播前 12:34」「結束後 3:05」，不可點擊。
   5. **合併**：重播不會帶入 `pre`／`post` 訊息，這兩段只來自直播收錄，合併與去重規則不變。

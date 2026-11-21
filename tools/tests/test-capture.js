@@ -880,6 +880,36 @@
     eq([m.authorHandle, m.authorUrl, m.authorSource], ['@魚', 'https://www.youtube.com/@%E9%AD%9A', 'dom'], '禮物短 handle');
   });
 
+  test('T5.7 待機室→開播（27 第 1 點）：分頁沒重新整理（top 每 30 秒送的舊 meta 仍說「在未來」）＋background 回傳 liveConfirmedAt → 採用開播時間、之後的訊息 live；舊 meta 不再清除', async () => {
+    const { items } = buildChat();
+    const sch = Math.ceil((NOW + 20 * 60e3) / 60000) * 60000;
+    const act = NOW - 5 * 60e3 + 17000;
+    let confirmed = false;
+    const send = mockSend(async (msg) => {
+      const r = defaultReply(msg);
+      if (msg.type === RT.SAVE_MESSAGES && confirmed) r.stream = { startedAt: act, startedAtSource: 'meta-actual', scheduledStartAt: sch, scheduledFuture: false, liveConfirmedAt: NOW - 1000, startPending: false };
+      return r;
+    });
+    const e = engine({ send });
+    e.start();
+    e.setInfo({ videoId: 'testVidEARLY', startDate: sch, isLiveBroadcast: true });
+    await until(() => e.state().mode === 'capturing');
+    items.append(textMsg({ id: 'EA1', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('EA1'), 2000);
+    confirmed = true; // background 重新抓取確認提早開播
+    items.append(textMsg({ id: 'EA2', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('EA2'), 2000);
+    eq([e.state().stream.startedAt, e.state().stream.scheduledFuture], [act, false], '採用 background 確認的開播時間');
+    e.setInfo({ videoId: 'testVidEARLY', startDate: sch, isLiveBroadcast: true }); // top 每 30 秒重送（舊 meta）
+    eq(e.state().stream.startedAt, act, '舊 meta 不再清除');
+    items.append(textMsg({ id: 'EA3', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('EA3'), 2000);
+    const all = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    const f = (id) => all.find((x) => x.id === id);
+    eq([f('EA1').phase, f('EA3').phase, f('EA3').videoOffsetSec != null], ['pre', 'live', true]);
+    e.stop();
+  });
+
   test('F-20 P7（AC 2）：注入未知元件與禮物元件 → 自動留下結構紀錄（只有標籤、id、屬性名稱、img 網域，沒有文字）；同一標籤每場最多 3 次', async () => {
     const { items } = buildChat();
     const send = mockSend();

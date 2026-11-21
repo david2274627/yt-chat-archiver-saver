@@ -183,6 +183,10 @@
     META_POLL_PENDING_MS: 60 * 1000,
     META_POLL_PENDING_MAX_MS: 3 * 60 * 60 * 1000,
     META_POLL_LIVE_MS: 5 * 60 * 1000,
+    // v48（T5.7，審查十一 27 第 1 點）待機室（預定時間在未來）的重新抓取：預定時間前 30 分鐘內每 2 分鐘、更早每 15 分鐘
+    META_POLL_SOON_WINDOW_MS: 30 * 60 * 1000,
+    META_POLL_SOON_MS: 2 * 60 * 1000,
+    META_POLL_FUTURE_MS: 15 * 60 * 1000,
     // F-20 診斷記錄模式（T3.7，審查十追加六 B）
     DIAG: Object.freeze({
       STATE_KEY: 'diagState',                       // chrome.storage.local：{ active, scheduled, startAt, endsAt, probes, … }
@@ -295,8 +299,10 @@
   // v47（T5.6，審查十一 26.1）硬性規則：最近一次看到的頁面 meta 說「預定開播時間在未來、沒有 endDate」→ 待機室，
   // 不論 startedAt 是否已有值（重播來源 replay 例外）。startedAtSuspect：曾在待機室狀態下發現已有 startedAt（降級，視同沒有；
   // 之後由實際開播時間 meta-actual／replay 覆蓋，或以 YTCAS_BG.fixPhases() 兩段式清除）
+  // v48（T5.7，審查十一 27 第 1 點）liveConfirmedAt：background 重新抓到的頁面確認正在直播（isLiveNow＋實際開播時間）。
+  // 之後分頁上沒重新整理的舊 meta 仍說「在未來」（提早開播），不得蓋過
   C.isFutureScheduled = function (s, now) {
-    if (!s || s.endedAt != null || !s.scheduledFuture) return false;
+    if (!s || s.endedAt != null || !s.scheduledFuture || s.liveConfirmedAt) return false;
     return typeof s.scheduledStartAt === 'number' && s.scheduledStartAt > (typeof now === 'number' ? now : Date.now());
   };
   // 實際採用的開播時間：待機室（上一條）或已降級 → null

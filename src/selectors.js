@@ -202,6 +202,9 @@
     authorBlock: /<span[^>]*itemprop=["']author["'][^>]*>([\s\S]*?)<\/span>/i,
     authorUrl: /<link[^>]*itemprop=["']url["'][^>]*href=["']([^"']+)["']/i,
     authorName: /<link[^>]*itemprop=["']name["'][^>]*content=["']([^"']*)["']/i,
+    // v48（T5.7，審查十一 27 第 1 點）watch 頁內嵌的播放器資料 microformat.liveBroadcastDetails.isLiveNow（正在直播＝true）。
+    // 用來確認「已開播」（提早開播、待機室 meta 的 startDate 是過去帶秒數的時間，27.1）。待實機確認（dom-notes 1.4）
+    isLiveNow: /"isLiveNow"\s*:\s*(true|false)/,
   });
 
   // T3.4 cleanupJunkSystem：yt-live-chat-* 開頭、但屬於「訊息內部或輸入區的子元件」，不會是 #items 的直接子節點。

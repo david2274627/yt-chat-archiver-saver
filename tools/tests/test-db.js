@@ -1355,6 +1355,61 @@
     eq((await BG.fixPhases()).waiting.length, 0, 'meta-actual 的提早開播不列入');
   });
 
+  test('T5.7 待機室→開播（27 第 1 點）：提早開播不重新整理 → 預定時間前 30 分鐘內每 2 分鐘重新抓取；isLiveNow＋實際時間 → 採用並 pre→live 重算；之後分頁的舊 meta（在未來）不得降級；之後送來的 pre 訊息依已知開播時間重算', async () => {
+    await resetAll();
+    const C = self.YTCAS_CONST;
+    const now = Date.now();
+    const sch = Math.ceil((now + 20 * MIN) / MIN) * MIN; // 預定 20 分鐘後
+    const act = now - 5 * MIN + 17000; // 實際已在 5 分鐘前開播（帶秒數）
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: sch, scheduledFuture: true, isLive: true }, messages: [
+      msg({ id: 'e1', timestampAbs: now - 10 * MIN, videoOffsetSec: null, phase: 'pre' }), // 開播前
+      msg({ id: 'e2', timestampAbs: now - 2 * MIN, videoOffsetSec: null, phase: 'pre' }), // 實際已開播（擷取端還不知道）
+    ] });
+    let html = '<meta itemprop="startDate" content="' + new Date(sch).toISOString() + '"><script>var x={"isLiveNow":false}</script>';
+    let n = 0;
+    self.fetch = async (u) => { if (String(u).includes('/watch?v=')) n++; return new Response(html, { status: 200 }); };
+    try {
+      BG._metaPoll.clear();
+      let s = await DB.getStream(V);
+      await BG.maybeRefetchMeta(V, DB.pickStreamTimes(s), 'live');
+      eq(n, 1, '待機室（預定時間在未來）也重新抓取');
+      await BG.maybeRefetchMeta(V, DB.pickStreamTimes(await DB.getStream(V)), 'live');
+      eq(n, 1, '2 分鐘內不重抓');
+      BG._metaPoll.get(V).lastAt -= 2 * MIN + 1000;
+      // 提早開播：重新抓到的頁面 startDate＝實際開播（帶秒數）、isLiveNow true
+      html = '<meta itemprop="startDate" content="' + new Date(act).toISOString() + '"><script>var x={"liveBroadcastDetails":{"isLiveNow":true}}</script>';
+      await BG.maybeRefetchMeta(V, DB.pickStreamTimes(await DB.getStream(V)), 'live');
+      eq(n, 2);
+      s = await DB.getStream(V);
+      eq([s.startedAt, s.startedAtSource, s.scheduledFuture, typeof s.liveConfirmedAt, C.effectiveStart(s)], [act, 'meta-actual', false, 'number', act], '採用實際開播時間');
+      const get = async (id) => (await DB.queryMessages(V)).find((m) => m.id === id);
+      eq([(await get('e1')).phase, (await get('e2')).phase, (await get('e2')).videoOffsetSec], ['pre', 'live', Math.round((now - 2 * MIN - act) / 100) / 10], 'pre→live 重算');
+      // 分頁沒重新整理：擷取端送來的 meta 仍說預定時間在未來、新訊息仍標 pre → 不降級、訊息依已知開播時間重算
+      const r = await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: sch, scheduledFuture: true, isLive: true }, messages: [
+        msg({ id: 'e3', timestampAbs: now - 1 * MIN, videoOffsetSec: null, phase: 'pre' })] });
+      s = await DB.getStream(V);
+      eq([C.effectiveStart(s), !!s.startedAtSuspect, r.stream.startedAt, r.stream.liveConfirmedAt === s.liveConfirmedAt], [act, false, act, true], '舊 meta 不降級；回應帶 liveConfirmedAt');
+      eq([(await get('e3')).phase, r.phaseFixed], ['live', 1], '送來的 pre 依已知開播時間改為 live');
+      // 預定時間還很遠（> 30 分鐘）：每 15 分鐘
+      BG._metaPoll.clear();
+      const far = { startedAt: null, scheduledStartAt: Date.now() + 5 * 3600e3, isLive: true, endedAt: null };
+      await BG.maybeRefetchMeta(V2, far, 'live');
+      const c0 = n;
+      BG._metaPoll.get(V2).lastAt -= 3 * MIN;
+      await BG.maybeRefetchMeta(V2, far, 'live');
+      eq(n, c0, '遠的待機室：3 分鐘內不重抓');
+      BG._metaPoll.get(V2).lastAt -= 13 * MIN;
+      await BG.maybeRefetchMeta(V2, far, 'live');
+      eq(n, c0 + 1, '15 分鐘後重抓');
+    } finally { self.fetch = self.__blockedFetch; }
+    // 27.1：待機室的頁面 startDate 是過去、帶秒數的時間，但 isLiveNow false → 不當成開播
+    const past = new Date(Date.now() - 3600e3 + 24000).toISOString();
+    eq(BG.parseWatchHtml('<meta itemprop="startDate" content="' + past + '"><script>{"isLiveNow":false}</script>'),
+      { startPending: true, scheduledFuture: false, isLiveNow: false }, 'isLiveNow false：不採用');
+    const live = BG.parseWatchHtml('<meta itemprop="startDate" content="' + past + '"><script>{"isLiveNow":true}</script>');
+    eq([live.startedAtSource, live.isLiveNow, typeof live.liveConfirmedAt], ['meta-actual', true, 'number']);
+  });
+
   test('權限：管理操作只接受擴充功能頁面，content script 被拒', async () => {
     await resetAll();
     for (const type of ['DELETE_STREAMS', 'IMPORT_DATA', 'MIGRATE_LEGACY', 'EXPORT_STREAM', 'GET_STORAGE_USAGE', 'RECLASSIFY_SYSTEM']) {

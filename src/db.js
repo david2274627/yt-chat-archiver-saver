@@ -194,7 +194,8 @@
     }
     // v47（T5.6，審查十一 26.1）頁面 meta 說預定開播時間在未來（scheduledFuture）→ 待機室：預定時間以最新的為準（延期），
     // 已有的 startedAt（重播來源除外）降級為 startedAtSuspect（視同沒有，C.effectiveStart）；說已開播／已結束 → 解除
-    if (meta.scheduledFuture === true && num(meta.scheduledStartAt) !== null) {
+    // v48（T5.7，審查十一 27 第 1 點）已由重新抓取確認正在直播（liveConfirmedAt）→ 分頁上沒重新整理的舊 meta 說「在未來」一律忽略
+    if (meta.scheduledFuture === true && num(meta.scheduledStartAt) !== null && !s.liveConfirmedAt && !num(meta.liveConfirmedAt)) {
       s.scheduledStartAt = meta.scheduledStartAt;
       s.scheduledFuture = true;
       if (s.startedAt != null && s.endedAt == null && s.startedAtSource !== 'replay' && !s.startedAtSuspect) {
@@ -223,6 +224,10 @@
       }
     }
     if (s.scheduledStartAt == null && num(meta.scheduledStartAt) !== null) s.scheduledStartAt = meta.scheduledStartAt;
+    // v48：重新抓取確認正在直播，且這次的開播時間已採用（或與現值相同）→ 記下
+    if (num(meta.liveConfirmedAt) !== null && s.startedAt != null && s.startedAt === num(meta.startedAt) && !s.startedAtSuspect) {
+      s.liveConfirmedAt = meta.liveConfirmedAt; s.scheduledFuture = false;
+    }
     if (C.effectiveStart(s) != null) s.startPending = false;
     else if (typeof meta.startPending === 'boolean') s.startPending = meta.startPending;
     if (typeof meta.isLive === 'boolean') s.isLive = meta.isLive;
@@ -242,7 +247,7 @@
     const eff = C.effectiveStart(s);
     return { startedAt: eff, startedAtSource: eff == null ? null : s.startedAtSource ?? null, endedAt: s.endedAt ?? null,
       endedAtSource: s.endedAtSource ?? null, scheduledStartAt: s.scheduledStartAt ?? null, startPending: !!s.startPending,
-      scheduledFuture: !!s.scheduledFuture, startedAtSuspect: !!s.startedAtSuspect,
+      scheduledFuture: !!s.scheduledFuture, startedAtSuspect: !!s.startedAtSuspect, liveConfirmedAt: s.liveConfirmedAt ?? null,
       suspectSource: s.startedAt != null && eff == null ? s.startedAtSource ?? '(無)' : null, // 診斷：被降級的 startedAt 的來源
       channelHandle: s.channelHandle || '', isLive: !!s.isLive };
   }
@@ -396,6 +401,7 @@
         const stream = (await req(sStore.get(videoId))) || newStream(videoId, now);
         Object.assign(stream, fillStreamDefaults(stream));
         recalc = mergeStreamMeta(stream, p.stream);
+        const effStart = C.effectiveStart(stream);
         const csStore = t.objectStore('capture_sessions');
         if (p.captureSessionId != null) session = (await req(csStore.get(p.captureSessionId))) || null;
         if (session && session.videoId !== videoId) session = null;
@@ -414,13 +420,21 @@
           }
           const ex = await findExisting(store, inc, ctx, stats);
           let rec;
+          // v48（T5.7，審查十一 27 第 1 點）擷取端還不知道開播時間（待機室→開播、不重新整理），background 已經知道：
+          // 送來的 pre／offset 空的直播訊息依已知的開播時間重算（pre→live），不必等下一次 startedAt 變動
+          const fix = (r) => {
+            if (effStart == null || ctx.source === 'replay' || !(r.phase === 'pre' || num(r.videoOffsetSec) === null)) return r;
+            const nv = recomputeRecord(r, stream);
+            if (nv) stats.phaseFixed = (stats.phaseFixed || 0) + 1;
+            return nv || r;
+          };
           if (ex) {
             const m = mergeMessage(ex, inc, ctx);
-            rec = m.rec;
-            if (m.changed) store.put(rec);
+            rec = fix(m.rec);
+            if (m.changed || rec !== m.rec) store.put(rec);
             if (m.significant) { changed.push(rec); stats.merged++; } else stats.unchanged++;
           } else {
-            rec = inc;
+            rec = fix(inc);
             store.put(rec);
             changed.push(rec);
             stats.added++;

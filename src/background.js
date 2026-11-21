@@ -275,7 +275,8 @@ async function streamTimes(videoId) {
   return { ok: true, vid: String(videoId).slice(0, 4), startedAt: iso(s.startedAt), startedAtSource: s.startedAtSource || null,
     startedAtSuspect: !!s.startedAtSuspect, scheduledStartAt: iso(s.scheduledStartAt), scheduledFuture: !!s.scheduledFuture,
     startPending: !!s.startPending, endedAt: iso(s.endedAt), endedAtSource: s.endedAtSource || null, isLive: !!s.isLive,
-    effectiveStart: iso(C.effectiveStart(s)), createdAt: iso(s.createdAt) };
+    effectiveStart: iso(C.effectiveStart(s)), createdAt: iso(s.createdAt),
+    liveConfirmed: iso(s.liveConfirmedAt) }; // v48（27 第 1 點）重新抓取確認正在直播（isLiveNow）的時間
 }
 // v45（T5.4，審查十一 20.4 第 5 點）既有禮物的作者與 @handle 連結。用法：await YTCAS_BG.fixGiftAuthors()（預覽）→ { dryRun: false }
 async function fixGiftAuthors(opts) {
@@ -639,9 +640,20 @@ function parseWatchHtml(html, knownScheduled) {
   const t = (s) => { const v = s ? Date.parse(s) : NaN; return Number.isFinite(v) ? v : null; };
   const sd = t(out.startDate), ed = t(out.endDate);
   const d = C.deriveStartTimes({ startDate: sd, endDate: ed, knownScheduled });
+  // v48（T5.7，審查十一 27 第 1 點、27.1）播放器資料的 isLiveNow：
+  //   false 且沒有 endDate → 還沒開播：startDate 是過去帶秒數的時間也不採用（27.1 的待機室），改為等待開播確認；
+  //   true 且 meta 判為實際開播 → liveConfirmedAt（重新抓到的頁面確認正在直播；之後頁面上沒重新整理的舊 meta 說「在未來」不得蓋過）
+  const lm = SEL.watchHtml.isLiveNow.exec(html);
+  const isLiveNow = lm ? lm[1] === 'true' : null;
+  if (isLiveNow === false && ed == null && d.startedAt != null) {
+    d.startedAt = null; d.startedAtSource = null; d.startPending = true;
+    if (d.scheduledStartAt == null) d.scheduledStartAt = knownScheduled ?? null;
+  }
   for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt']) if (d[k] != null) meta[k] = d[k];
   if (d.startPending) meta.startPending = true;
   if (typeof d.scheduledFuture === 'boolean') meta.scheduledFuture = d.scheduledFuture; // v47（26.1）
+  if (isLiveNow !== null) meta.isLiveNow = isLiveNow;
+  if (isLiveNow === true && d.startedAtSource === 'meta-actual' && ed == null) meta.liveConfirmedAt = Date.now();
   if (out.title) meta.title = out.title.slice(0, 500);
   if (out.isLiveBroadcast != null) meta.isLive = /^true$/i.test(out.isLiveBroadcast) && ed == null;
   const block = W.authorBlock.exec(html);
@@ -704,6 +716,12 @@ function metaPollDue(videoId, s, now) {
     return now - st.lastAt >= C.META_POLL_PENDING_MS ? { st, kind: 'pending' } : null;
   }
   if (s.startedAt != null && s.isLive) return now - st.lastAt >= C.META_POLL_LIVE_MS ? { st, kind: 'live' } : null;
+  // v48（T5.7，審查十一 27 第 1 點）待機室（預定時間在未來）：提早開播時頁面上的 meta 不會更新 → 也重新抓。
+  // 預定時間 30 分鐘內每 2 分鐘、更早每 15 分鐘；只限有分頁開著的場次（alarms 那條路徑本來就只查開著的）
+  if (s.startedAt == null && s.isLive && typeof s.scheduledStartAt === 'number' && s.scheduledStartAt > now) {
+    const every = s.scheduledStartAt - now <= C.META_POLL_SOON_WINDOW_MS ? C.META_POLL_SOON_MS : C.META_POLL_FUTURE_MS;
+    return now - st.lastAt >= every ? { st, kind: 'future' } : null;
+  }
   return null;
 }
 async function maybeRefetchMeta(videoId, times, source) {
@@ -716,7 +734,7 @@ async function maybeRefetchMeta(videoId, times, source) {
   let meta;
   try { meta = await fetchStreamMeta(videoId, times.scheduledStartAt); } catch (e) { console.info('[ytcas] 重新抓取場次資訊失敗', String(e && e.message)); return null; }
   const upd = {};
-  for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt', 'startPending', 'scheduledFuture']) if (meta[k] != null) upd[k] = meta[k];
+  for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt', 'startPending', 'scheduledFuture', 'liveConfirmedAt']) if (meta[k] != null) upd[k] = meta[k];
   if (!Object.keys(upd).length) return null;
   const r = await DB.saveMessages({ videoId, stream: upd, messages: [], source }); // 依來源等級合併並重算 phase／offset
   const got = r.stream || {};
