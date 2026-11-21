@@ -180,7 +180,17 @@
   - 點頭像以新分頁開作者頻道、禮物卡補送禮者頭像（commit `c0210f2`）。
   - SC 文字色沿用 YouTube 的文字色變數、P7 `sc-color-vars`（commit `b744312`）。
   - CLAUDE.md 不得含 BOM、SPEC 10.1 原則 7 的例外（commit `ea2cd8c`）。
-  - CHANGELOG、測試清單、審查文件第 25、26 節、T5 報告「T5.6」（本段落所在的 commit）。
+  - CHANGELOG、測試清單、審查文件第 25、26 節、T5 報告「T5.6」（commit `174f170`）。
+- v48／T5.7（`docs/review-2026-11-17.md` 第 27、28 節；報告為 T5 報告的「T5.7」）：
+  - DOM 給的 @handle 長度下限 1、與內文推斷分開、`HANDLE_RE` 統一、`authorUrl` 編碼（commit `a1310fe`）。
+  - 背景分頁的時間精度（一批到達改用顯示時間）、「≈」標記、P1 `tsSource`／背景擷取／`giftLate`／`itemsSwaps`、`itemsIsCurrent` 即時重新掛上（commit `3016c79`）。
+  - 待機室→開播不重新整理：待機室重新抓取、`isLiveNow`、`liveConfirmedAt`、送來的 `pre` 依已知開播時間重算（commit `f5710e9`）。
+  - CHANGELOG、測試清單、審查文件第 27、28 節、診斷摘要 2026-11-22 02:59／03:10、T5 報告「T5.7」（本段落所在的 commit）。
+
+### 規格 v48（2026-11-22，T5.7）
+- F-05：handle 的兩種規則（`C.domHandle`／`C.handleOf`）、網址編碼。
+- F-02：背景分頁的直播訊息可能只有分鐘精度、「≈」標記；F-20 P1 新欄位與 `itemsIsCurrent` 的意義。
+- F-14：`meta-actual` 必須同時確認 `scheduledFuture` 為 false、`isLiveNow`；待機室→開播（準時、提早）的轉換與延遲、`liveConfirmedAt`；4.1 `streams.liveConfirmedAt`。
 
 ### 規格 v47（2026-11-21，T5.6）
 - F-14：開播訊號來源完整清單；預定開播時間在未來＝待機室（`scheduledFuture`、`startedAtSuspect`、`C.effectiveStart`）；`fixPhases` 的 `waiting` 清單；4.1 `streams` 新欄位。
