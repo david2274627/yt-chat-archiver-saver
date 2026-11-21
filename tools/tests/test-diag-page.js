@@ -143,6 +143,64 @@
     await BG.diag.clear();
   });
 
+  test('T5.5 匯出的實際檔名（審查十一 24.5）：實際檔名＝預覽檔名並顯示；其他擴充功能以 onDeterminingFilename 改寫成 UUID → 說明、複製檔名、後備下載（<a download>）並記住', async () => {
+    const DLS = chrome.downloads;
+    const realClick = HTMLAnchorElement.prototype.click;
+    // 測試頁不能真的下載：<a download> 的點擊交給 mock（kind 'anchor'）
+    HTMLAnchorElement.prototype.click = function () { if (this.download) DLS._add({ url: this.href, filename: this.download }, 'anchor'); else realClick.call(this); };
+    const previewName = () => $('filePreview').textContent.replace(/^預覽：/, '').replace(/（.*$/, '');
+    const minuteSafe = async () => { while (new Date().getSeconds() >= 58) await sleep(300); }; // 預覽與匯出跨分鐘時檔名不同
+    try {
+      await chrome.storage.local.remove('diagDownloadMode');
+      await DB.diagAppend([{ ts: Date.now(), probe: 'P1', kind: 'x', data: {} }]);
+      // 1. 正常：實際檔名＝預覽檔名
+      await minuteSafe();
+      let want = previewName();
+      let n = DLS._list.length;
+      $('btn-export').click();
+      await until(() => !$('dlResult').hidden && $('dlActual').textContent.startsWith('實際檔名：') && !/取不到/.test($('dlActual').textContent), 4000, '顯示實際檔名');
+      eq(DLS._list.length, n + 1);
+      eq(DLS._list[n].filename, 'YT聊天室診斷/' + want, '要求的檔名＝預覽');
+      eq($('dlActual').textContent, '實際檔名：' + want, '實際檔名＝預覽檔名');
+      assert($('dlWarn').hidden && $('dlActions').hidden, '一致時不警告');
+      // 2. 其他擴充功能改寫（實機 24.5：be903061-….json）
+      DLS._override = (o, kind) => (kind === 'api' ? 'be903061-1111-2222-3333-444455556666.json' : null);
+      await minuteSafe();
+      want = previewName();
+      $('btn-export').click();
+      await until(() => !$('dlWarn').hidden, 4000, '不一致的警告');
+      eq($('dlActual').textContent, '實際檔名：be903061-1111-2222-3333-444455556666.json');
+      assert($('dlWarn').textContent.includes('與預覽的「' + want + '」不同') && $('dlWarn').textContent.includes('其他擴充功能'), $('dlWarn').textContent);
+      assert(!$('dlActions').hidden && !$('btn-copy-name').hidden && !$('btn-dl-fallback').hidden, '複製檔名與後備下載');
+      // 後備：<a download> 的建議檔名通常會被保留 → 一致、記住
+      $('btn-dl-fallback').click();
+      await until(() => $('dlActual').textContent.includes('後備方式'), 4000, '後備下載');
+      eq($('dlActual').textContent, '實際檔名：' + want + '（後備方式，存在「下載」資料夾）');
+      assert($('dlWarn').hidden, '後備一致');
+      await until(async () => (await chrome.storage.local.get('diagDownloadMode')).diagDownloadMode === 'anchor', 2000, '記住後備方式');
+      // 之後的匯出直接用後備方式（不再呼叫 downloads.download）
+      n = DLS._list.length;
+      const items = DLS._items.length;
+      await minuteSafe();
+      want = previewName();
+      $('btn-export').click();
+      await until(() => DLS._items.length === items + 1 && /已匯出/.test($('msg').textContent) && !/取不到/.test($('dlActual').textContent), 4000, '後備匯出');
+      await until(() => $('dlActual').textContent === '實際檔名：' + want + '（後備方式，存在「下載」資料夾）', 3000, '後備匯出的實際檔名 ' + $('dlActual').textContent);
+      eq(DLS._list.length, n, '不再呼叫 downloads.download');
+      // 3. 兩種方式都被改寫：提示手動改名
+      DLS._override = () => 'aaaa-uuid.json';
+      $('btn-export').click();
+      await until(() => !$('dlWarn').hidden, 4000);
+      eq($('dlActual').textContent, '實際檔名：aaaa-uuid.json（後備方式，存在「下載」資料夾）');
+      assert(!$('btn-copy-name').hidden && $('btn-dl-fallback').hidden, '只剩複製檔名');
+    } finally {
+      HTMLAnchorElement.prototype.click = realClick;
+      DLS._override = null;
+      await chrome.storage.local.remove('diagDownloadMode');
+      await BG.diag.clear();
+    }
+  });
+
   test('畫面：超過最長時限 → 即時提示「超過最長時限 X 小時，將於上限時停止」，實際停止時間以上限為準', async () => {
     $('host').querySelector('details').open = true;
     set('hours', '1');

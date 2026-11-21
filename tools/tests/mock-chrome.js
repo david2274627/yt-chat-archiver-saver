@@ -105,9 +105,31 @@
         return [{ frameId: 0, result: null }];
       },
     },
+    // v46（T5.5，24.5）下載項目與實際檔名：_override(o, kind) 模擬其他擴充功能的 downloads.onDeterminingFilename
+    //（kind：'api'＝downloads.download、'anchor'＝<a download>；回傳改寫後的檔名，null＝不改）。實際檔名在 50ms 後才有（與實機相同，先是空字串）
     downloads: {
-      _list: [],
-      download: (o) => { self.chrome.downloads._list.push(o); return Promise.resolve(self.chrome.downloads._list.length); },
+      _list: [], _items: [], _override: null, _dir: 'C:\\Users\\test\\Downloads\\',
+      _add: (o, kind) => {
+        const d = self.chrome.downloads;
+        const id = d._items.length + 1;
+        let name = o.filename || (String(o.url).startsWith('blob:') ? String(o.url).split('/').pop() : 'download');
+        const v = d._override ? d._override(o, kind) : null;
+        if (v) name = v;
+        const it = { id, filename: '', startTime: new Date().toISOString(), state: 'in_progress' };
+        d._items.push(it);
+        setTimeout(() => { it.filename = d._dir + name.replace(/\//g, '\\'); it.state = 'complete'; }, 50);
+        return id;
+      },
+      download: (o) => { const d = self.chrome.downloads; d._list.push(o); return Promise.resolve(d._add(o, 'api')); },
+      search: (q) => {
+        const d = self.chrome.downloads;
+        let a = d._items.slice();
+        if (q && q.id != null) a = a.filter((x) => x.id === q.id);
+        if (q && q.startedAfter) a = a.filter((x) => x.startTime > q.startedAfter);
+        if (q && Array.isArray(q.orderBy) && q.orderBy[0] === '-startTime') a.reverse();
+        if (q && q.limit) a = a.slice(0, q.limit);
+        return Promise.resolve(a.map((x) => Object.assign({}, x)));
+      },
     },
   };
   self.__mock = { listeners, broadcasts, TEST_DB, TEST_LEGACY,

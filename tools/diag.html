@@ -87,6 +87,15 @@
       <p id="filePreview" class="hint" aria-live="polite"></p>
       <p id="fileHelp" class="note">可用參數：<code>{yy}</code> <code>{yyyy}</code> <code>{MM}</code> <code>{dd}</code> <code>{HH}</code> <code>{mm}</code> <code>{ss}</code>（記錄開始時間）、<code>{probes}</code>（勾選的探針）。只允許英數與 <code>_ - .</code>，其他字元會變成 <code>_</code>。</p>
     </div>
+    <!-- v46（T5.5，審查十一 24.5）實際下載的檔名（downloads.search）；與預覽不同時說明原因並提供後備 -->
+    <div id="dlResult" hidden>
+      <p id="dlActual" class="hint" aria-live="polite"></p>
+      <p id="dlWarn" class="warn" hidden></p>
+      <div class="row" id="dlActions" hidden>
+        <button type="button" id="btn-copy-name">複製檔名</button>
+        <button type="button" id="btn-dl-fallback">以另一種方式重新下載</button>
+      </div>
+    </div>
     <p class="note">檔案下載到「下載\YT聊天室診斷\」。請放進 repo 的 <code>docs/diag/raw/</code>（不會被 commit），並告訴 Claude Code 檔名。</p>
   </section>
   <p id="msg" role="status" aria-live="polite"></p>

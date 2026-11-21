@@ -204,18 +204,93 @@
     const probes = s.probes && s.probes.length ? s.probes : Array.from(document.querySelectorAll('.probe:checked')).map((x) => x.value);
     $('filePreview').textContent = '預覽：' + exportName(t, probes) + (s.startAt ? '' : '（尚無記錄，以現在時間示意）');
   }
+  // v46（T5.5，審查十一 24.5）實機下載出 UUID 檔名（blob 網址的預設名稱）＝ downloads.download 的 filename 被忽略。
+  // 已知原因：另一個擴充功能註冊了 downloads.onDeterminingFilename 時，Chrome 會以那個擴充功能的建議為準，
+  // 其他擴充功能以 downloads.download 指定的 filename 不會傳過去（使用者裝了多個擴充功能）。本套件無法控制其他擴充功能，所以：
+  //   1. 下載後以 downloads.search 取得實際檔名並顯示；
+  //   2. 與預覽不同 → 說明原因、提供「複製檔名」（手動改名）與後備下載（<a download>：檔名以建議檔名的方式傳給其他擴充功能，
+  //      通常會被保留；但只能存在「下載」資料夾本身，不能指定子資料夾）；後備成功時記住，之後直接用後備方式。
+  // 不註冊自己的 onDeterminingFilename：會影響使用者所有的下載，也會讓其他擴充功能遇到同樣的問題
+  const DL_MODE_KEY = 'diagDownloadMode'; // 'api'（預設）／'anchor'
+  let dlMode = 'api';
+  try {
+    chrome.storage.local.get(DL_MODE_KEY).then((o) => { if (o && o[DL_MODE_KEY] === 'anchor') dlMode = 'anchor'; }).catch(() => {});
+    chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch[DL_MODE_KEY]) dlMode = ch[DL_MODE_KEY].newValue === 'anchor' ? 'anchor' : 'api'; });
+  } catch (_) { /* ignore */ }
+  const baseOf = (p) => String(p || '').split(/[\\/]/).pop();
+  // uniquify 會加「 (1)」：視為相同
+  const sameName = (actual, want) => { const a = baseOf(actual); return a === want || a.replace(/ \(\d+\)(?=\.[^.]+$)/, '') === want; };
+  async function actualName(find) {
+    for (let i = 0; i < 60; i++) {
+      let it = null;
+      try { it = (await chrome.downloads.search(find))[0] || null; } catch (_) { return ''; }
+      if (it && it.filename) return it.filename;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return '';
+  }
+  let lastExport = null; // { blob, want }
+  function showResult(actual, want, how) {
+    const box = $('dlResult'); if (!box) return;
+    box.hidden = false;
+    const ok = actual && sameName(actual, want);
+    $('dlActual').textContent = '實際檔名：' + (actual ? baseOf(actual) : '（取不到）') + (how === 'anchor' ? '（後備方式，存在「下載」資料夾）' : '');
+    $('dlWarn').hidden = !!ok;
+    $('dlActions').hidden = !!ok;
+    $('btn-dl-fallback').hidden = how === 'anchor';
+    if (!ok) {
+      $('dlWarn').textContent = actual
+        ? '與預覽的「' + want + '」不同。通常是其他擴充功能（下載管理類）改寫了下載檔名，本套件無法控制；請按「以另一種方式重新下載」，或按「複製檔名」後手動改名。'
+        : '取不到實際檔名（下載可能被取消）。可以按「以另一種方式重新下載」。';
+    }
+    return ok;
+  }
+  async function downloadAnchor(blob, want) {
+    const url = URL.createObjectURL(blob);
+    const since = new Date(Date.now() - 1000).toISOString();
+    const a = document.createElement('a');
+    a.href = url; a.download = want; a.hidden = true;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const actual = await actualName({ startedAfter: since, orderBy: ['-startTime'], limit: 1 });
+    const ok = showResult(actual, want, 'anchor');
+    if (ok && dlMode !== 'anchor') { dlMode = 'anchor'; try { chrome.storage.local.set({ [DL_MODE_KEY]: 'anchor' }); } catch (_) { /* ignore */ } }
+    return { actual, ok };
+  }
   async function doExport() {
+    if ($('dlResult')) $('dlResult').hidden = true; // 上一次的結果
     const r = await ctl('export');
     if (!r || !r.ok) { msg('匯出失敗：' + (r && r.error)); return false; }
     const blob = new Blob([JSON.stringify(r.data)], { type: 'application/json' });
+    const want = exportName((r.data.period && r.data.period.startAt) || r.data.exportedAt, r.data.probes);
+    lastExport = { blob, want };
+    const head = '已匯出 ' + r.data.records.length + ' 筆（' + Math.round(blob.size / 1024) + ' KB）';
+    if (dlMode === 'anchor') {
+      const { actual } = await downloadAnchor(blob, want);
+      msg(head + '：下載\\' + baseOf(actual || want) + '　→ 請放進 docs/diag/raw/');
+      return true;
+    }
     const url = URL.createObjectURL(blob);
-    const filename = D.DOWNLOAD_DIR + '/' + exportName((r.data.period && r.data.period.startAt) || r.data.exportedAt, r.data.probes);
+    const filename = D.DOWNLOAD_DIR + '/' + want;
     try {
-      await chrome.downloads.download({ url, filename, saveAs: false, conflictAction: 'uniquify' });
-      msg('已匯出 ' + r.data.records.length + ' 筆（' + Math.round(blob.size / 1024) + ' KB）：下載\\' + filename.replace('/', '\\') + '　→ 請放進 docs/diag/raw/');
+      const id = await chrome.downloads.download({ url, filename, saveAs: false, conflictAction: 'uniquify' });
+      const actual = typeof id === 'number' ? await actualName({ id }) : '';
+      const ok = showResult(actual, want, 'api');
+      msg(head + '：' + (ok ? '下載\\' + filename.replace('/', '\\') : '實際檔名 ' + (baseOf(actual) || '（取不到）')) + '　→ 請放進 docs/diag/raw/');
       return true;
     } catch (e) { msg('下載失敗：' + (e && e.message)); return false; }
     finally { setTimeout(() => URL.revokeObjectURL(url), 60000); }
+  }
+  if ($('btn-copy-name')) {
+    $('btn-copy-name').addEventListener('click', async () => {
+      if (!lastExport) return;
+      try { await navigator.clipboard.writeText(lastExport.want); msg('已複製檔名：' + lastExport.want); } catch (_) { msg('無法複製，請手動輸入：' + lastExport.want); }
+    });
+    $('btn-dl-fallback').addEventListener('click', async () => {
+      if (!lastExport) return;
+      const { actual, ok } = await downloadAnchor(lastExport.blob, lastExport.want);
+      msg(ok ? '已用另一種方式下載：下載\\' + baseOf(actual) + '（之後的匯出都用這個方式）' : '另一種方式的檔名也被改寫（' + (baseOf(actual) || '取不到') + '），請按「複製檔名」後手動改名');
+    });
   }
 
   async function doStart() {
