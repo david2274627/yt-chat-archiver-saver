@@ -249,8 +249,26 @@ function report(data) {
     if (voids) anomalies.push('P10 錨點作廢 ' + voids + ' 次（採用後 5 秒內被 seek 到非最新；網址帶 t= 的載入屬預期）');
   }
 
+  // ---- v47（T5.6，審查十一 26.4）P7 SC 文字色變數（名稱，不含值）
+  const p7c = (byProbe.P7 || []).filter((r) => r.kind === 'sc-color-vars');
+  if (p7c.length) {
+    L('## SC 文字色變數（P7 sc-color-vars，' + p7c.length + ' 筆）');
+    L();
+    L('元件 inline style 上實際有的 `--yt-live-chat-paid-*` 名稱（不含值）；「讀到」＝本套件取得的文字色欄位（header／author／timestamp／body）。用來確認 dom-notes 2.4b。');
+    L();
+    L('| 時間 | videoId | 類型 | 有底色 | 讀到 | 元件上的變數 |');
+    L('|---|---|---|---|---|---|');
+    for (const r of p7c) {
+      const d = r.data || {};
+      L('| ' + [hm(r.ts), vid4((r.ctx && r.ctx.videoId) || '—'), d.type, d.hasBg ? '是' : '否', (d.got || []).join(', ') || '（無）',
+        (d.inlineVars || []).map((x) => String(x).replace(/^--yt-live-chat-paid-/, '…')).join(', ') || '（無）'].map(esc).join(' | ') + ' |');
+    }
+    L();
+    if (p7c.every((r) => !(r.data && r.data.got && r.data.got.length))) anomalies.push('SC 文字色：' + p7c.length + ' 筆都沒有讀到 YouTube 的文字色（selectors.js 的變數名稱可能不對，見「SC 文字色變數」）');
+  }
+
   // ---- P7 結構
-  const p7 = byProbe.P7 || [];
+  const p7 = (byProbe.P7 || []).filter((r) => r.kind !== 'sc-color-vars');
   if (p7.length) {
     L('## P7 結構紀錄（' + p7.length + ' 筆）');
     L();

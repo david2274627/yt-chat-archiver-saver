@@ -820,6 +820,50 @@
     eq([r.phase, r.videoOffsetSec], ['live', 60]);
   });
 
+  test('T5.6 SC 文字色（26.4）：保存 YouTube 給各 SC 的文字色變數（標題列、名稱、時間、內文；只接受色碼）；超級貼圖只取名稱色；P7 列出元件上的變數名稱（不含值）', async () => {
+    const sc = (style) => {
+      const el = h('yt-live-chat-paid-message-renderer', { id: 'sc' + (++seq), style }, [
+        h('div', { id: 'card' }, [h('div', { id: 'header' }, [
+          h('yt-img-shadow', { id: 'author-photo' }, [h('img', { id: 'img', src: 'https://yt4.ggpht.com/s=s64' })]),
+          h('span', { id: 'author-name', text: '@payer' }), h('div', { id: 'purchase-amount', text: '$15.00' }), h('span', { id: 'timestamp', text: '' })]),
+        h('div', { id: 'content' }, [h('div', { id: 'message', text: '加油' })])]),
+      ]);
+      document.body.appendChild(el);
+      return el;
+    };
+    const el = sc('--yt-live-chat-paid-message-primary-color: rgba(30,136,229,1); --yt-live-chat-paid-message-header-color: #FFFFFF; '
+      + '--yt-live-chat-paid-message-author-name-color: rgba(255, 255, 255, 0.7); --yt-live-chat-paid-message-timestamp-color: #ffffff80; '
+      + '--yt-live-chat-paid-message-color: #ffffff; --yt-live-chat-paid-message-secondary-color: rgba(21,101,192,1)');
+    let m = CAP.parseMessage(el, { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq(m.type, 'superchat');
+    eq(m.textColors, { header: '#ffffff', author: 'rgba(255,255,255,0.7)', timestamp: '#ffffff80', body: '#ffffff' });
+    el.remove();
+    const bad = sc('--yt-live-chat-paid-message-primary-color: #1e88e5; --yt-live-chat-paid-message-header-color: url(javascript:alert(1)); --yt-live-chat-paid-message-color: expression(1)');
+    m = CAP.parseMessage(bad, { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    assert(!('textColors' in m), '不是色碼 → 不存 ' + JSON.stringify(m.textColors));
+    bad.remove();
+    const stk = stickerMsg();
+    stk.setAttribute('style', '--yt-live-chat-paid-sticker-background-color: #00e5ff; --yt-live-chat-paid-sticker-chip-text-color: #000000; --yt-live-chat-paid-sticker-author-name-text-color: rgba(0,0,0,0.54)');
+    document.body.appendChild(stk);
+    m = CAP.parseMessage(stk, { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq(m.textColors, { author: 'rgba(0,0,0,0.54)' }, '貼圖：只取名稱色');
+    stk.remove();
+    // P7：變數名稱（不含值）
+    const { items } = buildChat();
+    const recs = [];
+    const e = engine({ send: mockSend(), onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidSCCOL', startDate: NOW - 3600e3 + 7000, isLiveBroadcast: true });
+    await until(() => e.state().mode === 'capturing');
+    const live = sc('--yt-live-chat-paid-message-primary-color: #1e88e5; --yt-live-chat-paid-message-header-color: #ffffff');
+    items.appendChild(live);
+    await until(() => recs.some((r) => r.k === 'sc-color-vars'), 2000, 'P7 sc-color-vars');
+    const r = recs.find((x) => x.k === 'sc-color-vars');
+    eq([r.p, r.d.type, r.d.inlineVars, r.d.got, r.d.hasBg], ['P7', 'superchat', ['--yt-live-chat-paid-message-primary-color', '--yt-live-chat-paid-message-header-color'], ['header'], true]);
+    assert(!JSON.stringify(r).includes('#ffffff') && !JSON.stringify(r).includes('加油') && !JSON.stringify(r).includes('@payer'), '不含值與文字');
+    e.stop();
+  });
+
   test('F-20 P7（AC 2）：注入未知元件與禮物元件 → 自動留下結構紀錄（只有標籤、id、屬性名稱、img 網域，沒有文字）；同一標籤每場最多 3 次', async () => {
     const { items } = buildChat();
     const send = mockSend();

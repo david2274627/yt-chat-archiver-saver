@@ -535,6 +535,25 @@
     return { bg: `rgb(${r}, ${g}, ${b})`, fg };
   }
 
+  // v47（T5.6，審查十一 26.4）SC 卡片的顏色：底色＝m.color（parseColor）；文字色優先用擷取時保存的 YouTube 文字色
+  // （m.textColors：header／author／timestamp／body，顯示時再驗證一次色碼），取不到的欄位用對比度規則（parseColor 的 fg）。
+  // from：'youtube'（至少一個欄位來自 YouTube）／'contrast'／null（沒有底色）
+  const TEXT_COLOR_RE = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\(\d{1,3},\d{1,3},\d{1,3}(,(0|1|0?\.\d+))?\))$/i;
+  function scColors(m) {
+    const col = parseColor(m && m.color);
+    if (!col) return null;
+    const tc = (m && m.textColors && typeof m.textColors === 'object') ? m.textColors : {};
+    const ok = (v) => (typeof v === 'string' && TEXT_COLOR_RE.test(v.replace(/\s+/g, '')) ? v.replace(/\s+/g, '') : null);
+    const header = ok(tc.header), author = ok(tc.author), timestamp = ok(tc.timestamp), body = ok(tc.body);
+    const from = header || author || timestamp || body ? 'youtube' : 'contrast';
+    const base = header || body || col.fg;
+    // on-dark／on-light（徽章等的配色）：依實際採用的主要文字色的亮度
+    const p = parseColor(base);
+    const light = p ? p.fg === '#000' : col.fg === '#fff'; // 文字色本身是亮色 → 底是暗的
+    return { bg: col.bg, header: header || col.fg, author: author || header || col.fg, timestamp: timestamp || header || col.fg,
+      body: body || header || col.fg, from, onDark: light };
+  }
+
   // ---------------------------------------------------------------- 圖片
   const safeImg = (u) => (u && C.isAllowedImageUrl(u) ? u : '');
   // v44（17.1）訊息連結：只接受 http／https（顯示時再檢查一次，舊資料或匯入資料也一樣）
@@ -566,7 +585,7 @@
   }
 
   root.YTCAS_VIEWER_CORE = Object.freeze({
-    channelUrl,
+    channelUrl, scColors,
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
     versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,

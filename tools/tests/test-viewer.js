@@ -870,6 +870,35 @@
     eq(c.state.f.userChip, '@alice', '點名稱篩選');
   });
 
+  test('T5.6 SC 文字色（26.4）：有 YouTube 文字色 → 標題列／名稱／時間／內文照用（藍底白字）；沒有 → 對比度規則；不合格的值不採用', async () => {
+    const yt = CORE.scColors({ color: 'rgba(30,136,229,1)', textColors: { header: '#ffffff', author: 'rgba(255,255,255,0.7)', timestamp: '#ffffff80', body: '#ffffff' } });
+    eq([yt.from, yt.header, yt.author, yt.timestamp, yt.body, yt.onDark], ['youtube', '#ffffff', 'rgba(255,255,255,0.7)', '#ffffff80', '#ffffff', true]);
+    const old = CORE.scColors({ color: 'rgba(30,136,229,1)' });
+    eq([old.from, old.header, old.onDark], ['contrast', '#000', false], '舊資料：對比度規則（藍底黑字）');
+    const part = CORE.scColors({ color: '#1e88e5', textColors: { author: '#ffffffb3' } });
+    eq([part.from, part.author, part.header, part.body], ['youtube', '#ffffffb3', '#000', '#000'], '只有部分欄位：其他用對比度規則');
+    const bad = CORE.scColors({ color: '#1e88e5', textColors: { header: 'url(x)', body: 'red;background:url(x)' } });
+    eq([bad.from, bad.header], ['contrast', '#000'], '不合格的值不採用');
+    eq(CORE.scColors({ color: '' }), null);
+    await resetDb();
+    const VS = 'vidSCCOLOR1';
+    await put({ videoId: VS, title: 'SC', isLive: true, startedAt: T0 - 3600e3, endedAt: T0 + 3600e3, lastMessageAt: T0, messageCount: 2, versions: [], linkedVideos: [] }, [
+      mk({ id: 'sc-yt', videoId: VS, type: 'superchat', amount: '$15.00', color: 'rgba(30,136,229,1)', authorHandle: '@payer', runs: [{ text: '加油' }],
+        textColors: { header: '#ffffff', author: 'rgba(255,255,255,0.7)', timestamp: '#ffffff80', body: '#ffffff' } }),
+      mk({ id: 'sc-old', videoId: VS, type: 'superchat', amount: '$15.00', color: 'rgba(30,136,229,1)', authorHandle: '@payer2', timestampAbs: T0 + 1000, runs: [{ text: '舊的' }] }),
+    ]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VS });
+    await c.ready; await frame(); await frame();
+    const r1 = c.els.list.querySelector('[data-id="sc-yt"]');
+    const rgb = (n) => getComputedStyle(n).color;
+    assert(r1.classList.contains('yt-colors') && r1.classList.contains('on-dark'), r1.className);
+    eq([rgb(r1.querySelector('.amt')), rgb(r1.querySelector('.content')), rgb(r1.querySelector('.nm'))], ['rgb(255, 255, 255)', 'rgb(255, 255, 255)', 'rgba(255, 255, 255, 0.7)']);
+    const r2 = c.els.list.querySelector('[data-id="sc-old"]');
+    assert(!r2.classList.contains('yt-colors') && r2.classList.contains('on-light'), r2.className);
+    eq(rgb(r2.querySelector('.amt')), 'rgb(0, 0, 0)', '舊資料：黑字');
+  });
+
   test('T5.5 待機室（第 23 節）：播放器時間比資料先到、預告影片 currentTime 前進＋「非最新」→ 不同步、不提示、沒有「回到播放位置」與 current 標記、時間碼不可點', async () => {
     await resetDb();
     const VW = 'vidWAITRM02';

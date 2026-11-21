@@ -159,6 +159,19 @@
       link: { anchor: 'a[href]', redirectPath: '/redirect', redirectParam: 'q' },
       paidStickerColorVars: ['--yt-live-chat-paid-sticker-background-color'], // 確認（筆記 2.4）
       paidMessageColorVars: ['--yt-live-chat-paid-message-primary-color'],    // 待實機確認
+      // v47（T5.6，審查十一 26.4）YouTube 給各 SC 的文字色（元件本身的 CSS 變數；dom-notes 2.4b，待實機確認）。
+      // 取不到的欄位由檢視器依對比度規則補（CORE.parseColor）
+      paidMessageTextColorVars: {
+        header: '--yt-live-chat-paid-message-header-color',
+        author: '--yt-live-chat-paid-message-author-name-color',
+        timestamp: '--yt-live-chat-paid-message-timestamp-color',
+        body: '--yt-live-chat-paid-message-color',
+      },
+      // 超級貼圖：chip-text-color 是金額膠囊（自己的底色）上的字色，不套在卡片上；只取名稱色
+      paidStickerTextColorVars: {
+        author: '--yt-live-chat-paid-sticker-author-name-text-color',
+      },
+      paidColorVarPrefix: '--yt-live-chat-paid-', // F-20 P7：列出元件上實際有的變數名稱（不含值）
       membership: { primaryText: '#header-primary-text', subtext: '#header-subtext' }, // 確認（筆記 3）
       // 置頂列內的訊息（筆記 2.4：banner-renderer > #contents > text-message-renderer#<id>）
       bannerPinnedMessage: 'yt-live-chat-banner-renderer #contents yt-live-chat-text-message-renderer',

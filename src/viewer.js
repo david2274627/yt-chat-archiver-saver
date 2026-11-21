@@ -695,10 +695,19 @@
       let row;
       if (m.type === T.SUPERCHAT || m.type === T.SUPERSTICKER) {
         row = el('div', 'card' + (m.deleted ? ' deleted' : ''));
-        const col = CORE.parseColor(m.color);
-        if (col) { row.style.background = col.bg; row.style.color = col.fg; row.classList.add(col.fg === '#fff' ? 'on-dark' : 'on-light'); } else row.classList.add('nocolor');
+        // v47（T5.6，審查十一 26.4）文字色沿用 YouTube 給這則 SC 的值（標題列／名稱／時間／內文），取不到的欄位才用對比度規則
+        const col = CORE.scColors(m);
         const hr = el('div', 'hd-row');
-        hr.append(avatar(m, it.name), tcNode(m), nameNode(it, ''), el('span', 'amt', m.amount || ''));
+        const tcn = tcNode(m), nmn = nameNode(it, ''), amt = el('span', 'amt', m.amount || '');
+        hr.append(avatar(m, it.name), tcn, nmn, amt);
+        if (col) {
+          row.style.background = col.bg; row.style.color = col.body;
+          row.classList.add(col.onDark ? 'on-dark' : 'on-light');
+          if (col.from === 'youtube') {
+            row.classList.add('yt-colors');
+            hr.style.color = col.header; amt.style.color = col.header; nmn.style.color = col.author; tcn.style.color = col.timestamp;
+          }
+        } else row.classList.add('nocolor');
         row.appendChild(hr);
         if (m.deleted) hr.appendChild(el('span', 'bdg del', '已刪除'));
         if (m.type === T.SUPERSTICKER) {

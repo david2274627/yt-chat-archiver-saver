@@ -47,6 +47,7 @@ mark .emo-img { vertical-align: -5px; }
 .card .tx { background: color-mix(in srgb, currentColor 12%, transparent); }
 .card .tc, .card .nm, .card .bdg.del { color: inherit; }
 .card .tc { opacity: .85; }
+.card.yt-colors .tc { opacity: 1; } /* v47（26.4）YouTube 的時間色本身已帶透明度 */
 .card .nm { font-weight: 700; }
 .card.nocolor { background: var(--ytcas-surface-2); color: var(--ytcas-text); }
 .card .stk img { width: 72px; height: 72px; object-fit: contain; }

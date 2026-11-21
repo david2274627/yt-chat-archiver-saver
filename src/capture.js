@@ -161,6 +161,18 @@
     return '';
   }
 
+  // v47（26.4）文字色變數 → { header?, author?, timestamp?, body? }；只接受色碼（#rgb／#rrggbb／#rrggbbaa、rgb()／rgba()），都沒有 → null
+  const COLOR_RE = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(,\s*(0|1|0?\.\d+)\s*)?\))$/i;
+  function textColors(el, vars) {
+    if (!vars) return null;
+    const out = {};
+    for (const [k, name] of Object.entries(vars)) {
+      const v = cssVar(el, [name]);
+      if (v && COLOR_RE.test(v)) out[k] = v.toLowerCase().replace(/\s+/g, '');
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
   // 刪除狀態（待實機確認：屬性名稱與 #deleted-state 內容）
   function isDeletedEl(el) {
     const D = S.chat.deleted;
@@ -210,6 +222,9 @@
     } else if (type === T.SUPERCHAT || type === T.SUPERSTICKER) {
       m.amount = clean((el.querySelector(S.chat.purchaseAmount) || {}).textContent);
       m.color = cssVar(el, type === T.SUPERCHAT ? S.chat.paidMessageColorVars : S.chat.paidStickerColorVars);
+      // v47（T5.6，審查十一 26.4）YouTube 給這則 SC 的文字色（標題列、名稱、時間、內文）：檢視器優先使用，取不到才用對比度規則
+      const tc = textColors(el, type === T.SUPERCHAT ? S.chat.paidMessageTextColorVars : S.chat.paidStickerTextColorVars);
+      if (tc) m.textColors = tc;
       m.runs = runsOf(msgEl);
       if (type === T.SUPERSTICKER) {
         const st = el.querySelector(S.chat.stickerImg);
@@ -364,7 +379,7 @@
       queue: [], unflushed: new Set(), sending: null, batchTimer: 0, trimTimer: 0, pollTimer: 0, statsTimer: 0,
       pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
-        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0, giftLate: 0, giftMissing: 0 },
+        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0, giftLate: 0, giftMissing: 0, scTotal: 0, scTextColors: 0 },
       seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
@@ -383,6 +398,18 @@
       if (n >= C.DIAG.P7_MAX_PER_TAG) return;
       st.p7.set(k, n + 1);
       diag('P7', 'structure', Object.assign({ reason }, structureOf(el)));
+    }
+    // v47（T5.6，審查十一 26.4）F-20 P7：SC 元件上實際有的 --yt-live-chat-paid-* 變數名稱（只有名稱，不含值）、
+    // 本套件讀到的文字色欄位。同一類型每場最多 P7_MAX_PER_TAG 次。用來確認 selectors.js 的變數名稱
+    function probeColorVars(el, m) {
+      if (!opts.onDiag) return;
+      const k = 'sc-colors:' + m.type;
+      const n = st.p7.get(k) || 0;
+      if (n >= C.DIAG.P7_MAX_PER_TAG) return;
+      st.p7.set(k, n + 1);
+      const names = [];
+      try { for (let i = 0; i < el.style.length; i++) { const p = el.style[i]; if (p.startsWith(S.chat.paidColorVarPrefix)) names.push(p.slice(0, 80)); } } catch (_) { /* ignore */ }
+      diag('P7', 'sc-color-vars', { type: m.type, inlineVars: names.slice(0, 30), got: m.textColors ? Object.keys(m.textColors) : [], hasBg: !!m.color });
     }
     // P2：#items 節點分類（標籤 × 已存／略過／未存）
     function itemsBreakdown() {
@@ -544,6 +571,7 @@
       if (opts.onDiag && ((m.type === T.SYSTEM && m.rawTag && !KNOWN_SYSTEM_TAGS.has(m.rawTag)) || m.type === T.GIFT)) {
         probeStructure(m.type === T.GIFT ? 'gift' : 'unknown', el);
       }
+      if (m.type === T.SUPERCHAT || m.type === T.SUPERSTICKER) { st.stats.scTotal++; if (m.textColors) st.stats.scTextColors++; probeColorVars(el, m); }
       // v45（T5.4，審查十一 20.4 第 1 點）非記錄期間也保留禮物結構（只有標籤、屬性名稱、img 網域、定位線索；不含文字）：
       // background 存在 chrome.storage.session 的最近 5 筆，診斷匯出時附上。每個引擎最多送 5 次
       if (m.type === T.GIFT && opts.onGiftStructure && st.giftStructSent < 5) {
@@ -853,7 +881,8 @@
         itemsCount: doc.querySelectorAll(S.chat.anyItems).length,
         unmarkedNodes: box ? Array.from(box.children).filter((el) => !el.dataset[SAVED]).length : null,
         observedAdded: s.observedAdded, backfillRuns: s.backfillRuns, backfillCaptured: s.backfillCaptured,
-        lateCaptured: s.lateCaptured, dupCaptured: s.dupCaptured, f12: st.f12 };
+        lateCaptured: s.lateCaptured, dupCaptured: s.dupCaptured, f12: st.f12,
+        scTotal: s.scTotal, scTextColors: s.scTextColors }; // v47（26.4）SC 中取得 YouTube 文字色的筆數
       if (s.captured || final) console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), obj);
       // F-20 P1／P2：同一份統計寫入診斷記錄（只有筆數）；時間來源一併記錄，供開播判斷驗證
       diag('P1', final ? 'stats-final' : 'stats', Object.assign({}, obj, { times: {

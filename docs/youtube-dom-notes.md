@@ -111,6 +111,13 @@ yt-live-chat-renderer
 - 禮物 `yt-gift-message-view-model`：確認（見 5.3）。
 - **待確認（尚未出現）**：`ytd-sponsorships-live-chat-gift-purchase-announcement-renderer`、`ytd-sponsorships-live-chat-header-renderer`、`yt-live-chat-banner-redirect-renderer`（降落）、`yt-live-chat-poll-renderer`、`yt-live-chat-action-panel-renderer`、里程碑。
 
+### 2.4b SC 的文字色 CSS 變數（**待驗證**，T5.6，審查十一 26.4）
+- 用途：檢視器沿用 YouTube 給各 SC 的文字色（SPEC 10.3，v47）。`selectors.js` 的 `paidMessageTextColorVars`／`paidStickerTextColorVars`。
+- 推定的變數名稱（尚未實機記錄）：
+  - `yt-live-chat-paid-message-renderer`：`--yt-live-chat-paid-message-header-color`（標題列）、`--yt-live-chat-paid-message-author-name-color`（名稱）、`--yt-live-chat-paid-message-timestamp-color`（時間）、`--yt-live-chat-paid-message-color`（內文）；底色 `--yt-live-chat-paid-message-primary-color`（本套件已用）、`--yt-live-chat-paid-message-secondary-color`（標題列底色，未用）。
+  - `yt-live-chat-paid-sticker-renderer`：已確認 `--yt-live-chat-paid-sticker-background-color`、`--yt-live-chat-paid-sticker-chip-background-color`、`--yt-live-chat-paid-sticker-chip-text-color`（2.4）；名稱色 `--yt-live-chat-paid-sticker-author-name-text-color` 待確認。金額膠囊的字色配膠囊自己的底色，不套在卡片上。
+- 驗證方式：F-20 記錄 P7 → 摘要的 `sc-color-vars`（元件 inline style 上實際有的 `--yt-live-chat-paid-*` 名稱，不含值；`got`＝本套件讀到的欄位）；P1 `scTotal`／`scTextColors`。取不到的欄位由檢視器以對比度規則補，不影響顯示。
+
 ### 2.7 超級貼圖的 `img`（**待驗證**，審查十一 17.2）
 - `#sticker-container > yt-img-shadow#sticker` 內的 `img`：`src` 屬性的格式（`https://`／協定相對 `//lh3.googleusercontent.com/…`／空的／`data:` 佔位圖）與載入時機尚未實機記錄。
 - 實機現象（2026-11-19 02:38）：$45.00 超級貼圖在面板中沒有圖（`stickerSrc` 為空），直播畫面正常。
