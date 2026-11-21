@@ -449,7 +449,10 @@ async function diagStart(opts) {
   const hours = Math.min(D.MAX_HOURS, Math.max(D.MIN_HOURS, Number(opts.hours) || D.DEFAULT_HOURS));
   const startAt = typeof opts.startAt === 'number' && opts.startAt > now ? opts.startAt : now;
   const maxEnd = startAt + hours * 3600e3;
-  const endsAt = typeof opts.endAt === 'number' && opts.endAt > startAt ? Math.min(opts.endAt, maxEnd) : maxEnd;
+  // v49（T6）durationMs（「記錄 N 分鐘」）優先：以實際的開始時間計算，不受診斷頁與這裡取時間的毫秒差影響
+  const dur = typeof opts.durationMs === 'number' && Number.isFinite(opts.durationMs) && opts.durationMs > 0 ? opts.durationMs : null;
+  const endsAt = dur != null ? Math.min(startAt + dur, maxEnd)
+    : typeof opts.endAt === 'number' && opts.endAt > startAt ? Math.min(opts.endAt, maxEnd) : maxEnd;
   const scheduled = startAt > now;
   // v44（T5.3，18.4）P9 取樣間隔（分鐘）
   const p9Minutes = Math.min(D.P9_MAX_MINUTES, Math.max(D.P9_MIN_MINUTES, Math.round(Number(opts.p9Minutes) || D.P9_MINUTES)));
@@ -1100,7 +1103,7 @@ try {
 // 與新的 background 斷線（只剩修剪、不再收錄）。update 時對所有 YouTube 分頁的所有 frame 重新注入 content script；
 // 新腳本會讓同一環境裡已斷線的舊實例退場（content.js 的 __ytcasRetire）。
 // PoC（src/poc/）的腳本依 frame 有不同的 matches，無法以 allFrames 正確重現，不重新注入（PoC 需要 F5；T9 移除）。
-const REINJECT_FILES = ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/panel.js', 'src/content.js']; // T5：加入 panel.js
+const REINJECT_FILES = ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/chat-input.js', 'src/panel.js', 'src/content.js']; // T5：加入 panel.js；v49（T6）chat-input.js
 async function reinjectYouTubeTabs(tabIds) {
   const out = { tabs: 0, ok: 0, failed: [] };
   let tabs = [];

@@ -40,11 +40,17 @@
     eq(U.buttonState({ scheduled: true, startAt: new Date(2026, 10, 17, 21, 5).getTime() }, now), { action: 'cancel', cls: 'secondary', label: '取消排程（21:05 開始）' });
   });
 
-  test('computePlan：分鐘與指定結束時間互斥（只採用被選的一個）；超過最長時限時提示並以上限為準；輸入錯誤', () => {
+  test('computePlan：分鐘與指定結束時間互斥（只採用被選的一個）；超過最長時限時提示並以上限為準；輸入錯誤', async () => {
     const U = self.YTCAS_DIAG_UI;
     const now = new Date(2026, 10, 17, 9, 0, 0).getTime();
     let p = U.computePlan({ endMode: 'minutes', minutes: 10, endAt: now + 300 * MIN, hours: 6 }, now);
     eq([p.ok, p.endAt - now, p.exceeds, p.opts.endAt - now], [true, 10 * MIN, false, 10 * MIN], '分鐘模式忽略結束時間');
+    eq(p.opts.durationMs, 10 * MIN, 'v49：分鐘模式也送時長（background 以實際開始時間計算，不再差 1 毫秒）');
+    // v49（T6）已知不穩定的根因：本頁算 endAt 後 background 才取 startAt（晚幾毫秒）→ 實際只記 599,999 ms。
+    // 以「endAt 早 3 毫秒」直接呼叫 background 重現：有 durationMs 時以實際開始時間＋時長為準
+    const st0 = await BG.diag.start({ probes: ['P1'], hours: 6, endAt: Date.now() + 10 * MIN - 3, durationMs: 10 * MIN });
+    eq(st0.endsAt - st0.startAt, 10 * MIN, 'durationMs 優先');
+    await BG.diag.stop();
     p = U.computePlan({ endMode: 'end', minutes: 999, endAt: now + 30 * MIN, hours: 6 }, now);
     eq([p.endAt - now, p.exceeds], [30 * MIN, false], '結束時間模式忽略分鐘');
     p = U.computePlan({ endMode: 'minutes', minutes: 120, hours: 1 }, now);

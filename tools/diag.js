@@ -49,6 +49,9 @@
     const exceeds = end > limitEnd;
     const effectiveEnd = Math.min(end, limitEnd);
     const opts = { hours, endAt: end };
+    // v49（T6）「記錄 N 分鐘」：也送時長，background 以實際開始時間＋時長計算停止時間。
+    // 只送 endAt 時，本頁算 endAt 與 background 取 startAt 之間差幾毫秒，實際只記 599,999 ms（test-diag-page 的已知不穩定）
+    if (form.endMode !== 'end') opts.durationMs = Number(form.minutes) * 60000;
     if (scheduled) opts.startAt = start;
     if (Array.isArray(form.probes)) opts.probes = form.probes;
     // v44（T5.3，18.4）P9 取樣間隔（分鐘）：診斷頁預設 1 分鐘
