@@ -173,7 +173,22 @@
   - 會員里程碑卡片、`member-strong`／`on-member`／`member-soft` tokens、對比度檢查補卡片組合（commit `ba61d58`）。
   - 跨日分隔線（commit `c94144d`）。
   - 測試清單判讀方法與重現方式、dom-notes 訊息連結改為已驗證（commit `10eb8d0`）。
-  - CHANGELOG、審查文件第 22～24 節、診斷摘要 2026-11-21 18:48、T5 報告「T5.5」（本段落所在的 commit）。
+  - CHANGELOG、審查文件第 22～24 節、診斷摘要 2026-11-21 18:48、T5 報告「T5.5」（commit `76c0bca`）。
+- v47／T5.6（`docs/review-2026-11-17.md` 第 25、26 節；報告為 T5 報告的「T5.6」）：
+  - 預定開播時間在未來＝待機室（不論 `startedAt`）、降落 phase 與其他訊息同一規則、錯誤 `startedAt` 降級與 `fixPhases` 清除、`streamTimes`（commit `4320774`）。
+  - 直播錨點的有效條件（穩定 3 秒、期間沒有 seek）、5 秒內 seek 到非最新就作廢、網址帶 `t=` 等點「直播」或 10 秒、P10 事件（commit `3919cc8`）。
+  - 點頭像以新分頁開作者頻道、禮物卡補送禮者頭像（commit `c0210f2`）。
+  - SC 文字色沿用 YouTube 的文字色變數、P7 `sc-color-vars`（commit `b744312`）。
+  - CLAUDE.md 不得含 BOM、SPEC 10.1 原則 7 的例外（commit `ea2cd8c`）。
+  - CHANGELOG、測試清單、審查文件第 25、26 節、T5 報告「T5.6」（本段落所在的 commit）。
+
+### 規格 v47（2026-11-21，T5.6）
+- F-14：開播訊號來源完整清單；預定開播時間在未來＝待機室（`scheduledFuture`、`startedAtSuspect`、`C.effectiveStart`）；`fixPhases` 的 `waiting` 清單；4.1 `streams` 新欄位。
+- F-08：錨點的有效條件與作廢（`ANCHOR_STABLE_MS`／`ANCHOR_GUARD_MS`／`ANCHOR_URL_T_MS`、`urlT`）。
+- F-05：點頭像開作者頻道（所有卡片一致）。
+- F-02／10.3／10.4：SC 文字色沿用 YouTube 的值（取代 v39 的對比度決定，取不到才用），大字 3:1 例外的依據。
+- 10.1 原則 7：「回到播放位置」浮動按鈕是唯一例外。
+- F-20：P7 `sc-color-vars`、P10 事件與錨點欄位。
 
 ### 規格 v46（2026-11-21，T5.5）
 - 10.1 原則 7：面板內的提示不得遮蓋聊天內容與選單；10.4 同步提示列、「↓ 恢復自動捲動」留白、跨日分隔線、會員／里程碑卡；10.3 會員里程碑 tokens。
