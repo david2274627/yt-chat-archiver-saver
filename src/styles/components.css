@@ -150,6 +150,10 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
 .phase { display: flex; align-items: center; gap: 8px; margin: 8px 12px; color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); font-weight: 700; }
 .phase::before, .phase::after { content: ""; flex: 1; border-top: 1px solid var(--ytcas-border); }
 .phase span { padding: 1px 8px; border-radius: var(--ytcas-radius-pill); background: var(--ytcas-surface-2); white-space: nowrap; }
+/* v46（T5.5，審查十一 24.7）跨日分隔線：比時段分隔線低調（虛線、不加底色），日期用 tabular-nums */
+.day-sep { display: flex; align-items: center; gap: 8px; margin: 6px 12px; color: var(--ytcas-text-3); font-size: var(--ytcas-fs-xs); font-variant-numeric: tabular-nums; }
+.day-sep::before, .day-sep::after { content: ""; flex: 1; border-top: 1px dashed var(--ytcas-border); }
+.day-sep span { white-space: nowrap; }
 
 /* 「↓ 恢復自動捲動／回到播放位置」：面板內唯一浮在清單上的元素。顯示時清單底部留出等高空白（PANEL.RESUME_PAD_PX），
    z-index 低於 ⋯ 選單（SPEC 10.1 原則 7：提示不得遮蓋聊天內容與選單） */

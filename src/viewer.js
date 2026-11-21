@@ -527,6 +527,7 @@
     // ---------------- 列渲染
     function estimate(e) {
       if (e.kind === 'phase') return 34;
+      if (e.kind === 'day') return 28; // v46（24.7）跨日分隔線（實際高度量測後快取）
       const t = e.it.m.type;
       if (t === T.SUPERCHAT) return 84;
       if (t === T.SUPERSTICKER) return 128;
@@ -673,6 +674,11 @@
         d.appendChild(el('span', null, e.label));
         return d;
       }
+      if (e.kind === 'day') {
+        const d = el('div', 'day-sep'); d.setAttribute('role', 'separator'); d.setAttribute('aria-label', e.label);
+        d.appendChild(el('span', null, e.label));
+        return d;
+      }
       const it = e.it, m = it.m, kw = S.f.keyword;
       let row;
       if (m.type === T.SUPERCHAT || m.type === T.SUPERSTICKER) {
@@ -808,7 +814,8 @@
       // 列的 key：訊息用 id；分隔線用 phase 名稱＋出現序號（量測高度快取以 key 為準）
       const entries = CORE.withPhaseDividers(list);
       let seq = 0;
-      for (const e of entries) e.key = e.kind === 'phase' ? 'ph:' + e.phase + ':' + (seq++) : e.it.m.id;
+      // v46（24.7）跨日分隔線：'day:' 日期＋序號（同一天可能在不同段各出現一次）
+      for (const e of entries) e.key = e.kind === 'phase' ? 'ph:' + e.phase + ':' + (seq++) : e.kind === 'day' ? 'day:' + e.day + ':' + (seq++) : e.it.m.id;
       S.timings.filterMs = performance.now() - t0;
       for (const p of CORE.PILLS) {
         const b = pillBtn[p];

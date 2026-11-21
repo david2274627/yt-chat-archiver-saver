@@ -898,6 +898,71 @@
     document.documentElement.removeAttribute('data-theme');
   });
 
+  test('T5.5 跨日分隔線（24.7）：跨日、跨多日、跨年、時區；與 phase 標題同時出現時先 phase；段首與前一段日期不同也顯示；VOD 午夜前後順序顛倒不來回插入', () => {
+    const at = (id, d, o) => ({ m: Object.assign({ id, timestampAbs: d.getTime() }, o || {}) });
+    const kinds = (es) => es.map((e) => (e.kind === 'msg' ? e.it.m.id : e.kind === 'phase' ? '#' + e.phase : '|' + e.label));
+    // 只有 live：沒有 phase 標題，但跨日仍插入（清單第一則前不加）
+    let es = CORE.withPhaseDividers([at('a', new Date(2026, 10, 18, 23, 59, 50)), at('b', new Date(2026, 10, 19, 0, 0, 5)), at('c', new Date(2026, 10, 19, 12))]);
+    eq(kinds(es), ['a', '|2026/11/19（四）', 'b', 'c'], '跨日');
+    // 跨多日：只插入新日期一條（不補中間的日子）
+    es = CORE.withPhaseDividers([at('a', new Date(2026, 10, 10, 9)), at('b', new Date(2026, 10, 14, 9)), at('c', new Date(2026, 10, 14, 10))]);
+    eq(kinds(es), ['a', '|2026/11/14（六）', 'b', 'c'], '跨多日');
+    // 跨年
+    es = CORE.withPhaseDividers([at('a', new Date(2026, 11, 31, 23, 59)), at('b', new Date(2027, 0, 1, 0, 1))]);
+    eq(kinds(es), ['a', '|2027/01/01（五）', 'b'], '跨年');
+    // 時區：同一組時刻，UTC+8 跨日、UTC−5 不跨日
+    const u = (h, mi) => ({ m: { id: 'u' + h + mi, timestampAbs: Date.UTC(2026, 10, 18, h, mi) } });
+    const pair = [u(15, 50), u(16, 10)]; // UTC+8：23:50 → 00:10；UTC−5：10:50 → 11:10
+    eq(kinds(CORE.withPhaseDividers(pair, { tzOffsetMin: 480 })), ['u1550', '|2026/11/19（四）', 'u1610'], 'UTC+8');
+    eq(kinds(CORE.withPhaseDividers(pair, { tzOffsetMin: -300 })), ['u1550', 'u1610'], 'UTC−5');
+    eq(CORE.dayLabel(Date.UTC(2026, 10, 18, 16, 10), 480), '2026/11/19（四）');
+    // 各段：提示 → pre（待機室跨三天）→ live → post；phase 標題在前、日期在後；段首日期與前一段不同也顯示
+    es = CORE.withPhaseDividers([
+      at('n0', new Date(2026, 10, 20, 20), { notice: true }),
+      at('p0', new Date(2026, 10, 17, 21), { phase: 'pre' }), at('p1', new Date(2026, 10, 19, 8), { phase: 'pre' }), at('p2', new Date(2026, 10, 20, 19), { phase: 'pre' }),
+      at('l0', new Date(2026, 10, 20, 20), { phase: 'live' }), at('l1', new Date(2026, 10, 21, 0, 30), { phase: 'live' }),
+      at('q0', new Date(2026, 10, 21, 1), { phase: 'post' }),
+    ]);
+    eq(kinds(es), ['#notice', 'n0', '#pre', '|2026/11/17（二）', 'p0', '|2026/11/19（四）', 'p1', '|2026/11/20（五）', 'p2', '#live', 'l0', '|2026/11/21（六）', 'l1', '#post', 'q0'],
+      '各段皆適用；先 phase 再日期；post 段首與前一段最後一則同一天 → 不加');
+    // VOD（依影片時間排序）：午夜前後到達時間有幾秒顛倒 → 只在往後跨日時插入一次
+    es = CORE.withPhaseDividers([at('v0', new Date(2026, 10, 18, 23, 59, 58)), at('v1', new Date(2026, 10, 19, 0, 0, 1)), at('v2', new Date(2026, 10, 18, 23, 59, 59)), at('v3', new Date(2026, 10, 19, 0, 0, 3))]);
+    eq(kinds(es), ['v0', '|2026/11/19（四）', 'v1', 'v2', 'v3'], '不來回插入');
+    // 時間軸同步：分隔線不影響（連續兩條分隔線也取前一則訊息的時間）
+    const clock = { live: true, currentTime: 0, at: 0 };
+    const idx = CORE.syncIndex(es, clock, { target: new Date(2026, 10, 19, 0, 0, 2).getTime() });
+    eq(es[idx].it.m.id, 'v2');
+  });
+
+  test('T5.5 跨日分隔線的繪製（24.7）：面板與後台都有；虛擬列表的列高納入分隔線（列不重疊、總高＝各列相加）', async () => {
+    await resetDb();
+    const VD = 'vidDAYSEP01';
+    const msgs = [];
+    const base = new Date(2026, 10, 15, 20).getTime();
+    for (let i = 0; i < 120; i++) msgs.push(mk({ id: 'd' + i, videoId: VD, phase: 'pre', timestampAbs: base + i * 3 * 3600e3, videoOffsetSec: null }));
+    await put({ videoId: VD, title: 'd', isLive: true, startedAt: null, scheduledStartAt: base + 400 * 3600e3, lastMessageAt: base + 360 * 3600e3, messageCount: 120, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    for (const embed of [false, true]) {
+      const c = V.mount(host, { embed, videoId: VD });
+      await c.ready; await frame(); await frame();
+      const days = c.state.entries.filter((e) => e.kind === 'day');
+      eq(days.length, 15, (embed ? '面板' : '後台') + '：11/15 20:00～11/30 17:00（16 個日期）→ 15 條');
+      const check = async () => {
+        await frame(); await frame();
+        const rows = Array.from(c.els.list.querySelectorAll('.vrow')).sort((a, b) => parseFloat(a.style.top) - parseFloat(b.style.top));
+        assert(rows.some((r) => r.querySelector('.day-sep')), '可視範圍內有跨日分隔線');
+        for (let k = 1; k < rows.length; k++) {
+          const prev = rows[k - 1], cur = rows[k];
+          assert(Math.abs(parseFloat(prev.style.top) + prev.offsetHeight - parseFloat(cur.style.top)) < 1, '列不重疊、不留縫 ' + k);
+        }
+        const sep = rows.find((r) => r.querySelector('.day-sep'));
+        assert(sep.querySelector('.day-sep').getAttribute('role') === 'separator' && /^\d{4}\/\d\d\/\d\d（[日一二三四五六]）$/.test(sep.textContent), sep.textContent);
+      };
+      await check();
+      c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await check();
+    }
+  });
+
   test('T5.4 已結束場次（21.2、21.3）：依 phase 分段（提示 → pre → live → post）、每段標題一次；超出影片長度的時間碼面板與後台都不可點並說明；頁面狀態提示在最上方、不參與同步', async () => {
     await resetDb();
     const VE = 'vidENDED001';

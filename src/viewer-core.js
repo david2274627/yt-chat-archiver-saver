@@ -107,14 +107,34 @@
   // v45（21.3）notice：頁面狀態提示（歡迎、聊天室模式、重播已啟用…），不屬於 pre／live／post
   const PHASE_LABEL = Object.freeze({ notice: '聊天室提示', pre: '直播開始前（待機室）', live: '直播中', post: '直播結束後' });
   // 在清單中插入分隔線：清單出現 notice、pre 或 post 時，每段開頭都加上該段標籤；只有 live 時不加
-  function withPhaseDividers(list) {
+  // v46（T5.5，審查十一 24.7）跨日分隔線 { kind: 'day', day: YYYYMMDD, label: '2026/11/19（四）' }：
+  //   相鄰兩則的 timestampAbs 跨越本機日期時插入（各段皆適用）；與 phase 標題同時出現時先 phase 標題、再日期；
+  //   段內第一則的日期與前一段最後一則不同時也顯示。段內只在日期「往後」時插入（VOD 依影片時間排序時，
+  //   午夜前後的到達時間可能有幾秒前後顛倒，不來回插入）。清單第一則前不加（時間碼本身會顯示日期）。
+  //   opts.tzOffsetMin：以指定的 UTC 偏移（分鐘，東正）計算日期（測試用；預設本機時區）
+  const WEEKDAY = '日一二三四五六';
+  function dayParts(ms, tz) {
+    if (tz == null) { const d = new Date(ms); return [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getDay()]; }
+    const d = new Date(ms + tz * 60000);
+    return [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), d.getUTCDay()];
+  }
+  function dayKey(ms, tz) { const p = dayParts(ms, tz); return p[0] * 10000 + p[1] * 100 + p[2]; }
+  function dayLabel(ms, tz) { const p = dayParts(ms, tz); return p[0] + '/' + pad(p[1]) + '/' + pad(p[2]) + '（' + WEEKDAY[p[3]] + '）'; }
+  function withPhaseDividers(list, opts) {
+    const tz = opts && opts.tzOffsetMin != null ? opts.tzOffsetMin : null;
     const hasOther = list.some((it) => phaseOf(it.m) !== 'live');
-    if (!hasOther) return list.map((it) => ({ kind: 'msg', it }));
     const out = [];
-    let cur = null;
+    let cur = null, lastDay = null;
     for (const it of list) {
       const p = phaseOf(it.m);
-      if (p !== cur) { out.push({ kind: 'phase', phase: p, label: PHASE_LABEL[p] || p }); cur = p; }
+      const segStart = p !== cur;
+      if (segStart) { if (hasOther) out.push({ kind: 'phase', phase: p, label: PHASE_LABEL[p] || p }); cur = p; }
+      const ts = it.m && it.m.timestampAbs;
+      if (typeof ts === 'number' && Number.isFinite(ts)) {
+        const k = dayKey(ts, tz);
+        if (lastDay != null && (segStart ? k !== lastDay : k > lastDay)) out.push({ kind: 'day', day: k, label: dayLabel(ts, tz) });
+        if (segStart || lastDay == null || k > lastDay) lastDay = k;
+      }
       out.push({ kind: 'msg', it });
     }
     return out;
@@ -365,7 +385,11 @@
         const mid = (lo + hi) >> 1;
         const e = entries[mid];
         // v45：清單最上方的頁面狀態提示（與其後的分隔線）視為 −∞，維持二分搜尋需要的遞增
-        const tOf = (j) => { const x = entries[j]; if (x.kind === 'msg') return phaseOf(x.it.m) === 'notice' ? -Infinity : x.it.m.timestampAbs; return j > 0 && entries[j - 1].kind === 'msg' ? tOf(j - 1) : -Infinity; };
+        // v46：分隔線（phase 標題、跨日分隔線，可能連續兩條）取前一則訊息的時間
+        const tOf = (j) => {
+          for (let k = j; k >= 0; k--) { const x = entries[k]; if (x.kind === 'msg') return phaseOf(x.it.m) === 'notice' ? -Infinity : x.it.m.timestampAbs; }
+          return -Infinity;
+        };
         const t = tOf(mid);
         if (t <= target) { ans = mid; lo = mid + 1; } else hi = mid - 1;
       }
@@ -468,7 +492,7 @@
 
   root.YTCAS_VIEWER_CORE = Object.freeze({
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
-    matchRanges, emojiMatches, withPhaseDividers, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
+    matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
     versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);
