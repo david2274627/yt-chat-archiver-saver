@@ -185,7 +185,18 @@
   - DOM 給的 @handle 長度下限 1、與內文推斷分開、`HANDLE_RE` 統一、`authorUrl` 編碼（commit `a1310fe`）。
   - 背景分頁的時間精度（一批到達改用顯示時間）、「≈」標記、P1 `tsSource`／背景擷取／`giftLate`／`itemsSwaps`、`itemsIsCurrent` 即時重新掛上（commit `3016c79`）。
   - 待機室→開播不重新整理：待機室重新抓取、`isLiveNow`、`liveConfirmedAt`、送來的 `pre` 依已知開播時間重算（commit `f5710e9`）。
-  - CHANGELOG、測試清單、審查文件第 27、28 節、診斷摘要 2026-11-22 02:59／03:10、T5 報告「T5.7」（本段落所在的 commit）。
+  - CHANGELOG、測試清單、審查文件第 27、28 節、診斷摘要 2026-11-22 02:59／03:10、T5 報告「T5.7」（commit `f476f73`）。
+- v49／T6（SPEC 第 6 節；報告為 `docs/reports/2026-11-22-t6-f10.md`）：
+  - chat frame 端底部互動區量測與彈窗偵測 `src/chat-input.js`、隱藏原生列表（commit `83febd1`）。
+  - top frame 的 clip 狀態機、頁面層付款視窗、剩餘高度退讓、面板底部留白 `PANEL_INSET`、SPEC 6.7（commit `f56ae6b`）。
+  - 診斷頁「記錄 N 分鐘」送時長（修掉 `test-diag-page` 的已知不穩定）、重新注入清單加入 `chat-input.js`（commit `a14981b`）。
+  - 重新注入清單的測試斷言（commit `75196cc`）。
+  - CHANGELOG、測試清單、T6 報告（本段落所在的 commit）。
+
+### 規格 v49（2026-11-22，T6）
+- 4.3：`CHAT_INPUT_STATE` 新欄位（`vh`、`inputH`、`src`、`overlayIgnored`）、`CHAT_INPUT_REQUEST`、`PANEL_INSET`；3.1 新增 `src/chat-input.js`。
+- 6.7：T6 實作（量測、彈窗、clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白）；`COLLAPSE_MIN_H` 定案 200。
+- F-20：診斷頁「記錄 N 分鐘」的 `durationMs`。
 
 ### 規格 v48（2026-11-22，T5.7）
 - F-05：handle 的兩種規則（`C.domHandle`／`C.handleOf`）、網址編碼。
