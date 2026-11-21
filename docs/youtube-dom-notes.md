@@ -117,8 +117,10 @@ yt-live-chat-renderer
 - T5.3 處理：協定相對網址補 `https:`、先用屬性值再用已解析的 `.src`、只接受 https；`src` 晚於擷取出現時監看 10 秒補送；存 `alt` 當後備。
 - 待確認：`img` 的 `alt` 是否為貼圖描述（或在 `aria-label`）。
 
-### 2.8 訊息中的連結（**待驗證**，審查十一 17.1）
-- 預期：`#message` 內 `<a class="yt-simple-endpoint style-scope yt-live-chat-text-message-renderer" href="https://www.youtube.com/redirect?event=live_chat&redir_token=…&q=<完整網址>">截斷的文字</a>`；站內連結（頻道、影片、`#hashtag`）為相對或 `https://www.youtube.com/…`。**以上未經實機確認**。
+### 2.8 訊息中的連結（**已驗證**：2026-11-21 19:05，使用者 T5.4 實測，審查十一 24 節表格；17.1）
+- 實機確認：`#message` 內以 `a[href]` 擷取的連結，在面板中可以點開（直播中）。
+- 解析方式沿用 T5.3：顯示文字會截斷、完整網址在 `href`；`href` 是 `https://www.youtube.com/redirect?…&q=<完整網址>` 時取 `q`；站內連結（頻道、影片、`#hashtag`）為相對或 `https://www.youtube.com/…`。
+- 仍未逐一記錄（不影響功能）：`<a>` 的 class 名稱（套件只用 `a[href]`）、外部網址是否一律經 `/redirect`。
 - 實機現象（2026-11-19 02:15）：網址在原生聊天室顯示為截斷文字（`https://madestudio.com.tw/zh/games/br...`），原生可點。
 - `selectors.js`：`chat.link = { anchor: 'a[href]', redirectPath: '/redirect', redirectParam: 'q' }`。
 

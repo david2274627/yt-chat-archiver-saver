@@ -154,8 +154,8 @@
       badgeTypeAttr: 'type',                  // yt-live-chat-author-badge-renderer[type=verified|moderator|…]：待實機確認
       emojiShortcutAttr: 'shared-tooltip-text', // 表符 img 的快捷碼屬性：待實機確認（取不到時只存 alt）
       stickerImg: '#sticker img',             // #sticker-container > yt-img-shadow#sticker 確認；內部 img 待實機確認
-      // v44（T5.3，審查十一 17.1）#message 內的連結。**待實機確認**（dom-notes 2.8）：<a> 的 class、href 是否為
-      // https://www.youtube.com/redirect?…&q=<完整網址>。顯示文字會截斷，完整網址只在 href
+      // v44（T5.3，審查十一 17.1）#message 內的連結：確認可用（2026-11-21 實機，dom-notes 2.8）。href 為
+      // https://www.youtube.com/redirect?…&q=<完整網址> 時取 q；顯示文字會截斷，完整網址只在 href（不依賴 <a> 的 class）
       link: { anchor: 'a[href]', redirectPath: '/redirect', redirectParam: 'q' },
       paidStickerColorVars: ['--yt-live-chat-paid-sticker-background-color'], // 確認（筆記 2.4）
       paidMessageColorVars: ['--yt-live-chat-paid-message-primary-color'],    // 待實機確認
