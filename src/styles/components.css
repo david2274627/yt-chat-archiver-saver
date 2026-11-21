@@ -93,6 +93,10 @@ button { font: inherit; color: inherit; }
 .msg:hover { background: var(--ytcas-surface-2); }
 .av { flex: none; width: var(--ytcas-avatar); height: var(--ytcas-avatar); border-radius: 50%; display: grid; place-items: center;
   font-size: var(--ytcas-fs-xs); font-weight: 700; color: var(--ytcas-on-accent); background: var(--ytcas-text-3); }
+/* v47（T5.6，審查十一 26.3）頭像＝開啟作者頻道（新分頁）；沒有頻道資訊時是一般的 .av（不可點、預設游標） */
+.av-link { flex: none; display: inline-flex; border-radius: 50%; cursor: pointer; text-decoration: none; }
+.av-link:hover .av { filter: brightness(.92); box-shadow: 0 0 0 2px var(--ytcas-focus-ring); }
+.av-link:focus-visible { outline-offset: 1px; }
 .body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .tc { font: var(--ytcas-fs-xs)/1 var(--ytcas-font-mono); color: var(--ytcas-timecode); background: none; border: 0; padding: 0; margin-right: 6px; cursor: pointer; font-variant-numeric: tabular-nums; }
 .tc:hover { text-decoration: underline; }

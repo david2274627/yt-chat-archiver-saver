@@ -555,14 +555,23 @@
       const ch = m.authorHandle && S.channels ? S.channels.get(m.authorHandle) : null;
       return (ch && ch.avatar) || '';
     }
+    // v47（T5.6，審查十一 26.3）頭像可點＝以新分頁開啟作者頻道（CORE.channelUrl：頻道 id → @handle，只限 youtube.com）。
+    // 所有卡片類型一致（一般、SC、貼圖、禮物、會員、里程碑、置頂）；點名稱＝只看這位使用者不變。沒有頻道資訊 → 不可點
     function avatar(m, name) {
       const src = CORE.safeImg(avatarUrl(m));
+      let face;
       if (src) {
         const img = el('img', 'av'); img.src = src; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; img.decoding = 'async';
         img.addEventListener('error', () => { img.replaceWith(initial(name)); }, { once: true });
-        return img;
-      }
-      return initial(name);
+        face = img;
+      } else face = initial(name);
+      const url = CORE.channelUrl(m);
+      if (!url) return face;
+      const a = el('a', 'av-link'); a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.title = '開啟頻道'; a.setAttribute('aria-label', '開啟頻道：' + (name || ''));
+      a.addEventListener('click', (e) => e.stopPropagation()); // 置頂列：不展開／收合
+      a.appendChild(face);
+      return a;
     }
     function initial(name) {
       const s = el('span', 'av', Array.from(String(name || '').replace(/^@/, ''))[0] || '?');
@@ -732,7 +741,8 @@
           if (m.giftCount > 1) sub.append(' ×' + m.giftCount);
         }
         info.appendChild(sub);
-        row.append(g, info);
+        // v47（26.3）送禮者頭像（可點開頻道），與其他卡片一致
+        row.append(avatar(m, it.name), g, info);
         if (m.jewels) row.appendChild(el('span', 'jw', fmtN(m.jewels) + ' Jewels'));
       } else if (CORE.isMilestone(m)) {
         // v46（T5.5，審查十一 24.6）里程碑（會員訊息帶留言）：會員色卡片。標題列＝頭像、時間碼、名稱、@handle、

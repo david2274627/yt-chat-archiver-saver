@@ -566,6 +566,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - （v27）另有「隱藏已刪除訊息」切換（F-14），放在面板 ⋯ 選單與後台篩選區，不佔膠囊列。
 - （v38，T4）各膠囊的數字為**套用目前其他條件後**（使用者、關鍵字、隱藏已刪除）各分類的筆數，搜尋時可直接看到各分類命中幾則。「隱藏已刪除」只在本頁有效，不記住。
 - （v46，審查十一 24.4）各類卡片（SC、超級貼圖、禮物、會員、里程碑）的**名稱與操作與一般訊息一致**：點名稱＝只看這位使用者（F-06）、名稱旁的灰色 `@handle`（有顯示時）為純文字；只有訊息內容中的連結會開新分頁。
+- （v47，T5.6，審查十一 26.3）**點頭像＝以新分頁開啟作者頻道**（`CORE.channelUrl`）：頻道 id（`authorChannelId`，`UC…`）→ `https://www.youtube.com/channel/UC…` 優先；其次已存的 `authorUrl`（只接受 youtube.com 的 `/channel/UC…` 或 `/@handle`）；再其次 `@handle` → `https://www.youtube.com/@handle`。一律正規化為 `https://www.youtube.com/…`，其他網域、其他協定一律不用。`<a target="_blank" rel="noopener noreferrer">`，滑鼠移上去 `title`「開啟頻道」、手型游標與外框。**所有卡片一致**：一般訊息、SC、超級貼圖、禮物（v47 起禮物卡也顯示送禮者頭像）、會員、里程碑、置頂列（點頭像不展開／收合置頂列）。沒有頻道資訊（只有名稱、降落、系統訊息）→ 不可點、不顯示手型游標。點名稱＝只看這位使用者的規則不變。
 - 降落 = Raid 橫幅 + 帶 `verified` 徽章的其他實況主發言；**排除** `constants.js` 的 `BOT_BLOCKLIST`（至少 `Nightbot`、`StreamElements`、`Streamlabs`、`Moobot`、`Fossabot`，比對不分大小寫，同時比對名稱與 @Handle）以及本台 `owner`/`moderator`。
 
 **F-06 搜尋列順序**（v2.6.0 已驗證可行）

@@ -817,6 +817,59 @@
     assert(c.state.wallA != null && !c.state.anchor.strict, 't=：穩定 10 秒後採用');
   });
 
+  test('T5.6 頭像（26.3）：點頭像以新分頁開作者頻道（頻道 id 優先、其次 @handle，只限 youtube.com）；所有卡片一致；沒有頻道資訊不可點；點名稱＝篩選不變', async () => {
+    const UC = 'UC' + 'a'.repeat(22);
+    eq(CORE.channelUrl({ authorChannelId: UC, authorHandle: '@alice' }), 'https://www.youtube.com/channel/' + UC, '頻道 id 優先');
+    eq(CORE.channelUrl({ authorHandle: '@alice' }), 'https://www.youtube.com/@alice');
+    eq(CORE.channelUrl({ authorUrl: 'http://www.youtube.com/channel/' + UC + '/' }), 'https://www.youtube.com/channel/' + UC, 'authorUrl 的頻道 id');
+    eq(CORE.channelUrl({ authorUrl: 'https://evil.example/@alice' }), '', '不是 youtube.com');
+    eq(CORE.channelUrl({ authorUrl: 'javascript:alert(1)', authorHandle: '' }), '');
+    eq(CORE.channelUrl({ authorUrl: 'https://evil.example/x', authorHandle: '@bob' }), 'https://www.youtube.com/@bob', '網址不合格 → 改用 @handle');
+    eq(CORE.channelUrl({ authorName: '只有名稱' }), '', '只有名稱：不可點');
+    eq(CORE.channelUrl({ authorHandle: '@中文名稱' }), 'https://www.youtube.com/@' + encodeURIComponent('中文名稱'));
+    await resetDb();
+    const VA = 'vidAVLINK01';
+    const now = Date.now();
+    const types = [
+      mk({ id: 'a-text', videoId: VA, authorHandle: '@alice', timestampAbs: now - 9e3 }),
+      mk({ id: 'a-sc', videoId: VA, type: 'superchat', authorHandle: '@bob', amount: '$5', color: '#1e88e5', timestampAbs: now - 8e3 }),
+      mk({ id: 'a-stk', videoId: VA, type: 'supersticker', authorHandle: '@carol', amount: '$2', color: '#00e5ff', timestampAbs: now - 7e3 }),
+      mk({ id: 'a-gift', videoId: VA, type: 'gift', authorHandle: '@dave', giftName: '花', runs: [{ text: '送出了 花' }], timestampAbs: now - 6e3 }),
+      mk({ id: 'a-mem', videoId: VA, type: 'membership', authorHandle: '@erin', runs: [{ text: '歡迎加入' }], timestampAbs: now - 5e3 }),
+      mk({ id: 'a-ms', videoId: VA, type: 'membership', authorHandle: '', authorChannelId: UC, authorName: 'Frank', runs: [{ text: '會員 3 個月' }, { text: '\n' }, { text: '謝謝' }], timestampAbs: now - 4e3 }),
+      mk({ id: 'a-none', videoId: VA, authorHandle: '', authorName: '無頻道', timestampAbs: now - 3e3 }),
+    ];
+    await put({ videoId: VA, title: 'AV', isLive: true, startedAt: now - 3600e3, endedAt: now, lastMessageAt: now, messageCount: types.length, versions: [], linkedVideos: [] }, types,
+      [mk({ id: 'a-pin', videoId: VA, authorHandle: '@pinner', pinnedAt: now, runs: [{ text: '置頂' }] })]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VA });
+    await c.ready; await frame(); await frame();
+    const row = (id) => c.els.list.querySelector('[data-id="' + id + '"]');
+    const expect = { 'a-text': '@alice', 'a-sc': '@bob', 'a-stk': '@carol', 'a-gift': '@dave', 'a-mem': '@erin', 'a-ms': 'channel/' + UC };
+    for (const [id, tail] of Object.entries(expect)) {
+      const r = row(id);
+      assert(r, '列 ' + id);
+      const a = r.querySelector('a.av-link');
+      assert(a, id + '：頭像是連結');
+      eq([a.getAttribute('href'), a.target, a.rel, a.title], ['https://www.youtube.com/' + tail, '_blank', 'noopener noreferrer', '開啟頻道'], id);
+      assert(a.querySelector('.av'), id + '：連結內是頭像');
+      eq(getComputedStyle(a).cursor, 'pointer', id + ' 手型游標');
+    }
+    const none = row('a-none');
+    assert(none && !none.querySelector('a.av-link') && none.querySelector('.av'), '沒有頻道資訊：不可點');
+    assert(getComputedStyle(none.querySelector('.av')).cursor !== 'pointer', '沒有手型游標');
+    // 置頂列：點頭像不展開／收合
+    const pa = c.els.pin.querySelector('a.av-link');
+    assert(pa && pa.getAttribute('href') === 'https://www.youtube.com/@pinner', '置頂的頭像');
+    const open0 = c.state.pinOpen;
+    pa.addEventListener('click', (e) => e.preventDefault(), { once: true }); // 測試頁不開新分頁
+    pa.click();
+    eq(c.state.pinOpen, open0, '點頭像不切換置頂列');
+    // 點名稱＝只看這位使用者（不變）
+    row('a-text').querySelector('.nm').click(); await frame();
+    eq(c.state.f.userChip, '@alice', '點名稱篩選');
+  });
+
   test('T5.5 待機室（第 23 節）：播放器時間比資料先到、預告影片 currentTime 前進＋「非最新」→ 不同步、不提示、沒有「回到播放位置」與 current 標記、時間碼不可點', async () => {
     await resetDb();
     const VW = 'vidWAITRM02';
@@ -1149,7 +1202,7 @@
     assert(a, '連結');
     eq([a.getAttribute('href'), a.target, a.rel, a.title, a.textContent], ['https://madestudio.com.tw/zh/games/brave-story', '_blank', 'noopener noreferrer', 'https://madestudio.com.tw/zh/games/brave-story', 'https://madestudio.com.tw/zh/games/br...']);
     assert(!row('k1').querySelector('img[src="x"]') && row('k1').textContent.includes('<img src=x onerror=alert(1)>'), '文字不變成 HTML');
-    assert(!row('k2').querySelector('a') && row('k2').textContent.includes('壞連結'), 'javascript: 只顯示文字');
+    assert(!row('k2').querySelector('.content a') && row('k2').textContent.includes('壞連結'), 'javascript: 只顯示文字（v47：頭像連結不算）');
     eq(row('k3').querySelector('.stk').textContent, '揮手的熊', '貼圖沒有圖 → alt');
     eq(row('k4').querySelector('.stk').textContent, '🏷', '都沒有 → 🏷');
     // db 寫入時也只保留 http／https（擷取、匯入、遷移都經過 normalizeIncoming）

@@ -543,7 +543,30 @@
     try { const x = new URL(u); return x.protocol === 'https:' || x.protocol === 'http:' ? x.href : ''; } catch (_) { return ''; }
   };
 
+  // v47（T5.6，審查十一 26.3）作者頻道網址（頭像點擊）：頻道 id（UC…）優先 → 已存的 authorUrl（只接受 youtube.com 的
+  // /channel/UC… 或 /@handle）→ @handle。一律正規化為 https://www.youtube.com/…；都沒有 → ''（頭像不可點）
+  const CH_ID = /^UC[\w-]{22}$/;
+  function channelUrl(m) {
+    if (!m) return '';
+    if (typeof m.authorChannelId === 'string' && CH_ID.test(m.authorChannelId)) return 'https://www.youtube.com/channel/' + m.authorChannelId;
+    if (typeof m.authorUrl === 'string' && m.authorUrl) {
+      try {
+        const x = new URL(m.authorUrl);
+        if ((x.protocol === 'https:' || x.protocol === 'http:') && /^(www\.|m\.)?youtube\.com$/i.test(x.hostname)) {
+          const p = x.pathname.replace(/\/+$/, '');
+          const cm = /^\/channel\/(UC[\w-]{22})$/.exec(p);
+          if (cm) return 'https://www.youtube.com/channel/' + cm[1];
+          const hm = /^\/(@[^/]+)$/.exec(p);
+          if (hm) { let h = hm[1]; try { h = decodeURIComponent(h); } catch (_) { /* 原樣 */ } if (C.handleOf(h) === h) return C.handleUrl(h); }
+        }
+      } catch (_) { /* 不是網址 */ }
+    }
+    const h = typeof m.authorHandle === 'string' ? m.authorHandle.trim() : '';
+    return h && C.handleOf(h) === h ? C.handleUrl(h) : '';
+  }
+
   root.YTCAS_VIEWER_CORE = Object.freeze({
+    channelUrl,
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
     versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
