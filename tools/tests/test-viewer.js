@@ -832,6 +832,38 @@
     eq(a && a.getAttribute('href'), 'https://www.youtube.com/@someone');
   });
 
+  test('T5.5 禮物卡（24.3、24.4）：名稱列與一般訊息相同（名稱＝篩選、旁邊灰色 @handle、不是連結）；內文＝#message-v2；禮物圖片 alt＝禮物名稱；www.youtube.com 圖片可顯示', async () => {
+    await resetDb();
+    const VG = 'vidGIFTV002';
+    await put({ videoId: VG, title: 'g2', versions: [], linkedVideos: [] }, [
+      mk({ id: 'gd1', videoId: VG, type: 'gift', authorName: 'Dennis', authorHandle: '@dennis_tw', authorSource: 'dom', giftName: '星星', giftImage: 'https://www.youtube.com/s/gaming/emoji/gift/star.png', timestampAbs: T0 + 1000, runs: [{ text: '贈送星星' }] }),
+      mk({ id: 'gd2', videoId: VG, type: 'gift', authorHandle: '@carol', giftName: '櫻花雨', giftCount: 3, timestampAbs: T0 + 2000, runs: [] }),
+      mk({ id: 'tx1', videoId: VG, authorName: 'Dennis', authorHandle: '@dennis_tw', timestampAbs: T0 + 3000, runs: [{ text: '一般訊息' }] }),
+    ]);
+    await DB.close();
+    const c = V.mount(host, { embed: false, videoId: VG });
+    await c.ready; await frame(); await frame();
+    const row = (id) => c.els.list.querySelector('[data-id="' + id + '"]');
+    const g = row('gd1'), t = row('tx1');
+    const seq = (n) => Array.from(n.querySelectorAll('.tc, .nm, .hd, .bdg')).map((x) => x.className.split(' ')[0] + ':' + (x.classList.contains('tc') ? '' : x.textContent));
+    eq(seq(g).slice(0, 3), seq(t).slice(0, 3), '名稱列與一般訊息相同（時間碼 → 名稱 → 灰色 @handle）');
+    eq([g.querySelector('.nm').textContent, g.querySelector('.hd').textContent, g.querySelector('.hd').tagName], ['Dennis', '@dennis_tw', 'SPAN']);
+    assert(g.querySelector('.bdg.gift'), '禮物徽章');
+    eq(g.querySelector('.sub').textContent, '贈送星星', '內文');
+    // 測試頁的 CSP 擋外部圖片（載入失敗後換成 🎁）：以白名單與容器的 title 確認
+    eq(CORE.safeImg('https://www.youtube.com/s/gaming/emoji/gift/star.png'), 'https://www.youtube.com/s/gaming/emoji/gift/star.png', 'www.youtube.com 在白名單');
+    eq(g.querySelector('.gimg').title, '星星', '禮物名稱');
+    const img = g.querySelector('.gimg img');
+    if (img) eq([img.getAttribute('src'), img.alt], ['https://www.youtube.com/s/gaming/emoji/gift/star.png', '星星']);
+    eq(row('gd2').querySelector('.sub').textContent, '送出 櫻花雨 ×3', '沒有內文時以禮物名稱顯示');
+    // 點名稱＝只看這位使用者（與一般訊息一致）
+    g.querySelector('.nm').click();
+    await frame();
+    eq(c.state.f.userChip !== '', true, '套用使用者篩選');
+    const ids = c.state.entries.filter((e) => e.kind === 'msg').map((e) => e.it.m.id);
+    eq(ids, ['gd1', 'tx1'], '同一位使用者的禮物與訊息');
+  });
+
   test('T5.4 已結束場次（21.2、21.3）：依 phase 分段（提示 → pre → live → post）、每段標題一次；超出影片長度的時間碼面板與後台都不可點並說明；頁面狀態提示在最上方、不參與同步', async () => {
     await resetDb();
     const VE = 'vidENDED001';

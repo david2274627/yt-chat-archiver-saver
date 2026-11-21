@@ -123,7 +123,13 @@
       placeholderItem: 'yt-live-chat-placeholder-item-renderer', // 確認：佔位元素，擷取時略過
       tickerSponsorItem: 'yt-live-chat-ticker-sponsor-item-renderer', // 確認：跑馬燈內的會員項目，不擷取
       giftAnnouncement: 'ytd-sponsorships-live-chat-gift-purchase-announcement-renderer', // 待實機確認
-      giftMessage: 'yt-gift-message-view-model', // F-13 禮物（Jewels）：2026-11-16 確認為訊息元件；內部結構待實機確認（附錄 E 腳本）
+      giftMessage: 'yt-gift-message-view-model', // F-13 禮物（Jewels）：2026-11-16 確認為訊息元件；內部結構 2026-11-21 確認（dom-notes 5.3）
+      // v46（T5.5，審查十一 24.3）禮物內部結構：確認（2026-11-21 實機禮物結構 2 筆，相同）
+      //   div#gift-message-v2 > yt-img-shadow#author-photo > img#img[src]（送禮者頭像）
+      //                       > div#content > yt-attributed-string#author-name-v2（@handle）
+      //                                     > yt-attributed-string#message-v2（內文，例如「贈送星星」）
+      //                                     > yt-image#gift-image > img[alt]（禮物圖片：擷取當下沒有 src，延遲設定；網域 www.youtube.com）
+      gift: { author: '#author-name-v2', photo: '#author-photo img', message: '#message-v2', image: '#gift-image img' },
       giftHeader: 'ytd-sponsorships-live-chat-header-renderer', // 待實機確認
       poll: 'yt-live-chat-poll-renderer',                     // 待實機確認
       actionPanel: 'yt-live-chat-action-panel-renderer',      // 待實機確認

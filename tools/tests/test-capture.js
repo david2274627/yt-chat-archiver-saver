@@ -832,6 +832,58 @@
     e.stop();
   });
 
+  // v46（T5.5，審查十一 24.3）實機禮物結構（2026-11-21，2 筆相同；dom-notes 5.3）
+  const realGift = (id, o) => {
+    o = o || {};
+    const gimg = h('img', o.giftSrc ? { alt: o.alt || '星星', src: o.giftSrc } : { alt: o.alt || '星星' });
+    return h('yt-gift-message-view-model', { id }, [
+      h('div', { id: 'gift-message-v2', tabindex: '0', role: 'listitem' }, [
+        h('yt-img-shadow', { id: 'author-photo', height: '24', width: '24' }, [h('img', { id: 'img', draggable: 'false', alt: '', src: o.photo || 'https://yt4.ggpht.com/gv=s64' })]),
+        h('div', { id: 'content' }, [
+          h('yt-attributed-string', { id: 'author-name-v2' }, [h('span', { role: 'text' }, [h('span', { text: o.author || '@dennis_tw' })])]),
+          h('yt-attributed-string', { id: 'message-v2' }, [h('span', { role: 'text' }, [h('span', { text: o.text || '贈送星星' })])]),
+          h('yt-image', { id: 'gift-image' }, [gimg]),
+        ]),
+      ]),
+    ]);
+  };
+  test('T5.5 禮物專用解析（24.3）：handle＝#author-name-v2（authorSource dom）、頭像、內文＝#message-v2、禮物名稱＝圖片 alt；圖片延遲設定 src → 補送；www.youtube.com 在白名單', async () => {
+    const m = CAP.parseMessage(realGift('GV1'), { source: 'live', now: NOW, startedAt: NOW - 60e3 });
+    eq([m.type, m.authorHandle, m.authorUrl, m.authorSource, m.authorAvatar, m.giftName, m.giftImage, m.rawTag],
+      ['gift', '@dennis_tw', 'https://www.youtube.com/@dennis_tw', 'dom', 'https://yt4.ggpht.com/gv=s64', '星星', undefined, 'yt-gift-message-view-model']);
+    eq(m.runs, [{ text: '贈送星星' }], '內文只有 #message-v2（不含 handle）');
+    // 內文開頭剛好也有 @handle：以 #author-name-v2 為準
+    const m2 = CAP.parseMessage(realGift('GV2', { author: '@real_one', text: '@someone 贈送' }), { source: 'live', now: NOW });
+    eq([m2.authorHandle, m2.authorSource], ['@real_one', 'dom']);
+    // 作者元件是顯示名稱（不是 @handle）
+    const m3 = CAP.parseMessage(realGift('GV3', { author: 'Dennis' }), { source: 'live', now: NOW });
+    eq([m3.authorHandle, m3.authorName, m3.authorSource], ['', 'Dennis', 'dom']);
+    // 已有 src（www.youtube.com）
+    const m4 = CAP.parseMessage(realGift('GV4', { giftSrc: 'https://www.youtube.com/s/gaming/emoji/gift/star.png' }), { source: 'live', now: NOW });
+    eq(m4.giftImage, 'https://www.youtube.com/s/gaming/emoji/gift/star.png');
+    eq([C.isAllowedImageUrl(m4.giftImage), C.isAllowedImageUrl('https://evil.example/x.png')], [true, false], '白名單');
+    // 引擎：擷取當下沒有 src → 設定 src 後補送同一則（giftLate）
+    const { items } = buildChat();
+    const send = mockSend();
+    const gs = [];
+    const e = engine({ send, onGiftStructure: (d) => gs.push(d) });
+    e.start();
+    e.setInfo({ videoId: 'testVidGV01', startDate: NOW - 60000, channelHandle: '@ch' });
+    await until(() => send.of(RT.CAPTURE_START).length === 1, 2000, 'CAPTURE_START');
+    await sleep(50);
+    const node = realGift('GV5');
+    items.append(node);
+    await until(() => savedIds(send).includes('GV5'), 3000, '先送出');
+    node.querySelector('#gift-image img').setAttribute('src', 'https://www.youtube.com/s/gaming/emoji/gift/star.png');
+    const sentOf = () => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).filter((x) => x.id === 'GV5');
+    await until(() => sentOf().some((x) => x.giftImage), 3000, '補送禮物圖片');
+    const last = sentOf().filter((x) => x.giftImage).pop();
+    eq([last.giftImage, last.giftName, last.authorHandle], ['https://www.youtube.com/s/gaming/emoji/gift/star.png', '星星', '@dennis_tw']);
+    eq(e.state().stats.giftLate, 1);
+    eq([gs[0].authorSource, gs[0].hasGiftImage], ['dom', false]);
+    e.stop();
+  });
+
   test('T5.4 頁面狀態提示（21.3）：依元件標籤標 notice（不比對文字；其他語系同樣分類）、同場同內容同一個 id', () => {
     const mkVe = (text) => h(self.YTCAS_SEL.chat.viewerEngagement, { id: 'VE' + (++seq) }, [h('div', { id: 'message', text })]);
     const a = CAP.parseMessage(mkVe('Welcome to live chat!'), { source: 'replay', now: NOW, videoId: 'testVidVE01' });

@@ -192,10 +192,25 @@ yt-live-chat-renderer
 - 未重新整理時 `endDate` meta 是否出現：待確認。結束提示元件：尚未取得（附錄 C 腳本待執行）。
 
 ### 5.3 訊息元件
-- **禮物（F-13）**：`yt-gift-message-view-model` 是 `#items` 的**直接子節點**（2026-11-16，同一場 4 則）。內部結構待確認（`docs/poc-clip-path.md` 附錄 E 腳本）。
-  - **（v45，T5.4，審查十一 20.4）待驗證**：2026-11-20 實機 3 則禮物的作者都取不到（`#author-name` 不存在或不在預期位置），送禮者以 `@handle` 出現在內文開頭（例「@xxxx 贈送…」），該 `@handle` 以連結樣式呈現（推測內文中有 `<a href>`，指向不明）。
+- **禮物（F-13）**：`yt-gift-message-view-model` 是 `#items` 的**直接子節點**（2026-11-16，同一場 4 則）。
+  - **（v46，T5.5，審查十一 24.3）內部結構已驗證**（2026-11-21 10:36，直播 `_k5N…`，套件保留的禮物結構 2 筆，兩筆相同；`docs/diag/diag-summary-2026-11-21-1848.md`「禮物結構」）：
+    ```
+    yt-gift-message-view-model
+      div#gift-message-v2 [tabindex role]                      310x24
+        yt-img-shadow#author-photo [height width]              24x24
+          img#img [draggable alt height width src]             ← 送禮者頭像（有 src）
+        div#content
+          yt-attributed-string#author-name-v2 > span[role] > span（有文字，以 @ 開頭）   ← 送禮者 @handle
+          yt-attributed-string#message-v2 > span[role] > span（有文字）                  ← 內文（例如「贈送星星」）
+          yt-image#gift-image > img [alt]（img 網域 www.youtube.com，擷取當下沒有 src 屬性） ← 禮物圖片（延遲設定）
+          dom-if
+    ```
+    - 作者名稱元件是 `#author-name-v2`（不是一般訊息的 `#author-name`），所以 v45 以前取不到作者。內文沒有 `#message`。
+    - 專用解析（`selectors.js` 的 `chat.gift`）：handle＝`#author-name-v2`（`authorSource: 'dom'`；內容不是 `@handle` 時存為 `authorName`）、頭像＝`#author-photo img`、內文＝`#message-v2`、禮物圖片＝`#gift-image img`（沒有 src → 與貼圖相同的延遲補送，`giftLate`／`giftMissing`）、`alt`＝禮物名稱（`giftName`）。`www.youtube.com` 加入圖片網域白名單（`host_permissions` 本來就有）。
+    - **仍待確認**：`img[alt]` 是否一律是禮物名稱（可能是空字串或通用文字）、禮物圖片 `src` 的實際路徑；數量（×N）與 Jewels 數值沒有對應元件（目前不解析）。
+  - （v45，T5.4，審查十一 20.4，**v46 由上面取代**）：2026-11-20 實機 3 則禮物的作者都取不到（`#author-name` 不存在或不在預期位置），送禮者以 `@handle` 出現在內文開頭（例「@xxxx 贈送…」），該 `@handle` 以連結樣式呈現（推測內文中有 `<a href>`，指向不明）。
   - 取得結構的方式：套件在**非記錄期間**也把每則禮物的結構（標籤、屬性名稱、img 網域、尺寸、有無文字、文字是否以 `@` 開頭、連結種類 handle／channel／redirect／external…；**不含文字與網址**）存在 `chrome.storage.session` 的最近 5 筆，診斷匯出（`giftStructures`）與 diag-report「禮物結構」一節會列出。遇到禮物後到診斷頁按「匯出」即可，不必剛好在記錄中。
-  - 結構確認前：作者取不到時以內文開頭的 `@handle` 當送禮者（`authorSource: 'text'`，只看 `@` 與 handle 字元格式，不比對任何語言的文字）；內文中文字就是 `@handle` 的連結一律指向 `https://www.youtube.com/@handle`。禮物名稱、數量、禮物圖片（目前取第一張非頭像的 `img`）待結構確認後改為專用解析。
+  - 結構確認前（v45；v46 起只在 `#author-name-v2` 取不到時當後備）：作者取不到時以內文開頭的 `@handle` 當送禮者（`authorSource: 'text'`，只看 `@` 與 handle 字元格式，不比對任何語言的文字）；內文中文字就是 `@handle` 的連結一律指向 `https://www.youtube.com/@handle`。禮物名稱、數量、禮物圖片（目前取第一張非頭像的 `img`）待結構確認後改為專用解析。
 - `yt-live-chat-viewer-engagement-message-renderer`（歡迎／守則提示）：每次重新載入聊天室都會出現一則，**元素 id 每次不同**（同一場 6 次重新整理存成 28 筆）→ T3.5 起以內容去重。
   - （v45，T5.4，審查十一 21.3）此元件擷取時標 `notice: true`（依標籤，不比對文字），檢視器放在最上方「聊天室提示」一段、不參與 pre／live／post 與同步。**待驗證**：VOD 的「已啟用聊天室訊息重播功能」與「訂閱者專屬模式」提示是否也是這個元件——是的話既有紀錄的 id 以 `ytcas-ve-` 開頭，自動歸到提示；不是的話它的 `rawTag` 會列在 `YTCAS_BG.systemTags()` 的 `byTag`（只有標籤與筆數），請回報標籤名稱再補進規則。
 - 訊息元件**內部**的後代（徽章 `yt-live-chat-author-badge-renderer`、`yt-icon`、`yt-img-shadow`、`yt-image`、`span`、`div`、`button-view-model`、`yt-button-view-model`、`dom-if`、`yt-live-chat-reply-button-view-model`、`yt-live-chat-like-button-view-model` 等）會在訊息插入後才陸續渲染，而且很多帶有固定的 `id`（如 `message`、`author-name`、`image`）。以 `subtree` 監看時會被回報為新增節點 → 只能處理 `#items` 的直接子節點（T3.4）。

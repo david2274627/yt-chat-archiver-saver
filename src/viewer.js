@@ -698,18 +698,29 @@
         if ((m.runs || []).length) { const tx = el('div', 'tx content'); renderRuns(tx, m.runs, kw); row.appendChild(tx); }
       } else if (m.type === T.GIFT) {
         row = el('div', 'giftcard' + (m.deleted ? ' deleted' : ''));
-        const g = el('span', 'gimg'); g.setAttribute('aria-hidden', 'true');
+        // v46（T5.5，審查十一 24.3、24.4）禮物圖片的 alt＝禮物名稱（giftName）；名稱列與一般訊息相同：
+        // 時間碼 → 名稱（點＝只看這位使用者）→ 灰色 @handle（名稱不是 handle 時）→ 徽章；內文＝#message-v2
+        const gname = typeof m.giftName === 'string' ? m.giftName : '';
+        const g = el('span', 'gimg');
         const src = CORE.safeImg(m.giftImage);
-        if (src) { const img = el('img'); img.src = src; img.alt = ''; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer'; g.appendChild(img); } else g.textContent = '🎁';
+        if (src) {
+          const img = el('img'); img.src = src; img.alt = gname; img.title = gname; img.loading = 'lazy'; img.referrerPolicy = 'no-referrer';
+          img.addEventListener('error', () => { img.replaceWith(document.createTextNode('🎁')); }, { once: true });
+          g.appendChild(img);
+        } else g.textContent = '🎁';
+        if (gname) g.title = gname;
+        if (!gname) g.setAttribute('aria-hidden', 'true');
         const info = el('div', 'ginfo');
-        info.append(tcNode(m), nameNode(it, ''), el('span', 'bdg gift', '🎁 禮物'));
-        if (m.deleted) info.appendChild(el('span', 'bdg del', '已刪除'));
+        head(info, it);
+        info.appendChild(el('span', 'bdg gift', '🎁 禮物'));
         const sub = el('div', 'sub content');
-        if (m.giftName) {
+        const runs = giftRuns(m);
+        if (runs.some((r) => r && (r.emoji || (typeof r.text === 'string' && r.text.trim())))) renderRuns(sub, runs, kw);
+        else if (gname) {
           sub.append('送出 ');
-          const gn = el('span', 'gname'); renderRuns(gn, [{ text: m.giftName }], kw); sub.appendChild(gn);
+          const gn = el('span', 'gname'); renderRuns(gn, [{ text: gname }], kw); sub.appendChild(gn);
           if (m.giftCount > 1) sub.append(' ×' + m.giftCount);
-        } else renderRuns(sub, giftRuns(m), kw); // 結構未確認前：顯示擷取到的文字
+        }
         info.appendChild(sub);
         row.append(g, info);
         if (m.jewels) row.appendChild(el('span', 'jw', fmtN(m.jewels) + ' Jewels'));

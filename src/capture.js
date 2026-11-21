@@ -219,16 +219,34 @@
         if (alt) m.stickerAlt = alt.slice(0, 200);
       }
     } else if (tag === S.chat.giftMessage) {
-      // F-13 禮物（T3.6）：內部結構未確認 → 通用解析（作者、頭像已在上方取得；文字 runs；第一張非頭像圖片作為禮物圖片）。
-      // 結構確認後改為專用解析（送禮者、禮物名稱、數量）；在那之前保存 rawTag 供日後重新解析判斷
-      m.runs = msgEl ? runsOf(msgEl) : textRuns(clean(el.textContent).slice(0, 300));
-      const imgs = Array.from(el.querySelectorAll('img')).filter((i) => i !== photo);
-      const gi = imgs.map((i) => imgUrl(i)).find(Boolean);
-      if (gi) m.giftImage = gi;
+      // F-13 禮物：v46（T5.5，審查十一 24.3）依實機結構專用解析（selectors.js chat.gift、dom-notes 5.3）：
+      //   送禮者 handle＝#author-name-v2（authorSource: 'dom'）、頭像＝#author-photo img、內文＝#message-v2、
+      //   禮物圖片＝#gift-image img（擷取當下沒有 src → captureNode 延遲補送）、alt＝禮物名稱（giftName）
+      const G = S.chat.gift;
+      const an = clean((el.querySelector(G.author) || {}).textContent);
+      if (an) {
+        const h = C.handleOf(an);
+        if (h) { m.authorHandle = h; m.authorUrl = C.handleUrl(h); delete m.authorName; } else { m.authorName = an; }
+        m.authorSource = 'dom';
+      }
+      if (!m.authorAvatar) m.authorAvatar = imgUrl(el.querySelector(G.photo));
+      const me = el.querySelector(G.message);
+      m.runs = me ? runsOf(me) : msgEl ? runsOf(msgEl) : textRuns(clean(el.textContent).slice(0, 300));
+      const gimg = el.querySelector(G.image);
+      if (gimg) {
+        const u = imgUrl(gimg);
+        if (u) m.giftImage = u;
+        const alt = clean(gimg.getAttribute('alt') || '');
+        if (alt) m.giftName = alt.slice(0, 100);
+      } else {
+        // 結構不同（舊版元件）：第一張非頭像圖片作為禮物圖片
+        const gi = Array.from(el.querySelectorAll('img')).filter((i) => i !== photo).map((i) => imgUrl(i)).find(Boolean);
+        if (gi) m.giftImage = gi;
+      }
       m.rawTag = tag;
-      // v45（T5.4，審查十一 20.4 第 3 點）結構確認前的後備：作者取不到時，從內文開頭的 @handle 推出送禮者（authorSource: 'text'）。
+      // v45（T5.4，審查十一 20.4 第 3 點）後備（#author-name-v2 取不到時）：從內文開頭的 @handle 推出送禮者（authorSource: 'text'）。
       // 只取 @ 開頭的 handle 格式，不比對任何語言的文字
-      if (!name) {
+      if (!m.authorHandle && !m.authorName) {
         const first = m.runs.find((r) => r && typeof r.text === 'string' && r.text.trim());
         const h = first ? C.handleOf(first.text) : '';
         if (h) { m.authorHandle = h; m.authorUrl = C.handleUrl(h); m.authorSource = 'text'; }
@@ -344,7 +362,7 @@
       queue: [], unflushed: new Set(), sending: null, batchTimer: 0, trimTimer: 0, pollTimer: 0, statsTimer: 0,
       pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
-        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0 },
+        observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0, giftLate: 0, giftMissing: 0 },
       seenIds: new Set(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
@@ -536,6 +554,8 @@
       if (how && how !== 'observer') st.stats[how === 'backfill' ? 'backfillCaptured' : 'lateCaptured']++;
       if (!m.authorAvatar && m.type !== T.SYSTEM) watchAvatar(el, m);
       if (m.type === T.SUPERSTICKER && !m.stickerSrc) watchSticker(el, m);
+      // v46（24.3）禮物圖片也是延遲設定 src：同一套補送（giftLate／giftMissing）
+      if (m.type === T.GIFT && !m.giftImage) watchImg(el, m, S.chat.gift.image, 'giftImage', 'giftLate', 'giftMissing');
       // 同一頁已擷取過的 id 再次出現（YouTube 重新插入節點）：只計數供診斷，去重由 background 負責
       if (m.id) {
         if (st.seenIds.has(m.id)) st.stats.dupCaptured++;

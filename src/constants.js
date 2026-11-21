@@ -217,6 +217,8 @@
       /(^|\.)googleusercontent\.com$/,
       /^fonts\.gstatic\.com$/,
       /^www\.gstatic\.com$/,
+      // v46（T5.5，審查十一 24.3）禮物圖片（yt-image#gift-image img）的網域；host_permissions 已有 https://www.youtube.com/*
+      /^www\.youtube\.com$/,
     ]),
   };
 
