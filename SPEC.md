@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v48**（前版：v47；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v49**（前版：v48；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -48,6 +48,7 @@
 - **v46 調整**（`docs/review-2026-11-17.md` 第 23、24 節，T5.5）：新增 10.1 原則 7「**面板內的提示不得遮蓋聊天內容與選單**」，同步提示改為版面內的一列、「回到播放位置」顯示時清單底部留白；待機室判定改為 `isWaitingRoom`（不論播放器回報什麼）；「目標 X → Y」的判讀與實測方法（F-08）；診斷匯出顯示實際檔名、被其他擴充功能改寫時的後備下載（F-20）；禮物依實機結構專用解析、禮物卡名稱列與操作與一般訊息一致（F-13、F-05）；會員里程碑卡片與 tokens（10.3、10.4）；跨日分隔線（F-08、10.4）。
 - **v47 調整**（`docs/review-2026-11-17.md` 第 25、26 節，T5.6）：**預定開播時間在未來＝待機室**（不論 `startedAt`）、開播訊號來源完整清單、聊天事件不是開播訊號、錯誤 `startedAt` 降級與 `fixPhases` 兩段式清除（F-14）；直播錨點的有效條件（徽章「最新」且播放中穩定 3 秒、期間沒有 seek；取樣後 5 秒內被 seek 到非最新就作廢；網址帶 `t=` 時等點「直播」或穩定 10 秒）（F-08）；頭像點擊以新分頁開作者頻道（F-05）；SC 文字色沿用 YouTube 給的文字色變數、取不到才用對比度規則（F-02、10.3）；10.1 原則 7 註明「回到播放位置」浮動按鈕的例外。
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
+- **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 
 ---
 
@@ -106,7 +107,8 @@ yt-chat-archiver-saver/
 │   ├── background.js # Service Worker：唯一資料庫存取者、推播、頻道名稱/頭像解析
 │   ├── capture.js    # v29：擷取引擎（解析、回溯擷取、修剪、批次、重試、刪除偵測）；嵌入式 chat frame 與彈出式聊天室共用，不依賴 chrome.*，測試頁可直接載入
 │   ├── content.js    # 三種環境：top watch 頁（按鈕、面板、clip-path、時間軸、場次資訊）／嵌入式 chat frame／彈出式聊天室（v28 F-19）
-│   ├── panel.js      # v41（T5）：top frame 的優化面板控制器（插入、退讓、開關錨點、面板訊息、VOD_TIME）；不依賴 chrome.*，content.js 傳入依賴，測試頁以同源模擬頁驗證
+│   ├── panel.js      # v41（T5）：top frame 的優化面板控制器（插入、退讓、開關錨點、面板訊息、VOD_TIME）；不依賴 chrome.*，content.js 傳入依賴，測試頁以同源模擬頁驗證。v49（T6）clip 狀態機 clipState、頁面層付款視窗偵測、PANEL_INSET
+│   ├── chat-input.js # v49（T6）：chat frame 端的底部互動區量測與彈窗偵測（CHAT_INPUT_STATE）、面板開啟時隱藏原生列表（6.2 第 2 點、6.3）；不依賴 chrome.*
 │   ├── popup.html / popup.js
 │   └── viewer.html / viewer.js / viewer-core.js  # v38：viewer-core.js 為不依賴 DOM 的分類、篩選、搜尋、時間碼邏輯（測試頁共用）
 ├── docs/
@@ -292,7 +294,9 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 
 | type | 方向 | payload |
 |---|---|---|
-| `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, bottomZoneHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗；v24 起 `inputHeight` 改名 `bottomZoneHeight`，定義見 6.3） |
+| `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, bottomZoneHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗；v24 起 `inputHeight` 改名 `bottomZoneHeight`，定義見 6.3）。（v49，T6）另帶 `vh`（量測時的視窗高度，top 據此判斷是否過期）、`inputH`（`#input-panel` 高度）、`src`（`whitelist`／`overlay`／`fallback`／`none`）、`overlayIgnored`；只有數字、布林與來源代碼 |
+| `CHAT_INPUT_REQUEST` | top → chat frame | （v49，T6）要求立即重新量測並回報（面板開啟、iframe 重新載入後） |
+| `PANEL_INSET` | top → 面板 iframe | （v49，T6，6.2 第 5 點）`{ bottom: px }`：面板底部被原生互動區蓋住的高度；面板整體 `padding-bottom`，清單與「↓ 恢復自動捲動」都在其上 |
 | `TOGGLE_PANEL` | chat frame → top | `{}`（v24：使用者點了聊天室頂部列的 F-09 按鈕；top 端只接受 `event.source === iframe#chatframe.contentWindow` 且 origin 為 youtube.com） |
 | `THEME` | top → viewer iframe | `{ theme: 'light'|'dark' }`（v27：top frame 監看 `html[dark]` 的實際外觀，開啟面板時送一次、變更時再送；面板依 `themeMode` 決定是否採用，見 10.2） |
 | `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`）。（v41）實際送出 `{ currentTime, paused, duration, seekStart, seekEnd, live, at }`：`seekStart`／`seekEnd` 為 `video.seekable` 範圍（直播的 DVR 可回放範圍），`live` 為 `isLiveBroadcast` meta 為 true 且沒有 `endDate`，`at` 為取樣時間（ms）；另在 `seeked` 時立即送出，暫停中且沒有變化時不重送 |
@@ -645,7 +649,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 每個錨點找不到時都要 `warnOnce()`，不得靜默失敗。
 - 注入到原生頂部列或卡片的按鈕：樣式只能加在 `ytcas-` 前綴的元素上，**不得**改動原生元素的 class、樣式或版面；不得依賴 YouTube 版本化的樣式類別（如 `ytSpecButtonShapeNext*`、`ytVideoMetadataCarouselViewModel*`）做比對，只用標籤名稱與 id 定位。
 - 卡片區（`#teaser-carousel`）會隨導航重建：以 `MutationObserver` 監看 `ytd-watch-metadata`，並在 `yt-navigate-finish` 後重新掛載。
-- （v41，T5 實作）**T5 的裁切**：面板開啟時 `iframe#chatframe` 一律 `clip-path: inset(100% 0 0 0)`（6.2「無輸入區」），面板佔滿全高；直播中要留言需先關閉面板。依 `CHAT_INPUT_STATE` 動態露出原生底部互動區是 T6。聊天室頂部列的按鈕為 `⋮` 之前的圓形圖示按鈕（`#ytcas-header-btn`，提示文字即狀態），面板開啟時被面板蓋住；退讓時顯示停用樣式與「劇院模式下無法使用優化面板」／「聊天室太小，無法使用優化面板」。擴充功能斷線（關閉或重新載入）且沒有新實例接手時，舊實例移除面板，原生聊天室完全還原。
+- （v41，T5 實作）**T5 的裁切**：面板開啟時 `iframe#chatframe` 一律 `clip-path: inset(100% 0 0 0)`（6.2「無輸入區」），面板佔滿全高；直播中要留言需先關閉面板。依 `CHAT_INPUT_STATE` 動態露出原生底部互動區是 T6（v49 已實作，見 6.7：直播中面板開著也能直接留言）。聊天室頂部列的按鈕為 `⋮` 之前的圓形圖示按鈕（`#ytcas-header-btn`，提示文字即狀態），面板開啟時被面板蓋住；退讓時顯示停用樣式與「劇院模式下無法使用優化面板」／「聊天室太小，無法使用優化面板」。擴充功能斷線（關閉或重新載入）且沒有新實例接手時，舊實例移除面板，原生聊天室完全還原。
 - **預設開啟（v24 已決，使用者 2026-11-15）**：進入有聊天室的影片頁（直播或有聊天重播的 VOD）時，優化面板**預設開啟**；**不記住**上次關閉狀態（使用者在某頁關閉只對該次頁面有效）；沒有聊天室的影片不顯示任何東西。
 
 **F-10 直播中保留底部原生互動輸入區**（v2.6.0 未解決，本版重點，詳見第 6 節）
@@ -775,6 +779,21 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 12. （v24）有置頂訊息列、有投票卡時，底部互動區完整露出（不切到置頂列、投票卡或輸入列，也不多露訊息列表）。
 13. （v24）劇院模式與窄版面下，面板可用或自動退讓（聊天室摺疊時解除 clip、隱藏面板），且原生聊天室不受影響。
 14. （v26）劇院模式下面板退讓期間，**仍持續存檔（F-02）與修剪（F-01）**；切回一般版面後面板自動恢復，退讓期間的訊息都在存檔內、沒有重複。
+
+### 6.7 T6 實作（v49，2026-11-22）
+- **chat frame**（`src/chat-input.js`，只在嵌入式 chat frame 啟動；彈出式聊天室沒有面板）：
+  - 量測沿用 T1 PoC v3.1：白名單（`chat.bottomZone`）＋覆蓋層可見子元素（> iframe 高度 × `PANEL.OVERLAY_MAX_RATIO` = 0.6 不採計，白名單不受此限）；都量不到 → `#input-panel` 頂端；仍沒有 → 0。`hasInput` = `#input-panel` 可見且 `bottomZoneHeight` > 0（VOD 重播兩者為 0）。
+  - 彈窗：`chat.popups` 中可見者（`popupTop` 取最上方）。**`$` 選單（`productPicker`）不列為彈窗**：它長在 `#input-panel` 內，展開時已涵蓋在 `bottomZoneHeight`（關閉時元素是否仍「可見」待實機確認，6.3）。頂部列內的下拉選單不算（F-12 自動切換時會短暫展開，且頂部列在 clip 外）。
+  - 觸發：`ResizeObserver`（白名單元素與其父層、文件本身）、`resize`、點擊與按鍵後（50ms 與 300ms 各量一次）、`PANEL.INPUT_POLL_MS` = 500ms 保底輪詢；`PANEL.INPUT_DEBOUNCE_MS` = 50ms 合併；**只在狀態改變時送**；`CHAT_INPUT_REQUEST` 強制重送。
+  - 收到 `PANEL_STATE { on: true, paused: false }` → 注入 `<style id="ytcas-chat-hide">`：`#item-list`、`yt-live-chat-header-renderer` `visibility: hidden`（6.2 第 2 點；彈窗展開時 `popupTop − 8` 的空隙不露出原生訊息）；退讓、關閉、套件停止 → 移除。
+- **top frame**（`src/panel.js`）：
+  - `clipState`（純函式）依 6.2 狀態表：`input`＝`inset(calc(100% - bottomZoneHeight px) 0 0 0)`（clamp 在 iframe 高度內）、`popup`＝`inset(max(0, popupTop − 8)px 0 0 0)`、`none`（無輸入區）＝`inset(100% 0 0 0)`；還沒收到量測（`unknown`）或量測時的 `vh` 與 iframe 高度相差 > `PANEL.INPUT_STALE_PX` = 2（`stale`）→ 面板全高、不套用舊值；**頁面層付款視窗開啟中沿用前一個狀態**（兩邊都關閉才回到收起）。
+  - 面板剩餘高度（iframe 高度 − `bottomZoneHeight`）< `PANEL.PANEL_MIN_REMAIN_PX` = 80 → 退讓（`small`）；彈窗展開中、量測過期時不判斷。`COLLAPSE_MIN_H` 定案 200（劇院模式小框 152）。
+  - 頁面層付款視窗：`top.pagePopups`（`#buyFlowDivId` 等）可見，或 `ytd-popup-container` 內的 `top.popups` 可見；`body` 的 childList `MutationObserver`＋`PANEL.TOP_POPUP_POLL_MS` = 500ms 輪詢（面板開啟時才監看）。
+  - 面板開啟、iframe 重新載入時送 `CHAT_INPUT_REQUEST`；iframe 重新載入時舊量測作廢（面板全高，等新的 chat frame 回報）。
+  - `PANEL_INSET { bottom }` 告訴面板底部留白（退讓時 0）；面板以 `padding-bottom` 讓清單與「↓ 恢復自動捲動」在原生互動區之上。
+  - clip 狀態改變記一筆 `clip`（`onLog`；mode、是否沿用、原因）。
+- **未實機驗證**：表符選單、購買流程、投票卡的實際位置與「可見」判定；`$` 選單關閉後的狀態；clip 切換時的閃爍。依 6.5 AC 1～8、12～14 實測。
 
 ### 6.6 備案：方案 B（僅在方案 A 的 T1 PoC 失敗時啟動）
 - 原生 chat frame 完全隱藏（仍保留在 DOM 以持續擷取）。

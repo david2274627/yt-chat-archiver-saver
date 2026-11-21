@@ -118,6 +118,66 @@
     info = { isLiveBroadcast: false, endDate: null }; vs.seek = null;
   });
 
+  // ================================================================ T6（F-10，SPEC 6.2 第 4、5 點、6.3、6.4）
+  test('T6 clip 狀態機（純函式）：收起＝只露出底部互動區、彈窗展開、無輸入區、量測過期／還沒收到＝全高、頁面層付款視窗沿用前一個狀態', () => {
+    const PP = C.PANEL;
+    const s = (input, o) => P.clipState(Object.assign({ input, iframeH: 600, topPopupOpen: false, prev: null }, o), PP);
+    const base = { vh: 600, hasInput: true, bottomZoneHeight: 109, popupOpen: false, popupTop: null };
+    eq(s(base), { mode: 'input', clip: 'inset(calc(100% - 109px) 0 0 0)', pad: 109 }, '收起（實機 594 − 485 = 109 的情況）');
+    eq(s(Object.assign({}, base, { bottomZoneHeight: 239 })).pad, 239, '投票卡：完整露出');
+    eq(s(Object.assign({}, base, { bottomZoneHeight: 900 })).clip, 'inset(calc(100% - 600px) 0 0 0)', 'clamp 在 iframe 高度內');
+    eq(s(Object.assign({}, base, { popupOpen: true, popupTop: 250 })), { mode: 'popup', clip: 'inset(242px 0 0 0)', pad: 109 }, '彈窗：popupTop − 8');
+    eq(s(Object.assign({}, base, { popupOpen: true, popupTop: 3 })).clip, 'inset(0px 0 0 0)', '不小於 0');
+    eq(s(Object.assign({}, base, { hasInput: false, bottomZoneHeight: 0 })), { mode: 'none', clip: 'inset(100% 0 0 0)', pad: 0 }, 'VOD：無輸入區');
+    eq(s(null).mode, 'unknown');
+    eq(s(Object.assign({}, base, { vh: 450 })).mode, 'stale', '量測時的 iframe 高度不同 → 過期');
+    const popup = s(Object.assign({}, base, { popupOpen: true, popupTop: 250 }));
+    eq(s(base, { topPopupOpen: true, prev: popup }).clip, 'inset(242px 0 0 0)', '頁面層付款視窗開啟中：chat frame 的彈窗關了也沿用');
+    eq(s(base, { topPopupOpen: false, prev: popup }).mode, 'input', '兩邊都關閉才回到收起');
+    // 面板剩餘高度 < 80px → 退讓
+    eq([P.remainTooSmall(Object.assign({}, base, { bottomZoneHeight: 530 }), 600, PP), P.remainTooSmall(Object.assign({}, base, { bottomZoneHeight: 500 }), 600, PP),
+      P.remainTooSmall(Object.assign({}, base, { bottomZoneHeight: 530, popupOpen: true, popupTop: 10 }), 600, PP)], [true, false, false]);
+  });
+
+  test('T6 CHAT_INPUT_STATE → iframe 的 --ytcas-clip、面板底部留白（PANEL_INSET）；面板開啟時通知 chat frame 隱藏原生列表；頁面層付款視窗（#buyFlowDivId）；面板剩餘高度不足 → 退讓', async () => {
+    const w = viewerWin();
+    const h = chat().offsetHeight;
+    const st = (o) => chat().contentWindow.sendTop(FM.CHAT_INPUT_STATE, Object.assign({ vh: h, hasInput: true, bottomZoneHeight: 114, inputH: 56, popupOpen: false, popupTop: null, src: 'whitelist' }, o));
+    // 比對 iframe 上套用的 --ytcas-clip（clip-path 有 120ms transition：測試分頁在背景時動畫不前進，計算值會停在起點）
+    const cp = () => chat().style.getPropertyValue('--ytcas-clip');
+    const tucked = () => cp() === 'inset(calc(100% - 114px) 0 0 0)';
+    st();
+    await until(tucked, 2000, '收起：' + cp());
+    await until(() => w.got.some((m) => m.type === FM.PANEL_INSET && m.bottom === 114), 2000, 'PANEL_INSET 114');
+    assert(chat().contentWindow.got.some((m) => m.type === FM.PANEL_STATE && m.on === true && !m.paused), 'chat frame 收到 on（隱藏原生列表）');
+    // 表符選單：只露出彈窗以下
+    st({ popupOpen: true, popupTop: 300 });
+    await until(() => cp() === 'inset(292px 0 0 0)', 2000, '彈窗');
+    // 付款流程：chat frame 的彈窗關了、但頁面層付款視窗開著 → 維持彈窗狀態
+    const buy = document.createElement('div'); buy.id = 'buyFlowDivId'; buy.style.cssText = 'width:600px;height:400px';
+    document.body.appendChild(buy);
+    await until(() => ctl.state().topPopup, 2000, '頁面層付款視窗');
+    st({ popupOpen: false, popupTop: null });
+    await sleep(150);
+    eq(cp(), 'inset(292px 0 0 0)', '頁面層視窗開啟期間不閃回');
+    buy.remove();
+    await until(() => !ctl.state().topPopup && tucked(), 2000, '兩邊都關閉 → 收起');
+    // 面板剩餘高度 < 80px → 退讓（clip 移除、面板隱藏）；縮回後恢復
+    st({ bottomZoneHeight: h - 60 });
+    await until(() => ctl.state().paused && ctl.state().pauseReason === 'small', 2000, '剩餘高度不足 → 退讓');
+    eq(getComputedStyle(chat()).clipPath, 'none');
+    await until(() => w.got.filter((m) => m.type === FM.PANEL_INSET).pop().bottom === 0, 2000, '退讓時留白 0');
+    st();
+    await until(() => !ctl.state().paused, 2000, '恢復');
+    // 量測過期（iframe 高度改變）→ 全高，等重新量測
+    st({ vh: h - 100 });
+    await until(() => ctl.state().clip.mode === 'stale' && cp() === 'inset(100% 0 0 0)', 2000, '過期 → 全高');
+    // VOD：無輸入區（之後的測試以此為準：面板全高）
+    st({ hasInput: false, bottomZoneHeight: 0, inputH: 0 });
+    await until(() => ctl.state().clip.mode === 'none', 2000, '無輸入區');
+    assert(logs.includes('clip'), '記錄 clip 狀態變化');
+  });
+
   test('只接受預期來源的訊息：其他 frame 或錯誤 origin 送來的 SEEK_TO／PANEL_CLOSE 被忽略', async () => {
     vs.t = 1;
     // 本頁自己（不是面板 iframe）送的

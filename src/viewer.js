@@ -1394,6 +1394,15 @@
     }
     setInterval(pollNew, 5000);
 
+    // v49（T6，SPEC 6.2 第 5 點）面板底部被原生互動區（輸入列、置頂列、投票卡）蓋住的高度：整個面板底部留白，
+    // 清單與「↓ 恢復自動捲動」都在這個高度之上（清單容器變矮，虛擬列表由 ResizeObserver 重新計算）
+    function setBottomInset(px) {
+      const v = typeof px === 'number' && Number.isFinite(px) ? Math.max(0, Math.min(2000, Math.round(px))) : 0;
+      if (v === S.bottomInset) return;
+      S.bottomInset = v;
+      panel.style.paddingBottom = v ? v + 'px' : '';
+    }
+
     // ---------------- T5：top frame 的訊息（只接受 youtube.com 的 parent；THEME 由 theme.js 處理）
     function onFrame(e) {
       if (!embed || e.source !== root.parent || e.origin !== C.YT_ORIGIN) return;
@@ -1402,6 +1411,7 @@
       if (d.type === C.FM.VOD_TIME) { S.diag.vodTime++; onClock(d); }
       else if (d.type === C.FM.THEME) S.diag.theme++;
       else if (d.type === C.FM.PANEL_STATE) S.hostPaused = !!d.paused;
+      else if (d.type === C.FM.PANEL_INSET) setBottomInset(d.bottom); // v49（T6，6.2 第 5 點）
       else if (d.type === C.FM.CAPTURE_STATUS) {
         S.diag.capture++;
         S.capture = { capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null };

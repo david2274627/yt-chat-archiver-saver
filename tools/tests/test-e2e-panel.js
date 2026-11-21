@@ -174,6 +174,21 @@
     eq(v.state.items.length, 303);
   });
 
+  test('T6（6.2 第 5 點）：chat frame 回報底部互動區 114px → iframe 露出底部 114px、面板（真實 viewer.js）底部留白 114px，清單在留白之上；VOD → 留白 0', async () => {
+    const cf = document.querySelector('iframe#chatframe');
+    await until(() => cf.contentWindow && cf.contentWindow.sendTop, 3000, 'chat fixture');
+    const h = cf.offsetHeight;
+    cf.contentWindow.sendTop(C.FM.CHAT_INPUT_STATE, { vh: h, hasInput: true, bottomZoneHeight: 114, inputH: 56, popupOpen: false, popupTop: null, src: 'whitelist' });
+    await until(() => cf.style.getPropertyValue('--ytcas-clip') === 'inset(calc(100% - 114px) 0 0 0)', 2000, 'clip ' + cf.style.getPropertyValue('--ytcas-clip'));
+    const pnl = () => vd().querySelector('.panel');
+    await until(() => pnl().style.paddingBottom === '114px', 2000, '面板留白 ' + pnl().style.paddingBottom);
+    const list = vd().querySelector('.list');
+    const pr = pnl().getBoundingClientRect(), lr = list.getBoundingClientRect();
+    assert(lr.bottom <= pr.bottom - 114 + 1, '清單在留白之上 ' + [lr.bottom, pr.bottom]);
+    cf.contentWindow.sendTop(C.FM.CHAT_INPUT_STATE, { vh: h, hasInput: false, bottomZoneHeight: 0, inputH: 0, popupOpen: false, popupTop: null, src: 'none' });
+    await until(() => pnl().style.paddingBottom === '' && cf.style.getPropertyValue('--ytcas-clip') === 'inset(100% 0 0 0)', 2000, 'VOD：留白 0、全高');
+  });
+
   test('整段過程面板 iframe 沒有未捕捉的例外', async () => {
     eq(errs(), []);
     ctl.destroy();

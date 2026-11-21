@@ -1,7 +1,7 @@
 // 優化面板（T5：SPEC F-08、F-09、6.2、6.4、10.4）：top frame（www.youtube.com/watch）端的控制器。
 // - 面板插入 ytd-live-chat-frame 內、iframe#chatframe 之前（6.2 第 3 點），內含檢視器 iframe（viewer.html?embed=1&v=…）。
-// - T5 的裁切：面板開啟時 iframe#chatframe 一律 clip 到全隱藏（= 6.2「無輸入區」狀態，面板佔滿全高）；
-//   依底部互動區動態露出原生輸入框是 T6（CHAT_INPUT_STATE、--ytcas-clip）。
+// - 裁切（v49 T6，SPEC 6.2、6.7）：依 chat frame 的 CHAT_INPUT_STATE（src/chat-input.js）與頁面層付款視窗，
+//   在 iframe#chatframe 設 --ytcas-clip（clipState：收起只露出底部互動區／彈窗展開／無輸入區全高）；面板底部留白 PANEL_INSET。
 // - 劇院模式或聊天室太矮：退讓（移除 clip、隱藏面板），擷取與修剪不受影響（6.2、6.4）。
 // - 開關錨點（F-09）：影片下方「聊天室」卡片、舊版「隱藏聊天室」列；聊天室頂部列的按鈕由 chat frame 注入（content.js），
 //   點擊時送 TOGGLE_PANEL。面板開啟時的「關閉優化面板」在面板自己的頂部列（viewer.js）。
@@ -16,6 +16,34 @@
   const BTN_STYLE_ID = 'ytcas-btn-style';  // 開關按鈕（面板關閉時也要顯示）
   const TEASER_BTN_ID = 'ytcas-teaser-btn';
   const LEGACY_BTN_ID = 'ytcas-legacy-btn';
+
+  // v49（T6，SPEC 6.2 第 4 點）clip 狀態機（純函式，測試頁直接呼叫）。
+  // o: { input: CHAT_INPUT_STATE|null, iframeH, topPopupOpen, prev: 上一次的結果|null }；P: C.PANEL
+  // 回傳 { mode, clip, pad }：mode = 'input'（收起，只露出底部互動區）／'popup'（彈窗展開）／'none'（無輸入區，面板全高）／
+  //   'stale'／'unknown'（量測過期或還沒收到：面板全高，等重新量測，不套用舊值）；頁面層付款視窗開啟中 → 沿用前一個狀態（held）。
+  // pad：面板底部被原生互動區蓋住的高度（面板底部留白，6.2 第 5 點）
+  function clipState(o, P) {
+    const h = Math.max(0, o.iframeH || 0);
+    const inp = o.input;
+    const NONE = 'inset(100% 0 0 0)';
+    if (o.topPopupOpen && o.prev && o.prev.mode !== 'unknown') return Object.assign({}, o.prev, { held: true });
+    if (!inp) return { mode: 'unknown', clip: NONE, pad: 0 };
+    if (Math.abs((inp.vh || 0) - h) > P.INPUT_STALE_PX) return { mode: 'stale', clip: NONE, pad: 0 };
+    const bz = Math.max(0, Math.min(h, Math.round(inp.bottomZoneHeight || 0)));
+    if (inp.popupOpen && typeof inp.popupTop === 'number') {
+      const top = Math.max(0, Math.min(h, Math.round(inp.popupTop) - P.POPUP_GAP_PX));
+      return { mode: 'popup', clip: 'inset(' + top + 'px 0 0 0)', pad: bz };
+    }
+    if (!inp.hasInput || bz <= 0) return { mode: 'none', clip: NONE, pad: 0 };
+    return { mode: 'input', clip: 'inset(calc(100% - ' + bz + 'px) 0 0 0)', pad: bz };
+  }
+  // 面板剩餘高度不足（6.2「聊天室摺疊／退讓」v26）：iframe 高度 − bottomZoneHeight < PANEL_MIN_REMAIN_PX（含 ≥ iframe 高度）。
+  // 彈窗展開中不判斷（表符選單等會暫時變高）；量測過期也不判斷
+  function remainTooSmall(input, iframeH, P) {
+    if (!input || !input.hasInput || input.popupOpen) return false;
+    if (Math.abs((input.vh || 0) - iframeH) > P.INPUT_STALE_PX) return false;
+    return iframeH - (input.bottomZoneHeight || 0) < P.PANEL_MIN_REMAIN_PX;
+  }
 
   // opts: { doc, win, C, S, ytOrigin, viewerUrl(videoId) → string, extOrigin, currentVideoId() → string|null,
   //         streamInfo() → { isLiveBroadcast, endDate }|null, onLog?(reason, data), warnOnce?(key, detail, level) }
@@ -39,6 +67,8 @@
       lastTheme: null, capture: null, lastVod: '', lastChatState: '', expanding: false,
       pageStart: Date.now(), anchorWarned: false, anchors: { teaser: false, legacy: false, header: false },
       boundVideo: null,
+      // v49（T6）chat frame 的 CHAT_INPUT_STATE、頁面層付款視窗、目前的 clip 狀態、面板底部留白
+      input: null, topPopup: false, clip: null, inset: -1, popTimer: 0, bodyMo: null,
     };
 
     // ---------------------------------------------------------------- 元素
@@ -125,9 +155,10 @@
       st.frame = frame; st.iframe = iframe;
       bindObservers();
       sizePanel();
-      if (!st.mounted) log('panel-open', { reason, layout: layoutInfo() });
+      if (!st.mounted) { log('panel-open', { reason, layout: layoutInfo() }); requestInput(); }
       st.mounted = true;
       startVodTimer();
+      startPopupWatch(); // v49（T6）
       return true;
     }
 
@@ -141,6 +172,8 @@
       if (s) s.remove();
       unbindObservers();
       stopVodTimer();
+      stopPopupWatch(); // v49（T6）
+      st.clip = null; st.inset = -1;
       if (st.mounted) log('panel-close', { reason });
       st.mounted = false; st.paused = false; st.pauseReason = null;
       st.frame = null; st.iframe = null;
@@ -170,7 +203,8 @@
       if (st.frameMo) { st.frameMo.disconnect(); st.frameMo = null; }
       if (st.iframe) st.iframe.removeEventListener('load', onChatLoad);
     }
-    function onChatLoad() { log('chat-reload', {}); st.lastChatState = ''; evaluate('chat-load'); }
+    // v49（T6，6.4）iframe 重新載入：舊的量測全部失效 → 面板全高，等新的 chat frame 回報（並主動要求一次）
+    function onChatLoad() { log('chat-reload', {}); st.lastChatState = ''; st.input = null; evaluate('chat-load'); win.setTimeout(requestInput, 1000); }
 
     // ---------------------------------------------------------------- 狀態判斷（看門狗每秒＋各事件）
     function wanted() {
@@ -180,7 +214,62 @@
       if (theater()) return 'theater';
       const { iframe } = els();
       if (iframeH(iframe) < P.COLLAPSE_MIN_H) return 'small';
+      if (remainTooSmall(st.input, iframeH(iframe), P)) return 'small'; // v49（T6）面板剩餘高度 < 80px
       return null;
+    }
+
+    // ---------------------------------------------------------------- v49（T6，SPEC 6.3、6.4）頁面層付款視窗與 clip
+    const visible = (el) => {
+      if (!el || !el.getBoundingClientRect) return false;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return false;
+      const cs = win.getComputedStyle(el);
+      return cs.display !== 'none' && cs.visibility !== 'hidden';
+    };
+    // top.pagePopups（#buyFlowDivId 等）為主；ytd-popup-container 內的對話框為備援。不用萬用規則、不讀跨來源 iframe
+    function topPopupOpen() {
+      for (const sel of S.top.pagePopups) for (const el of doc.querySelectorAll(sel)) if (visible(el)) return true;
+      const pc = doc.querySelector(S.top.popupContainer);
+      if (pc) for (const sel of S.top.popups) for (const el of pc.querySelectorAll(sel)) if (visible(el)) return true;
+      return false;
+    }
+    function checkTopPopup() {
+      const v = topPopupOpen();
+      if (v === st.topPopup) return;
+      st.topPopup = v;
+      log(v ? 'top-popup-open' : 'top-popup-close', {});
+      applyClip('top-popup');
+    }
+    function startPopupWatch() {
+      if (st.popTimer) return;
+      st.popTimer = win.setInterval(checkTopPopup, P.TOP_POPUP_POLL_MS);
+      if (doc.body) { st.bodyMo = new win.MutationObserver(checkTopPopup); st.bodyMo.observe(doc.body, { childList: true }); }
+    }
+    function stopPopupWatch() {
+      if (st.popTimer) { win.clearInterval(st.popTimer); st.popTimer = 0; }
+      if (st.bodyMo) { st.bodyMo.disconnect(); st.bodyMo = null; }
+      st.topPopup = false;
+    }
+    // 依 CHAT_INPUT_STATE 與頁面層彈窗設定 iframe#chatframe 的 --ytcas-clip；面板底部留白告訴面板（PANEL_INSET）
+    function applyClip(why) {
+      if (!st.mounted || !st.iframe) return;
+      const cs = clipState({ input: st.input, iframeH: iframeH(st.iframe), topPopupOpen: st.topPopup, prev: st.clip }, P);      if (!st.clip || st.clip.mode !== cs.mode) log('clip', { mode: cs.mode, held: !!cs.held, why: why || '' });
+      st.clip = cs;
+      if (st.iframe.style.getPropertyValue('--ytcas-clip') !== cs.clip) st.iframe.style.setProperty('--ytcas-clip', cs.clip);
+      const inset = st.paused ? 0 : cs.pad;
+      if (inset !== st.inset) { st.inset = inset; toViewer({ type: FM.PANEL_INSET, bottom: inset }); }
+    }
+    function requestInput() {
+      const { iframe } = els();
+      if (!iframe || !iframe.contentWindow) return;
+      try { iframe.contentWindow.postMessage({ __ytcas: true, type: FM.CHAT_INPUT_REQUEST }, opts.ytOrigin); } catch (_) { /* ignore */ }
+    }
+    const numOr = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    function takeInput(d) {
+      st.input = { vh: numOr(d.vh, 0), hasInput: !!d.hasInput, bottomZoneHeight: Math.max(0, numOr(d.bottomZoneHeight, 0)),
+        popupOpen: !!d.popupOpen, popupTop: d.popupTop == null ? null : numOr(d.popupTop, null), src: typeof d.src === 'string' ? d.src.slice(0, 16) : '',
+        inputH: Math.max(0, numOr(d.inputH, 0)), at: Date.now() };
+      evaluate('chat-input');
     }
     function evaluate(why) {
       if (st.destroyed) return;
@@ -206,6 +295,7 @@
           toViewer({ type: FM.PANEL_STATE, paused: st.paused }); // v43：退讓中面板暫停補讀
         }
         sizePanel();
+        applyClip(why); // v49（T6）
       } else if (st.mounted) unmount(why);
       renderEntries();
     }
@@ -425,6 +515,7 @@
           sendTheme(true);
           if (st.capture) toViewer(Object.assign({ type: FM.CAPTURE_STATUS }, st.capture));
           toViewer({ type: FM.PANEL_STATE, paused: st.paused });
+          st.inset = -1; applyClip('panel-ready'); // v49：面板底部留白
           sendVodTime(true);
         } else if (d.type === FM.SEEK_TO) seekTo(d.seconds);
         else if (d.type === FM.PANEL_CLOSE) close('panel-button');
@@ -433,7 +524,8 @@
       // chat frame（youtube.com）
       const { iframe } = els();
       if (e.origin !== opts.ytOrigin || !iframe || e.source !== iframe.contentWindow) return;
-      if (d.type === FM.TOGGLE_PANEL) { st.anchors.header = true; toggle('header'); }
+      if (d.type === FM.CHAT_INPUT_STATE) takeInput(d); // v49（T6）
+      else if (d.type === FM.TOGGLE_PANEL) { st.anchors.header = true; toggle('header'); }
       else if (d.type === FM.PANEL_STATE) { st.anchors.header = !!d.headerMounted; st.lastChatState = ''; postChatState(); }
       else if (d.type === FM.CAPTURE_STATUS) {
         if (d.headerMounted != null) st.anchors.header = !!d.headerMounted;
@@ -480,11 +572,12 @@
     const api = {
       start, destroy, open, close, toggle, evaluate,
       state: () => ({ mounted: st.mounted, paused: st.paused, pauseReason: st.pauseReason, videoId: st.videoId, dismissedFor: st.dismissedFor,
-        ready: st.ready, anchors: Object.assign({}, st.anchors), capture: st.capture }),
+        ready: st.ready, anchors: Object.assign({}, st.anchors), capture: st.capture,
+        clip: st.clip ? Object.assign({}, st.clip) : null, input: st.input ? Object.assign({}, st.input) : null, topPopup: st.topPopup, inset: st.inset }),
       _clock: clock, _onMessage: onMessage,
     };
     return api;
   }
 
-  root.YTCAS_PANEL = { create, PANEL_ID };
+  root.YTCAS_PANEL = { create, PANEL_ID, clipState, remainTooSmall };
 })(typeof globalThis !== 'undefined' ? globalThis : self);
