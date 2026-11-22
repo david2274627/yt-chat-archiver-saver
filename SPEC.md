@@ -49,7 +49,7 @@
 - **v47 調整**（`docs/review-2026-11-17.md` 第 25、26 節，T5.6）：**預定開播時間在未來＝待機室**（不論 `startedAt`）、開播訊號來源完整清單、聊天事件不是開播訊號、錯誤 `startedAt` 降級與 `fixPhases` 兩段式清除（F-14）；直播錨點的有效條件（徽章「最新」且播放中穩定 3 秒、期間沒有 seek；取樣後 5 秒內被 seek 到非最新就作廢；網址帶 `t=` 時等點「直播」或穩定 10 秒）（F-08）；頭像點擊以新分頁開作者頻道（F-05）；SC 文字色沿用 YouTube 給的文字色變數、取不到才用對比度規則（F-02、10.3）；10.1 原則 7 註明「回到播放位置」浮動按鈕的例外。
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
-- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）。
+- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
 
 ---
 
@@ -868,7 +868,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | T6-c ⏸ | （v28）F-19 彈出視窗面板 PoC：面板覆蓋在 `#item-list` 範圍、底部互動區不覆蓋 | `docs/` PoC 紀錄 | 使用者實測可打字、面板可捲動點擊 |
 | T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON（含 `formatVersion`）、刪除；F-11 JSON 匯入 UI（v2.6.0 / v3 格式、預覽、去重）與「刪除舊版資料」按鈕；（v27）主題設定 UI（後台設定區、popup 底部）、場次清單收錄次數與覆蓋範圍、「清空此場次後重新收錄」、「重新分類系統訊息」；（v28）F-15 popup 開關與後台暫停清單、F-16 用量／排序／批次刪除／提醒、**F-17 自動備份（模式 A、排程、重試、通知）與 manifest 新權限**、F-18 版本匯出選項、`.json.gz` 匯入、popup 收錄狀態（10.4） | commit | 匯出 HTML 離線開啟可搜尋；同一 JSON 匯入兩次無重複；F-16、F-17 AC |
 | T7-b | （v28）F-17 備份位置模式 B（自選資料夾）PoC | `docs/` PoC 紀錄 | 依結果決定是否正式提供 |
-| T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部，更新 `docs/test-checklist.md` | commit | 使用者確認測試清單全數通過 |
+| T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部（含 6.5 AC 9），更新 `docs/test-checklist.md`。（v50，審查十一 29 第 3 點）記憶體對照另確認：T6 起原生訊息列表以 `visibility: hidden` 隱藏後，chatframe 的 DOM 節點與 heap 沒有增加、修剪維持 45 則上限 | commit | 使用者確認測試清單全數通過 |
 | T8.5 | （v28）`docs/USER-GUIDE.md`（繁體中文）：安裝／更新／**不可移除**、各功能操作、劇院模式限制、F-12 會切換原生聊天室、彈出視窗、備份與還原 | commit | 使用者閱讀確認 |
 | T9 | 發版 3.0.0：移除 `src/poc/` 與 manifest 中 PoC 的 content script、`web_accessible_resources` 的 `poc-panel.html`；更新 `manifest.json`、`VERSION`、`CHANGELOG.md` | `release: v3.0.0` | 見 `CLAUDE.md` 版本規則 |
 

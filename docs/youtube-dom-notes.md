@@ -221,7 +221,8 @@ yt-live-chat-renderer
 - **結論（T3.6 採用）**：實際開播時間只能靠「重新取得 watch 頁」的 `startDate`（background 重新抓取，見 SPEC F-14）。
 - 站內換頁（點推薦中的另一個直播）後，top frame 的 `startDate`、`videoId` 會換成新直播的值（01:47 確認）。
 - **（已驗證：2026-11-21 23:41，使用者 `streamTimes('0Eji…')`，審查十一 27.1）待機室的 `startDate` 可能是過去、帶秒數的時間**：綾音Ring「25 小時後開始直播」的待機室，頁面曾給 `2026-11-21T12:31:24Z`（帶秒數、已過），之後重新整理才是預定時間 `2026-11-22T15:00:00Z`。推測是待機室建立或公開的時間。**`startDate` 不可單獨作為開播依據**：v47 起最近一次 meta 說預定時間在未來（`scheduledFuture`）一律是待機室；v48 起 background 重新抓取時另看下一條的 `isLiveNow`。
-- **（待驗證，T5.7，審查十一 27 第 1 點）watch 頁內嵌的播放器資料 `"isLiveNow":true|false`**（`microformat.playerMicroformatRenderer.liveBroadcastDetails`）：預期待機室為 `false`、直播中為 `true`。background 重新抓取時：`false` 且沒有 `endDate` → `startDate` 已過也不當成開播（等待開播確認）；`true` 且判為實際開播 → `liveConfirmedAt`。`selectors.js` 的 `watchHtml.isLiveNow`。找不到時（結構不同）維持 v47 的判斷。實機確認方式：在待機室與直播中各執行一次 `await YTCAS_BG.streamTimes('影片ID')`，看 `liveConfirmed`（v48 新增）。
+- **（已驗證：2026-11-22，使用者 `streamTimes('E09v…')`，審查十一 30.6）** 直播中重新抓取 watch 頁讀到 `"isLiveNow": true`：`liveConfirmed` 2026-11-22T04:28:10Z、`startedAtSource: 'meta-actual'`、`scheduledFuture: false`、`startedAtSuspect: false`。待機室時為 `false` 尚未實測（「待機室等到開播」的轉換時間也待遇到時實測）。
+- （原 T5.7 的說明，審查十一 27 第 1 點）watch 頁內嵌的播放器資料 `"isLiveNow":true|false`（`microformat.playerMicroformatRenderer.liveBroadcastDetails`）：預期待機室為 `false`、直播中為 `true`。background 重新抓取時：`false` 且沒有 `endDate` → `startDate` 已過也不當成開播（等待開播確認）；`true` 且判為實際開播 → `liveConfirmedAt`。`selectors.js` 的 `watchHtml.isLiveNow`。找不到時（結構不同）維持 v47 的判斷。實機確認方式：在待機室與直播中各執行一次 `await YTCAS_BG.streamTimes('影片ID')`，看 `liveConfirmed`（v48 新增）。
 
 ### 5.2 直播結束（`M3na…`，02:54）
 - 結束當下，聊天室 iframe **反覆重新載入**（多組「observer 已掛上 → 聊天室環境 → 收錄統計（結束）」）；`yt-live-chat-renderer` 的 `loading` 屬性出現／移除。

@@ -223,7 +223,8 @@
     authorUrl: /<link[^>]*itemprop=["']url["'][^>]*href=["']([^"']+)["']/i,
     authorName: /<link[^>]*itemprop=["']name["'][^>]*content=["']([^"']*)["']/i,
     // v48（T5.7，審查十一 27 第 1 點）watch 頁內嵌的播放器資料 microformat.liveBroadcastDetails.isLiveNow（正在直播＝true）。
-    // 用來確認「已開播」（提早開播、待機室 meta 的 startDate 是過去帶秒數的時間，27.1）。待實機確認（dom-notes 1.4）
+    // 用來確認「已開播」（提早開播、待機室 meta 的 startDate 是過去帶秒數的時間，27.1）。
+    // 直播中 true：已驗證（2026-11-22，審查十一 30.6，dom-notes 5.1）；待機室的 false 待實機確認
     isLiveNow: /"isLiveNow"\s*:\s*(true|false)/,
   });
 

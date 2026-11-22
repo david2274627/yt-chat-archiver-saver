@@ -191,7 +191,21 @@
   - top frame 的 clip 狀態機、頁面層付款視窗、剩餘高度退讓、面板底部留白 `PANEL_INSET`、SPEC 6.7（commit `f56ae6b`）。
   - 診斷頁「記錄 N 分鐘」送時長（修掉 `test-diag-page` 的已知不穩定）、重新注入清單加入 `chat-input.js`（commit `a14981b`）。
   - 重新注入清單的測試斷言（commit `75196cc`）。
-  - CHANGELOG、測試清單、T6 報告（本段落所在的 commit）。
+  - CHANGELOG、測試清單、T6 報告（commit `f7a695f`）。
+- v50／T6.1（`docs/review-2026-11-17.md` 第 29、30 節；報告為 `docs/reports/2026-11-22-t6-f10.md` 的「T6.1」一節）：
+  - 自己送出的訊息不再存成兩筆：暫時節點 → 正式節點合併、沿用到達時間、`fixOwnDuplicates`（30.5，commit `9ff2514`）。
+  - 點 `$` 後底部互動區不再消失、`purchase`、P7 `zone-structure`（30.3，commit `9e216c1`）。
+  - 表符選單展開時輸入列不再被裁掉（30.1，commit `8949499`）。
+  - 置頂只用面板置頂卡（使用者選 A）、置頂卡連結可點（30.2，commit `c22e06c`）。
+  - 窄視窗讀不到徽章時不直接判為倒轉、錨點存在 top frame（30.4，commit `ddc654e`）。
+  - dom-notes 5.1 `isLiveNow` 已驗證、AC 9～11 的去處、測試留言提醒、T8 記憶體確認、CHANGELOG、測試清單、報告（30.6、第 29 節；本段落所在的 commit）。
+
+### 規格 v50（2026-11-22，T6.1）
+- F-14：自己送出的訊息（暫時 id／替換證據、`replacesId`、合併規則、`fixOwnDuplicates`、P1 `own`、P7 `own-replace`）。
+- 6.2、6.5 AC 12、F-07：置頂選 A（不露出原生置頂列、置頂卡可展開看完整內容、連結可點）。
+- 6.2 狀態表、6.8：表符選單的裁切頂端取彈窗與底部互動區的最上方 − 8；`$` 流程（`chat.interactiveZone`、`purchase`、`PANEL.ZONE_MIN_PX`）、P7 `zone-structure`。
+- F-08、4.3：讀不到徽章時以本頁錨點判斷是否在最新（`PANEL.ANCHOR_EDGE_SEC`）、`LIVE_ANCHOR`、`VOD_TIME.anchorA`。
+- 第 8 節 T8：6.5 AC 9、T6 前後 chatframe 的記憶體對照。
 
 ### 規格 v49（2026-11-22，T6）
 - 4.3：`CHAT_INPUT_STATE` 新欄位（`vh`、`inputH`、`src`、`overlayIgnored`）、`CHAT_INPUT_REQUEST`、`PANEL_INSET`；3.1 新增 `src/chat-input.js`。
