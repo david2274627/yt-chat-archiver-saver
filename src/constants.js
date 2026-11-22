@@ -429,5 +429,17 @@
     return h && h[0] === '@' ? 'https://www.youtube.com/@' + encodeURIComponent(h.slice(1)) : '';
   };
 
+  // v50（T6.1，審查十一 30.5）自己送出的訊息：暫時節點與正式節點的配對鍵（只限一般文字訊息；同作者＋同內容）。
+  // 沒有作者或沒有內容 → ''（不配對）。正規化與 db.js normText 相同（NFKC、小寫、空白收斂、表符取 alt）
+  C.OWN_REPLACE_WINDOW_MS = 90 * 1000;
+  C.ownKey = function (m) {
+    if (!m || m.type !== 'text') return '';
+    const who = (m.authorHandle || '').toLowerCase() || m.authorChannelId || m.authorName || '';
+    const runs = Array.isArray(m.runs) ? m.runs : [];
+    const text = runs.map((r) => (r && r.emoji ? (r.emoji.alt || r.emoji.shortcut || '') : (r && r.text) || '')).join('')
+      .normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+    return who && text ? who + '\u0001' + text : '';
+  };
+
   root.YTCAS_CONST = Object.freeze(C);
 })(typeof globalThis !== 'undefined' ? globalThis : self);

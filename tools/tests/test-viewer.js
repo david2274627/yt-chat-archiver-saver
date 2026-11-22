@@ -1425,6 +1425,26 @@
     document.body.click();
   });
 
+  test('T6.1 自己送出的訊息（30.5）：清單裡暫時 id 與正式 id 各一筆 → 收到合併後的紀錄（正式 id＋暫時 id 別名、時間取到達時間）只剩一筆，位置依時間', async () => {
+    await resetDb();
+    const VO = 'vidOWNDUP01';
+    const msgs = [];
+    for (let i = 0; i < 5; i++) msgs.push(mk({ id: 'o' + i, videoId: VO, timestampAbs: T0 + i * 10000, videoOffsetSec: i * 10 }));
+    msgs.push(mk({ id: 'LCC.temp', videoId: VO, authorHandle: '@me', runs: [{ text: '早安' }], timestampAbs: T0 + 21000, videoOffsetSec: 21 }));
+    msgs.push(mk({ id: 'ChwKreal', videoId: VO, authorHandle: '@me', runs: [{ text: '早安' }], timestampAbs: T0 + 39000, videoOffsetSec: 39 }));
+    await put({ videoId: VO, title: '重複', isLive: true, startedAt: T0, lastMessageAt: T0 + 40000, messageCount: 7, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VO });
+    await c.ready; await frame();
+    eq(c.state.items.length, 7);
+    c._onRuntime({ type: 'NEW_MESSAGES', videoId: VO, messages: [mk({ id: 'ChwKreal', videoId: VO, authorHandle: '@me', runs: [{ text: '早安' }], aliasIds: ['LCC.temp'], timestampAbs: T0 + 21000, videoOffsetSec: 21 })] });
+    await sleep(400); await frame();
+    eq(c.state.items.length, 6, '只剩一筆');
+    eq(c.state.items.map((x) => x.m.id), ['o0', 'o1', 'o2', 'ChwKreal', 'o3', 'o4'], '依時間排在 o2 之後');
+    eq([c.state.byId.get('ChwKreal'), c.state.byId.get('LCC.temp')], [3, 3], '兩個 id 都指到同一筆');
+    assert(c.els.pills.all.querySelector('.num').textContent === '6', '「全部」筆數');
+  });
+
   test('T5.1 推播的後備：直播中超過 15 秒沒有推播 → 讀資料庫的新訊息（offset 索引，只讀新的部分）', async () => {
     await resetDb();
     const VP = 'vidPOLL0001';

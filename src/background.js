@@ -284,6 +284,13 @@ async function fixGiftAuthors(opts) {
   console.info('[ytcas] 禮物作者' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
 }
+// v50（T6.1，審查十一 30.5 第 4 點）自己送出的訊息被存成兩筆（暫時 id＋正式 id）。
+// 用法：await YTCAS_BG.fixOwnDuplicates()（預覽：筆數、各場筆數，videoId 4 碼）→ await YTCAS_BG.fixOwnDuplicates({ dryRun: false })
+async function fixOwnDuplicates(opts) {
+  const r = await DB.fixOwnDuplicates({ dryRun: !(opts && opts.dryRun === false) });
+  console.info('[ytcas] 自己送出的重複訊息' + (r.dryRun ? '（預覽）' : ''), r);
+  return r;
+}
 
 // T5.3（審查十一 18.1 (K)）live／replay 來源統計（SW Console）：await YTCAS_BG.sourceStats()（已結束的場次，最多 30 場）
 // 或 { videoId }。只有數字：videoId 只留前 4 字、沒有標題與訊息內容。
@@ -1184,4 +1191,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

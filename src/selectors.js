@@ -177,6 +177,10 @@
       bannerPinnedMessage: 'yt-live-chat-banner-renderer #contents yt-live-chat-text-message-renderer',
       // 刪除狀態：span#deleted-state 確認存在（筆記 2.4）；被刪除時的屬性名稱與內容待實機確認
       deleted: { attr: 'is-deleted', stateEl: '#deleted-state' },
+      // v50（T6.1，審查十一 30.5）自己送出的訊息：YouTube 先插入「送出中」的暫時節點，伺服器確認後換成正式節點（id 不同）。
+      // 暫時 id 的格式**待實機確認**（推測以 LCC. 開頭；dom-notes 2.9）。F-20 P7 own-replace 記錄新舊 id 的前 4 碼與長度供核對。
+      // 格式不符時，擷取端仍以「節點被頁面移除／id 原地改變／列表被換掉」判斷替換（capture.js），不依賴這條
+      tempIdRe: /^LCC\./,
 
       // F-10 彈窗與按鈕（筆記 2.5）
       emojiPickerButton: '#emoji-picker-button',
@@ -285,6 +289,9 @@
     }
     return null;
   };
+
+  // v50（30.5）暫時 id（自己送出、伺服器尚未確認）。background 的合併規則與 fixOwnDuplicates 也用這條
+  S.isTempChatId = function (id) { return typeof id === 'string' && S.chat.tempIdRe.test(id); };
 
   root.YTCAS_SEL = S;
 })(typeof globalThis !== 'undefined' ? globalThis : self);

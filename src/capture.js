@@ -381,8 +381,12 @@
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
         observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0, giftLate: 0, giftMissing: 0, scTotal: 0, scTextColors: 0,
         // v48（T5.7，28.3）時間來源、背景擷取
-        itemsSwaps: 0, itemsStaleHeals: 0, ts_arrival: 0, ts_clock: 0, ts_capture: 0, hiddenCaptured: 0, hiddenBatches: 0, hiddenBulk: 0, hiddenBulkMsgs: 0, hiddenBatchMax: 0 },
+        itemsSwaps: 0, itemsStaleHeals: 0, ts_arrival: 0, ts_clock: 0, ts_capture: 0, hiddenCaptured: 0, hiddenBatches: 0, hiddenBulk: 0, hiddenBulkMsgs: 0, hiddenBatchMax: 0,
+        // v50（T6.1，30.5）自己送出的訊息：看到暫時 id、替換配對（新節點／原地改 id／事後配對）、頁面移除已存節點（非修剪、非開頭）
+        ownTempSeen: 0, ownReplaced: 0, ownInPlace: 0, ownLate: 0, pageRemoved: 0 },
       seenIds: new Set(),
+      // v50（30.5）最近 90 秒擷取的文字訊息（配對暫時節點 → 正式節點）：{ id, key, el, list, at, m, removedAt, head, trimmed, matched, reborn }
+      recent: [], trimmedEls: new WeakSet(),
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
       p7: new Map(), // F-20 P7：reason:tag → 次數
@@ -602,6 +606,99 @@
         if (st.seenIds.has(m.id)) st.stats.dupCaptured++;
         else { if (st.seenIds.size > 20000) st.seenIds.clear(); st.seenIds.add(m.id); }
       }
+      ownMatch(el, m, how);
+      enqueue(m);
+    }
+
+    // ------------------------------------------------ v50（T6.1，審查十一 30.5）自己送出的訊息：暫時節點 → 正式節點
+    // YouTube 先插入暫時節點（id 不同、到達時間＝送出時間），伺服器確認後換成正式節點。兩個都存 → 面板出現兩則。
+    // 正式節點出現時，找最近 90 秒內同作者同內容、尚未配對、而且「看得出是暫時節點」的那一筆：
+    //   暫時 id（S.isTempChatId）、或被頁面移除（不是本套件修剪、不是列表開頭）、或所在的 #items 已被換掉且沒有以同 id 重新出現。
+    // 配對到 → 正式節點沿用暫時節點的時間（到達時間、offset、phase），帶 replacesId 讓 background 合併成一筆（以正式 id 為主）。
+    // 同一個人連續送出相同內容：兩個節點都還在頁面上、也都不是暫時 id → 不配對（不同訊息不可合併）
+    const isTemp = (id) => S.isTempChatId(id);
+    const idShape = (id) => ({ p: String(id || '').slice(0, 4), len: String(id || '').length }); // 只有前 4 碼與長度（不含內容）
+    function pruneRecent() {
+      const t = now() - C.OWN_REPLACE_WINDOW_MS;
+      while (st.recent.length && (st.recent[0].at < t || st.recent.length > 400)) st.recent.shift();
+    }
+    function looksTemp(e) {
+      if (isTemp(e.id)) return true;
+      if (e.removedAt != null) return !e.trimmed && !e.head;
+      return !e.el.isConnected && e.list !== st.items && !e.reborn && !e.trimmed;
+    }
+    function ownAdopt(m, e) {
+      m.timestampAbs = e.m.timestampAbs;
+      if (e.m.tsSource) m.tsSource = e.m.tsSource; else delete m.tsSource;
+      m.videoOffsetSec = e.m.videoOffsetSec;
+      m.phase = e.m.phase;
+      m.replacesId = e.id;
+    }
+    function probeOwn(kind, e, el, m, extra) {
+      if (!opts.onDiag) return;
+      const n = st.p7.get('own:' + kind) || 0;
+      if (n >= C.DIAG.P7_MAX_PER_TAG) return;
+      st.p7.set('own:' + kind, n + 1);
+      const attrs = (x) => (x && x.getAttributeNames ? x.getAttributeNames().filter((a) => a !== 'id' && !a.startsWith('data-ytcas')).slice(0, 20) : []);
+      diag('P7', 'own-replace', Object.assign({ kind, oldId: e ? idShape(e.id) : null, newId: m ? idShape(m.id) : null,
+        dtMs: e ? now() - e.at : null, oldRemoved: !!(e && e.removedAt != null), oldHead: !!(e && e.head), oldTempId: !!(e && isTemp(e.id)),
+        sameEl: !!(e && el && e.el === el), oldAttrs: e ? attrs(e.el) : [], newAttrs: attrs(el) }, extra || {}));
+    }
+    function ownMatch(el, m, how) {
+      if (source === 'replay') return;
+      const key = C.ownKey(m);
+      if (!key) return;
+      pruneRecent();
+      // 同 id 重新出現（列表被換掉後的新節點）：舊紀錄改指向新節點，不再當成暫時節點
+      for (const e of st.recent) if (e.id === m.id) { e.reborn = true; e.el = el; e.list = st.items; e.removedAt = null; }
+      if (isTemp(m.id)) {
+        st.stats.ownTempSeen++;
+        if (!st.recent.some((e) => e.id === m.id)) probeOwn('temp-seen', null, el, m, { how });
+      } else {
+        const e = st.recent.find((x) => x.key === key && !x.matched && x.id !== m.id && !isTemp(m.id) && looksTemp(x));
+        if (e) {
+          ownAdopt(m, e);
+          e.matched = true;
+          st.stats.ownReplaced++;
+          probeOwn('new-node', e, el, m, { how });
+        }
+      }
+      if (!st.recent.some((e) => e.id === m.id)) st.recent.push({ id: m.id, key, el, list: st.items, at: now(), m: Object.assign({}, m), removedAt: null, head: false, trimmed: false, matched: !!m.replacesId, reborn: false });
+    }
+    // 頁面移除了已存的節點（不是本套件修剪）。之前已擷取、同作者同內容、仍在頁面上、沒配對過的正式節點 → 事後配對（暫時節點晚於正式節點才移除）
+    function onRemoved(n, prev) {
+      const e = st.recent.find((x) => x.el === n && x.id === n.id);
+      if (!e) return;
+      if (st.trimmedEls.has(n)) { e.trimmed = true; return; }
+      let p = prev;
+      while (p && p.nodeType !== 1) p = p.previousSibling;
+      e.removedAt = now();
+      e.head = !p;
+      st.stats.pageRemoved++;
+      if (e.head || e.matched || st.mode !== 'capturing') return;
+      const later = st.recent.find((x) => x !== e && x.key === e.key && !x.matched && !isTemp(x.id) && x.at >= e.at && x.el.isConnected && x.id !== e.id);
+      if (!later) return;
+      e.matched = true; later.matched = true;
+      const fix = Object.assign({}, later.m);
+      ownAdopt(fix, e);
+      later.m = fix;
+      st.stats.ownLate++;
+      probeOwn('late', e, later.el, fix);
+      enqueue(fix);
+    }
+    // 同一個節點的 id 原地改變（YouTube 沿用節點、換成正式 id）：重新解析並帶 replacesId（同一個節點＝同一則訊息，一律合併）
+    function onIdChanged(el, oldId) {
+      if (!el.id || el.id === oldId || el.dataset[SAVED] !== '1' || st.mode !== 'capturing') return;
+      let m = null;
+      try { m = parseMessage(el, ctxNow()); } catch (_) { /* ignore */ }
+      if (!m) return;
+      const e = st.recent.find((x) => x.el === el && x.id === oldId);
+      if (e) { ownAdopt(m, e); e.matched = true; e.id = m.id; e.m = Object.assign({}, m); }
+      else m.replacesId = oldId;
+      m.replaceInPlace = true;
+      st.stats.ownInPlace++;
+      probeOwn('in-place', e || { id: oldId, el, at: now(), removedAt: null }, el, m);
+      if (m.id) st.seenIds.add(m.id);
       enqueue(m);
     }
 
@@ -679,6 +776,7 @@
           if (!el.dataset[SAVED]) break; // 仍無法擷取（理論上不會發生）：寧可不修剪也不遺失
         }
         if (st.mode === 'capturing') checkDeleted(el);
+        st.trimmedEls.add(el); // v50（30.5）本套件修剪的節點不是「被頁面替換」
         el.remove();
         over--;
         st.stats.trimmed++;
@@ -694,6 +792,13 @@
         if (batch > C.ARRIVAL_HIDDEN_BATCH_MAX) st.stats.hiddenBulk++;
         if (batch > st.stats.hiddenBatchMax) st.stats.hiddenBatchMax = batch;
       }
+      // v50（30.5）先處理移除（暫時節點與正式節點可能在同一次回呼內一刪一增），再處理新增
+      if (st.recent.length) {
+        for (const r of records) {
+          if (r.type !== 'childList' || r.target !== st.items) continue;
+          r.removedNodes.forEach((n) => { if (n.nodeType === 1 && n.dataset[SAVED] === '1') onRemoved(n, r.previousSibling); });
+        }
+      }
       for (const r of records) {
         // T3.4：observer 為了刪除偵測帶 subtree，childList 也會回報訊息內部的後代（徽章、圖示、span…）；
         // 只有 #items 的直接子節點才是訊息
@@ -701,6 +806,9 @@
           if (r.target !== st.items) continue;
           st.stats.observedAdded += r.addedNodes.length;
           r.addedNodes.forEach((n) => captureNode(n, 'observer', false, batch));
+        }
+        else if (r.type === 'attributes' && r.attributeName === 'id') {
+          if (r.target.parentElement === st.items) onIdChanged(r.target, r.oldValue);
         }
         else if (r.type === 'attributes' && st.mode === 'capturing') {
           const el = r.target.closest && r.target.closest('[data-ytcas-saved="1"]');
@@ -731,8 +839,9 @@
       st.items = items;
       st.banner = banner;
       if (!items) return false;
-      const del = S.chat.deleted.attr ? { attributes: true, subtree: true, attributeFilter: [S.chat.deleted.attr] } : {};
-      observe(items, onItemsMutation, Object.assign({ childList: true }, del));
+      // v50（30.5）id 屬性：自己送出的訊息若原地換成正式 id（attributeOldValue 取舊 id）
+      const attrs = ['id'].concat(S.chat.deleted.attr ? [S.chat.deleted.attr] : []);
+      observe(items, onItemsMutation, { childList: true, attributes: true, subtree: true, attributeFilter: attrs, attributeOldValue: true });
       if (banner) observe(banner, () => capturePinned(), { childList: true, subtree: true });
       // F-01 AC：切換影片後不得累加。每個聊天室最多 2 個（訊息列表＋置頂列）
       console.info('[ytcas] 擷取 observer 已掛上（本頁共 ' + liveObservers + ' 個；每個聊天室最多 2 個）', { source });
@@ -910,7 +1019,10 @@
         hidden: { captured: s.hiddenCaptured, batches: s.hiddenBatches, bulk: s.hiddenBulk, bulkMsgs: s.hiddenBulkMsgs, batchMax: s.hiddenBatchMax },
         giftLate: s.giftLate, giftMissing: s.giftMissing,
         // v48（28.1）itemsSwaps：YouTube 換掉 #items 的次數（重新掛上並回溯擷取）；itemsStaleHeals：統計當下發現沒掛在目前列表、立即重新掛上的次數
-        itemsSwaps: s.itemsSwaps, itemsStaleHeals: s.itemsStaleHeals };
+        itemsSwaps: s.itemsSwaps, itemsStaleHeals: s.itemsStaleHeals,
+        // v50（T6.1，30.5）自己送出的訊息：tempSeen＝看到暫時 id、replaced＝新節點配對、inPlace＝原地改 id、late＝事後配對、
+        // pageRemoved＝頁面移除已存節點（不是修剪、不是列表開頭）
+        own: { tempSeen: s.ownTempSeen, replaced: s.ownReplaced, inPlace: s.ownInPlace, late: s.ownLate, pageRemoved: s.pageRemoved } };
       if (s.captured || final) console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), obj);
       // F-20 P1／P2：同一份統計寫入診斷記錄（只有筆數）；時間來源一併記錄，供開播判斷驗證
       diag('P1', final ? 'stats-final' : 'stats', Object.assign({}, obj, { times: {

@@ -1310,6 +1310,17 @@
         const it = CORE.indexMessage(m, S.channels);
         rememberAvatar(m);
         const i = findIndex(m);
+        // v50（T6.1，30.5）合併後的紀錄（正式 id＋暫時 id 別名）：清單裡兩筆都在 → 移除另一筆；時間改變 → 移到正確位置
+        const hits = new Set([m.id, ...(m.aliasIds || [])].map((k) => S.byId.get(k)).filter((x) => x != null));
+        if (i != null && (hits.size > 1 || S.items[i].m.timestampAbs !== m.timestampAbs)) {
+          for (const k of Array.from(hits).sort((a, b) => b - a)) S.items.splice(k, 1);
+          let j = S.items.length;
+          while (j > 0 && S.items[j - 1].m.timestampAbs > m.timestampAbs) j--;
+          S.items.splice(j, 0, it);
+          S.byId = new Map(); S.items.forEach((x, k) => indexIds(x.m, k));
+          added = true;
+          continue;
+        }
         if (i != null) { S.items[i] = it; indexIds(m, i); continue; }
         // 通常是最新的訊息：從尾端往前找插入位置
         let j = S.items.length;

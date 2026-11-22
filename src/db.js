@@ -305,8 +305,90 @@
     if (!r.deleted) delete r.deletedAt;
     r.aliasIds = Array.isArray(m.aliasIds) ? m.aliasIds.filter((a) => typeof a === 'string' && a && a !== r.id) : [];
     if (typeof r.id !== 'string' || !r.id) r.id = fallbackId(r);
+    // v50（30.5）擷取端的替換提示只在寫入當下使用，不存
+    delete r.replacesId;
+    delete r.replaceInPlace;
     r.fp = makeFp(r);
     return r;
+  }
+
+  // ---------------------------------------------------------------- v50（T6.1，審查十一 30.5）自己送出的訊息重複
+  // 暫時節點（送出中）與正式節點各存了一筆。合併規則：
+  //   1. 擷取端帶 replacesId（看得出前一筆是暫時節點）→ 同作者同內容（原地改 id 時不比對）就合併；
+  //   2. 沒有提示時：同場次、同作者、同內容（C.ownKey）、時間差 ≤ 90 秒，而且**其中一筆是暫時 id**（S.isTempChatId）才合併。
+  //      兩筆都是正式 id 一律不合併（同一個人連續送出相同內容、不同人的「8888」）。
+  // 合併後以正式 id 為主、暫時 id 記入 aliasIds；時間取到達時間那一筆（通常是暫時節點），offset／phase 跟著時間
+  const isTempId = (id) => { const s = root.YTCAS_SEL; return !!(s && typeof s.isTempChatId === 'function' && s.isTempChatId(id)); };
+  const hasTempAlias = (r) => (r.aliasIds || []).some(isTempId);
+  const TIME_KEYS = ['timestampAbs', 'tsSource', 'videoOffsetSec', 'offsetSource', 'phase'];
+  function foldTwin(real, temp) {
+    const r = clone(real);
+    for (const k of Object.keys(temp)) if (!SPECIAL.has(k) && !TIME_KEYS.includes(k) && isEmpty(r[k]) && !isEmpty(temp[k])) r[k] = clone(temp[k]);
+    const tA = temp.tsSource === 'arrival', rA = real.tsSource === 'arrival';
+    const useTemp = real.offsetSource !== 'replay' && num(temp.timestampAbs) !== null &&
+      (tA && !rA ? true : rA && !tA ? false : temp.timestampAbs < (num(real.timestampAbs) ?? Infinity));
+    if (useTemp) {
+      for (const k of TIME_KEYS) { if (temp[k] === undefined) delete r[k]; else r[k] = clone(temp[k]); }
+      r.offsets = Object.assign({}, real.offsets || {}, temp.offsets || {});
+      if (num(temp.videoOffsetSec) === null) delete r.offsets.v1;
+    }
+    r.sources = union(real.sources, temp.sources);
+    r.firstSeenAt = Math.min(num(real.firstSeenAt) ?? Infinity, num(temp.firstSeenAt) ?? Infinity);
+    if (!Number.isFinite(r.firstSeenAt)) r.firstSeenAt = r.timestampAbs;
+    r.lastSeenAt = Math.max(num(real.lastSeenAt) ?? 0, num(temp.lastSeenAt) ?? 0);
+    if (temp.deleted && !r.deleted) { r.deleted = true; r.deletedAt = temp.deletedAt; }
+    r.aliasIds = union(union(real.aliasIds, temp.aliasIds), [temp.id]).filter((a) => a && a !== r.id);
+    r.fp = makeFp(r);
+    return r;
+  }
+  // 寫入中的同場次最近文字訊息（只在 background 記憶體；Service Worker 重啟後由 fixOwnDuplicates 處理遺漏）
+  const twinCaches = new Map();
+  function twinCacheFor(videoId) {
+    let c = twinCaches.get(videoId);
+    if (!c) {
+      if (twinCaches.size > 20) twinCaches.delete(twinCaches.keys().next().value);
+      c = [];
+      twinCaches.set(videoId, c);
+    }
+    return c;
+  }
+  function rememberTwin(videoId, rec, now) {
+    const key = C.ownKey(rec);
+    if (!key) return;
+    const c = twinCacheFor(videoId);
+    const t = now - 10 * 60 * 1000;
+    while (c.length && (c[0].at < t || c.length > 3000)) c.shift();
+    const e = c.find((x) => x.id === rec.id);
+    if (e) { e.ts = rec.timestampAbs; return; }
+    c.push({ id: rec.id, key, ts: rec.timestampAbs, temp: isTempId(rec.id), at: now });
+  }
+  function forgetTwin(videoId, id) {
+    const c = twinCaches.get(videoId);
+    if (!c) return;
+    const i = c.findIndex((x) => x.id === id);
+    if (i >= 0) c.splice(i, 1);
+  }
+  // 回傳 { other, realIsRec } 或 null
+  async function findTwin(store, rec, hint) {
+    if (hint.replacesId && hint.replacesId !== rec.id) {
+      const o = await req(store.get(hint.replacesId));
+      if (o && o.videoId === rec.videoId && (hint.inPlace || (C.ownKey(o) && C.ownKey(o) === C.ownKey(rec)))) return { other: o, realIsRec: true };
+    }
+    const key = C.ownKey(rec);
+    if (!key) return null;
+    const recTemp = isTempId(rec.id);
+    if (!recTemp && hasTempAlias(rec)) return null; // 已經合併過
+    const W = C.OWN_REPLACE_WINDOW_MS;
+    const cands = twinCacheFor(rec.videoId)
+      .filter((e) => e.key === key && e.id !== rec.id && e.temp !== recTemp && Math.abs(e.ts - rec.timestampAbs) <= W)
+      .sort((a, b) => Math.abs(a.ts - rec.timestampAbs) - Math.abs(b.ts - rec.timestampAbs));
+    for (const c of cands) {
+      const o = await req(store.get(c.id));
+      if (!o || C.ownKey(o) !== key) continue;
+      if (recTemp && hasTempAlias(o)) continue; // 這筆正式訊息已配過暫時節點
+      return { other: o, realIsRec: !recTemp };
+    }
+    return null;
   }
 
   const SPECIAL = new Set(['id', 'videoId', 'type', 'sources', 'firstSeenAt', 'lastSeenAt', 'offsets', 'videoOffsetSec',
@@ -407,7 +489,7 @@
         if (session && session.videoId !== videoId) session = null;
         const versionId = p.versionId || (session && session.versionId) || 'v1';
         const ctx = { videoId, source: p.source || 'live', versionId, now, preserve: !!p.preserve, useFp: true };
-        let bytes = 0;
+        let bytes = 0, ownRemoved = 0;
         for (const raw of p.messages || []) {
           if (!raw || typeof raw !== 'object') continue;
           const inc = normalizeIncoming(raw, ctx);
@@ -428,18 +510,35 @@
             if (nv) stats.phaseFixed = (stats.phaseFixed || 0) + 1;
             return nv || r;
           };
+          let pushedAt = -1;
           if (ex) {
             const m = mergeMessage(ex, inc, ctx);
             rec = fix(m.rec);
             if (m.changed || rec !== m.rec) store.put(rec);
-            if (m.significant) { changed.push(rec); stats.merged++; } else stats.unchanged++;
+            if (m.significant) { pushedAt = changed.push(rec) - 1; stats.merged++; } else stats.unchanged++;
           } else {
             rec = fix(inc);
             store.put(rec);
-            changed.push(rec);
+            pushedAt = changed.push(rec) - 1;
             stats.added++;
             bytes += approxSize(rec);
           }
+          // v50（T6.1，審查十一 30.5）自己送出的訊息：暫時節點與正式節點合併成一筆（以正式 id 為主）
+          if (ctx.source !== 'replay' && !ctx.preserve) {
+            const tw = await findTwin(store, rec, { replacesId: typeof raw.replacesId === 'string' ? raw.replacesId : '', inPlace: !!raw.replaceInPlace });
+            if (tw) {
+              const real = tw.realIsRec ? rec : tw.other, temp = tw.realIsRec ? tw.other : rec;
+              const folded = fix(foldTwin(real, temp));
+              store.delete(temp.id);
+              store.put(folded);
+              forgetTwin(videoId, temp.id);
+              if (ex) ownRemoved++; else { stats.added--; bytes -= approxSize(rec); }
+              stats.ownMerged = (stats.ownMerged || 0) + 1;
+              if (pushedAt >= 0) changed[pushedAt] = folded; else changed.push(folded);
+              rec = folded;
+            }
+          }
+          if (ctx.source !== 'replay') rememberTwin(videoId, rec, now);
           if (rec.timestampAbs != null) stream.lastMessageAt = Math.max(stream.lastMessageAt || 0, rec.timestampAbs);
           if (session) {
             const o = num(inc.offsets[versionId]);
@@ -452,7 +551,7 @@
             if (!session.phases.includes(rec.phase)) session.phases.push(rec.phase);
           }
         }
-        stream.messageCount += stats.added;
+        stream.messageCount = Math.max(0, stream.messageCount + stats.added - ownRemoved);
         stream.approxBytes += bytes;
         if (session) {
           session.added += stats.added;
@@ -1004,6 +1103,76 @@
         }
         await done(t);
       });
+    }
+    return out;
+  }
+
+  // v50（T6.1，審查十一 30.5 第 4 點）既有資料：自己送出的訊息被存成兩筆（暫時 id＋正式 id）。
+  // 規則同寫入時的第 2 條：同場次、同作者同內容、時間差 ≤ 90 秒、其中一筆是暫時 id → 合併（每筆正式訊息最多配一筆暫時訊息，取時間最近）。
+  // dryRun（預設）：只回傳筆數、各場筆數（videoId 4 碼）、暫時 id 總數；
+  //   另列「同作者同內容 90 秒內、兩筆都是正式 id」的組數與 id 形狀（前 4 碼＋長度），用來核對暫時 id 的格式（不一定是重複、不會合併）。
+  // { dryRun: false } 才寫入，寫入後重新計算各場筆數
+  function ownPairs(list) {
+    const W = C.OWN_REPLACE_WINDOW_MS;
+    const groups = new Map();
+    for (const m of list) {
+      if (m.videoId == null) continue;
+      const k = C.ownKey(m);
+      if (!k) continue;
+      const g = m.videoId + '\u0002' + k;
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(m);
+    }
+    const pairs = [], suspects = [];
+    for (const arr of groups.values()) {
+      if (arr.length < 2) continue;
+      arr.sort((a, b) => (a.timestampAbs || 0) - (b.timestampAbs || 0));
+      const used = new Set(arr.filter(hasTempAlias).map((m) => m.id)); // 已配過暫時節點的正式訊息
+      for (const t of arr.filter((m) => isTempId(m.id))) {
+        let best = null;
+        for (const r of arr) {
+          if (isTempId(r.id) || used.has(r.id)) continue;
+          const d = Math.abs((r.timestampAbs || 0) - (t.timestampAbs || 0));
+          if (d <= W && (!best || d < best.d)) best = { r, d };
+        }
+        if (best) { used.add(best.r.id); pairs.push({ real: best.r, temp: t }); }
+      }
+      for (let i = 1; i < arr.length; i++) {
+        const a = arr[i - 1], b = arr[i];
+        if (!isTempId(a.id) && !isTempId(b.id) && (b.timestampAbs || 0) - (a.timestampAbs || 0) <= W) suspects.push([a, b]);
+      }
+    }
+    return { pairs, suspects };
+  }
+  async function fixOwnDuplicates(opts) {
+    const dryRun = !opts || opts.dryRun !== false;
+    const db = await open();
+    const all = await req(db.transaction('messages').objectStore('messages').getAll());
+    const { pairs, suspects } = ownPairs(all);
+    const byVid = new Map();
+    for (const p of pairs) { if (!byVid.has(p.real.videoId)) byVid.set(p.real.videoId, []); byVid.get(p.real.videoId).push(p); }
+    const shape = (id) => String(id || '').slice(0, 4) + '|' + String(id || '').length;
+    const shapes = new Map();
+    for (const [a, b] of suspects) { const k = [shape(a.id), shape(b.id)].sort().join(' + '); shapes.set(k, (shapes.get(k) || 0) + 1); }
+    const out = { dryRun, pairs: pairs.length, tempIds: all.filter((m) => isTempId(m.id)).length,
+      streams: Array.from(byVid, ([v, ps]) => ({ v: String(v).slice(0, 4), n: ps.length })),
+      sameTextBothReal: { pairs: suspects.length, idShapes: Array.from(shapes, ([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n).slice(0, 5) },
+      merged: 0 };
+    if (dryRun) return out;
+    for (const [videoId, ps] of byVid) {
+      await withLock(videoId, async () => {
+        const t = db.transaction('messages', 'readwrite');
+        const s = t.objectStore('messages');
+        for (const p of ps) {
+          const real = await req(s.get(p.real.id)), temp = await req(s.get(p.temp.id));
+          if (!real || !temp || C.ownKey(real) !== C.ownKey(temp)) continue;
+          s.delete(temp.id);
+          s.put(foldTwin(real, temp));
+          out.merged++;
+        }
+        await done(t);
+      });
+      await recountStream(videoId);
     }
     return out;
   }
@@ -1785,13 +1954,13 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeAllPhases, systemTagStats, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,
     exportData, importData, parseImport, migrateLegacy,
     // 純函式（測試用）
     util: { hash, normText, makeFp, fallbackId, normalizeIncoming, mergeMessage, resolveVersion, mergeIntervals, coverage,
-      convertLegacyMessage, convertLegacyChannel, isEmpty },
+      convertLegacyMessage, convertLegacyChannel, isEmpty, foldTwin, ownPairs, isTempId, _resetTwins: () => twinCaches.clear() },
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

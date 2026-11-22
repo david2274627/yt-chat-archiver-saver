@@ -1192,6 +1192,115 @@
     e.stop();
   });
 
+  // v50（T6.1，審查十一 30.5）自己送出的訊息：暫時節點 → 正式節点（模擬結構；YouTube 實際的替換方式待實機確認，dom-notes 2.9）
+  test('T6.1 自己送出的訊息（30.5）：暫時 id／頁面移除（非開頭）／原地改 id／事後配對 → 正式節點帶 replacesId 並沿用到達時間；修剪、列表開頭、兩則都在頁面上（連續送出相同內容）不配對；P7 只有 id 前 4 碼與長度', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const recs = [];
+    let T = NOW;
+    const e = engine({ send, now: () => T, onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidOwn1', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    const all = () => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    const last = (id) => all().filter((x) => x.id === id).pop();
+    const me = (id, text) => textMsg({ id, author: '@又新-david', ts: '下午10:24', runs: [{ text }] });
+    items.append(textMsg({ id: 'OWN-OLDER', author: '@x', ts: '下午10:23' })); // 列表開頭的其他訊息
+    await until(() => last('OWN-OLDER'), 3000);
+    // 1. 暫時 id（LCC.）→ 18 秒後正式節點（暫時節點還在頁面上）
+    T = NOW + 20000;
+    const tmp = me('LCC.own-temp-1', '早安');
+    items.append(tmp);
+    await until(() => last('LCC.own-temp-1'), 3000);
+    T = NOW + 38000;
+    items.append(me('ChwKown-real-1', '早安'));
+    await until(() => last('ChwKown-real-1'), 3000);
+    let r = last('ChwKown-real-1');
+    eq([r.replacesId, r.timestampAbs, r.tsSource], ['LCC.own-temp-1', NOW + 20000, 'arrival'], '暫時 id');
+    tmp.remove();
+    // 2. 暫時 id 格式不符：頁面移除舊節點（不是開頭）＋新節點
+    T = NOW + 45000;
+    const tmp2 = me('ChwKown-pend-2', '午安');
+    items.append(tmp2);
+    await until(() => last('ChwKown-pend-2'), 3000);
+    T = NOW + 55000;
+    tmp2.remove();
+    items.append(me('ChwKown-real-2', '午安'));
+    await until(() => last('ChwKown-real-2'), 3000);
+    r = last('ChwKown-real-2');
+    eq([r.replacesId, r.timestampAbs], ['ChwKown-pend-2', NOW + 45000], '頁面移除');
+    // 3. 連續送出相同內容（兩個節點都在頁面上、都是正式 id）→ 不配對
+    T = NOW + 60000;
+    items.append(me('ChwKown-dup-a', '8888'));
+    await until(() => last('ChwKown-dup-a'), 3000);
+    T = NOW + 62000;
+    items.append(me('ChwKown-dup-b', '8888'));
+    await until(() => last('ChwKown-dup-b'), 3000);
+    assert(!last('ChwKown-dup-b').replacesId, '連續送出相同內容不可配對');
+    // 4. 列表開頭被移除（YouTube 自己的上限）→ 不配對
+    const head = items.firstElementChild;
+    const headText = head.querySelector('#message').textContent;
+    const headAuthor = head.querySelector('#author-name').firstChild.textContent;
+    T = NOW + 63000;
+    head.remove();
+    items.append(textMsg({ id: 'ChwKown-head-new', author: headAuthor, ts: '下午10:24', runs: [{ text: headText }] }));
+    await until(() => last('ChwKown-head-new'), 3000);
+    assert(!last('ChwKown-head-new').replacesId, '列表開頭被移除不算替換');
+    // 5. 原地改 id（同一個節點）
+    T = NOW + 70000;
+    const inplace = me('ChwKown-ip-old', '晚安');
+    items.append(inplace);
+    await until(() => last('ChwKown-ip-old'), 3000);
+    T = NOW + 80000;
+    inplace.id = 'ChwKown-ip-new';
+    await until(() => last('ChwKown-ip-new'), 3000);
+    r = last('ChwKown-ip-new');
+    eq([r.replacesId, r.replaceInPlace, r.timestampAbs], ['ChwKown-ip-old', true, NOW + 70000], '原地改 id');
+    // 6. 事後配對：正式節點先出現（暫時節點還在），之後頁面才移除暫時節點
+    T = NOW + 85000;
+    const tmp6 = me('ChwKown-pend-6', '你好');
+    items.append(tmp6);
+    await until(() => last('ChwKown-pend-6'), 3000);
+    T = NOW + 95000;
+    items.append(me('ChwKown-real-6', '你好'));
+    await until(() => last('ChwKown-real-6'), 3000);
+    assert(!last('ChwKown-real-6').replacesId, '暫時節點還在、id 也不像暫時 → 先不配對');
+    tmp6.remove();
+    await until(() => last('ChwKown-real-6').replacesId, 3000, '事後配對');
+    r = last('ChwKown-real-6');
+    eq([r.replacesId, r.timestampAbs], ['ChwKown-pend-6', NOW + 85000]);
+    const st = e.state().stats;
+    eq([st.ownTempSeen, st.ownReplaced, st.ownInPlace, st.ownLate], [1, 2, 1, 1]);
+    e.stop();
+    const p7 = recs.filter((x) => x.p === 'P7' && x.k === 'own-replace').map((x) => x.d);
+    assert(p7.length >= 4, 'P7 own-replace：' + p7.length);
+    const s = JSON.stringify(p7);
+    assert(!s.includes('早安') && !s.includes('又新') && !s.includes('own-real'), 'P7 不含內容、作者與完整 id');
+    eq(p7.find((x) => x.kind === 'new-node').newId, { p: 'ChwK', len: 'ChwKown-real-1'.length });
+    const p1 = recs.filter((x) => x.p === 'P1').pop();
+    assert(p1 && p1.d.own && p1.d.own.replaced === 2, 'P1 own 統計');
+  });
+
+  test('T6.1 自己送出的訊息（30.5）：本套件修剪掉的舊節點不算替換（同作者同內容的新訊息照常存成新的一則）', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    let T = NOW;
+    const e = engine({ send, now: () => T });
+    e.start();
+    e.setInfo({ videoId: 'testVidOwn2', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    const all = () => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    items.append(textMsg({ id: 'ChwKtrim-first', author: '@fan', ts: '下午10:23', runs: [{ text: '同一句' }] }));
+    for (let i = 0; i < 60; i++) items.append(textMsg({ id: 'ChwKfill' + i, author: '@other' + i, ts: '下午10:23' }));
+    await until(() => all().some((x) => x.id === 'ChwKfill59') && items.children.length <= C.DOM_MAX_MESSAGES, 3000);
+    assert(!items.querySelector('#ChwKtrim-first'), '已被修剪');
+    T = NOW + 10000;
+    items.append(textMsg({ id: 'ChwKtrim-second', author: '@fan', ts: '下午10:23', runs: [{ text: '同一句' }] }));
+    await until(() => all().some((x) => x.id === 'ChwKtrim-second'), 3000);
+    assert(!all().find((x) => x.id === 'ChwKtrim-second').replacesId, '修剪的節點不配對');
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];

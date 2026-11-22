@@ -131,6 +131,17 @@ yt-live-chat-renderer
 - 實機現象（2026-11-19 02:15）：網址在原生聊天室顯示為截斷文字（`https://madestudio.com.tw/zh/games/br...`），原生可點。
 - `selectors.js`：`chat.link = { anchor: 'a[href]', redirectPath: '/redirect', redirectParam: 'q' }`。
 
+### 2.9 自己送出的訊息：暫時節點 → 正式節點（**待驗證**，T6.1，審查十一 30.5）
+- 實機現象（2026-11-22，審查十一 30.5 圖 9、10）：使用者從 T6 露出的輸入列送出 3 則，原生聊天室各 1 則，面板各 2 則。
+  - 第一份是到達時間（秒數不同）。第二份內容相同，時間碼是「≈」（顯示的分鐘）、phase `pre`。
+  - 推測：YouTube 先插入「送出中」的暫時節點（本機 id），伺服器確認後換成正式節點（正式 id）；兩個 id 不同，F-14 依 id 合併失敗。
+  - 第二份是 `clock` → 正式節點不是由 observer 以「即時到達」擷取（回溯、補掃，或列表被換掉後重新擷取）。
+- **尚未確認**（下次實測以 F-20 P7 `own-replace`、P1 `own` 記錄；只有 id 前 4 碼與長度、屬性名稱，沒有內容）：
+  1. 暫時節點的 id 格式。推測以 `LCC.` 開頭（`selectors.js` `chat.tempIdRe`，**未驗證**）；P1 `own.tempSeen` 為 0 代表推測不對。
+  2. 替換方式：移除暫時節點＋插入正式節點（P7 `kind: new-node`／`late`）、同一個節點原地改 id（`in-place`），或整個 `#items` 換掉（`itemsSwaps` 增加）。
+  3. 暫時節點有沒有特別的屬性（P7 `oldAttrs`／`newAttrs` 比對），例如「送出中」狀態。
+- 擷取端不依賴第 1 點：頁面移除已存節點（不是修剪、不是列表開頭）、id 原地改變、列表被換掉，都當成替換的證據（SPEC F-14 v50）。
+
 ### 2.5 輸入區 `#input-panel`（2026-11-15）
 ```
 #input-panel > yt-live-chat-message-input-renderer#live-chat-message-input
