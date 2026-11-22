@@ -521,6 +521,29 @@
     for (let j = 0; j < 10; j++) { const off = 1903 + j * 10; msgs.push(mk({ id: 'rp' + j, videoId: VK, videoOffsetSec: off, offsets: { v1: off }, offsetSource: 'replay', sources: ['replay'], timestampAbs: T0 + off * 1000, runs: [{ text: '只有重播 ' + j }] })); }
     return msgs;
   }
+  test('T6.2（32.3）VOD 校正後 < 0（VOD 開頭被剪掉的那段）：顯示「影片開頭之前」、不可點、title 說明被剪掉；排在最前面、依原本順序；不顯示 0:00（面板與後台）', async () => {
+    await resetDb();
+    const VN = 'vidNEGVOD01';
+    const msgs = kFixture(VN);
+    for (let j = 0; j < 4; j++) msgs.push(mk({ id: 'early' + j, videoId: VN, videoOffsetSec: 2 + j, offsets: { v1: 2 + j }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 + (2 + j) * 1000, runs: [{ text: '開頭 ' + j }] }));
+    await put({ videoId: VN, title: 'N', isLive: true, startedAt: T0, endedAt: T0 + 4000e3, lastMessageAt: T0 + 2200e3, messageCount: msgs.length, versions: [{ id: 'v1', duration: 4000 }], linkedVideos: [] }, msgs);
+    await DB.close();
+    for (const embed of [true, false]) {
+      const c = V.mount(host, { embed, videoId: VN });
+      await c.ready; await frame();
+      if (embed) c._onClock({ currentTime: 30, paused: false, duration: 4000, live: false, at: Date.now() });
+      await frame(); await frame();
+      eq(c.state.cal.delta, -8);
+      const firstIds = c.state.entries.filter((e) => e.kind === 'msg').slice(0, 4).map((e) => e.it.m.id);
+      eq(firstIds, ['early0', 'early1', 'early2', 'early3'], (embed ? '面板' : '後台') + '：排在最前面、依原本順序');
+      c.state.vl.reveal(c.state.entries.findIndex((e) => e.key === 'early0'), false); await frame(); await frame();
+      const tc = c.els.list.querySelector('[data-id="early0"] .tc');
+      assert(tc && tc.tagName === 'SPAN' && tc.textContent === '影片開頭之前', (embed ? '面板' : '後台') + '：' + (tc && tc.outerHTML));
+      assert(/被剪掉/.test(tc.title) && /0:06/.test(tc.title), 'title：' + tc.title);
+      assert(!Array.from(c.els.list.querySelectorAll('[data-id^="early"] .tc')).some((n) => n.textContent === '0:00'), '不顯示 0:00');
+    }
+  });
+
   test('T5.3 (K) VOD 校正：已合併訊息的 replay offset − live 估計值的中位數；只有 live 的以此換算；沒有合併時以同作者同內容配對；排序', () => {
     const msgs = kFixture('vidKCAL0001');
     const stream = { startedAt: T0 };

@@ -649,6 +649,9 @@
       // T5：內嵌面板收到播放器時間後，可點與否、跳到哪裡依時間軸換算（VOD：版本 offset＋連結時間差；直播：DVR 範圍）
       // v45（21.2 第 3 點）不可點的時間碼在 title 說明原因；VOD 的長度判斷面板與後台一致
       const stat = (text, why) => { const s = el('span', 'tc static', text); if (why) s.title = why; return s; };
+      // v51（T6.2，審查十一 32.3）VOD 校正後 < 0（直播開頭、VOD 被剪掉的那段）：顯示「影片開頭之前」、不可點；
+      // v50 以 fmtDur 夾到 0，開頭一串「0:00」看起來像都在第 0 秒
+      const beforeStart = (t) => stat('影片開頭之前', '這段在 VOD 中被剪掉（校正後在影片開頭前約 ' + CORE.fmtDur(-t) + '），影片裡沒有這一段');
       const dur = vodDuration();
       if (embed && S.clock) {
         if (waiting()) return stat(tc.text, '待機室（還沒開播），不能跳轉');
@@ -656,7 +659,8 @@
         if (vt == null) return stat(tc.text, S.clock.live && S.wallA == null && CORE.phaseOf(m) === 'live' ? '先點播放器的「直播」回到最新一次，才能跳轉' : '');
         if (!CORE.inRange(vt, S.clock)) {
           if (S.clock.live) return stat(tc.text, '不在直播可倒轉的範圍內');
-          return stat(CORE.fmtDur(vt), vt < 0 ? '在影片開頭之前' : '超出影片長度（' + CORE.fmtDur(dur || 0) + '）');
+          if (vt < 0) return beforeStart(vt);
+          return stat(CORE.fmtDur(vt), '超出影片長度（' + CORE.fmtDur(dur || 0) + '）');
         }
         const text = S.clock.live ? tc.text : CORE.fmtDur(vt);
         const b = el('button', 'tc', text); b.type = 'button'; b.setAttribute('aria-label', '跳轉至 ' + text);
@@ -667,7 +671,7 @@
       // 後台看已結束場次：與面板相同，用校正後的影片時間、超出影片長度不可點
       let sec = tc.seconds, text = tc.text;
       if (vodOrder()) { const v = CORE.versionOffset(m, S.ver, S.cal); if (v != null) { sec = Math.floor(v); text = CORE.fmtDur(v); } }
-      if (sec < 0) return stat(text, '在影片開頭之前');
+      if (sec < 0) return vodOrder() ? beforeStart(sec) : stat(text, '在影片開頭之前');
       if (dur != null && sec > dur + 1) return stat(text, '超出影片長度（' + CORE.fmtDur(dur) + '）');
       const b = el('button', 'tc', text); b.type = 'button'; b.setAttribute('aria-label', '跳轉至 ' + text);
       b.addEventListener('click', (e) => { e.stopPropagation(); seek(sec); });
