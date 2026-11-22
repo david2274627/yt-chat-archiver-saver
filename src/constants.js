@@ -140,6 +140,9 @@
       CHAT_INPUT_REQUEST: 'CHAT_INPUT_REQUEST',
       // v49（T6，6.2 第 5 點）top → 面板 iframe：{ bottom: px } 面板底部被原生互動區蓋住的高度（面板底部留白）
       PANEL_INSET: 'PANEL_INSET',
+      // v50（T6.1，審查十一 30.4）面板 iframe → top：{ wallA: number|null } 直播的牆上時間錨點（採用／作廢）。
+      // top 依影片記住，面板 iframe 重建（版面切換）後經 VOD_TIME 的 anchorA 交回
+      LIVE_ANCHOR: 'LIVE_ANCHOR',
     }),
     // v41（T5）優化面板（F-08、F-09、6.2）
     PANEL: Object.freeze({
@@ -156,6 +159,8 @@
       ZONE_LOG_MAX: 40,          // v50（30.1、30.3）F-20 P7 zone-structure 每頁最多筆數
       VOD_TIME_MS: 250,        // VOD_TIME 送出間隔（4.3）
       LIVE_EDGE_SEC: 15,       // 直播中距離直播邊緣幾秒內視為「在最新」：一般跟隨到底；超過則依時間軸同步
+      // v50（30.4）讀不到「直播」徽章時：播放位置與「已知錨點換算的最新位置」差 < 此秒數 → 在最新（不直接當成倒轉）
+      ANCHOR_EDGE_SEC: 15,
       ANCHOR_GRACE_MS: 8000,   // 頁面載入後多久仍找不到任何開關錨點才 warnOnce
       EXPAND_WAIT_MS: 5000,    // 從影片下方卡片展開聊天室後，等待 iframe 出現的上限
       SYNC_SMOOTH_MAX_PX: 1500, // 時間軸同步：距離在此以內平滑捲動，否則直接跳

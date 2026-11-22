@@ -49,7 +49,7 @@
 - **v47 調整**（`docs/review-2026-11-17.md` 第 25、26 節，T5.6）：**預定開播時間在未來＝待機室**（不論 `startedAt`）、開播訊號來源完整清單、聊天事件不是開播訊號、錯誤 `startedAt` 降級與 `fixPhases` 兩段式清除（F-14）；直播錨點的有效條件（徽章「最新」且播放中穩定 3 秒、期間沒有 seek；取樣後 5 秒內被 seek 到非最新就作廢；網址帶 `t=` 時等點「直播」或穩定 10 秒）（F-08）；頭像點擊以新分頁開作者頻道（F-05）；SC 文字色沿用 YouTube 給的文字色變數、取不到才用對比度規則（F-02、10.3）；10.1 原則 7 註明「回到播放位置」浮動按鈕的例外。
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
-- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）。
+- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）。
 
 ---
 
@@ -300,7 +300,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | `PANEL_INSET` | top → 面板 iframe | （v49，T6，6.2 第 5 點）`{ bottom: px }`：面板底部被原生互動區蓋住的高度；面板整體 `padding-bottom`，清單與「↓ 恢復自動捲動」都在其上 |
 | `TOGGLE_PANEL` | chat frame → top | `{}`（v24：使用者點了聊天室頂部列的 F-09 按鈕；top 端只接受 `event.source === iframe#chatframe.contentWindow` 且 origin 為 youtube.com） |
 | `THEME` | top → viewer iframe | `{ theme: 'light'|'dark' }`（v27：top frame 監看 `html[dark]` 的實際外觀，開啟面板時送一次、變更時再送；面板依 `themeMode` 決定是否採用，見 10.2） |
-| `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`）。（v41）實際送出 `{ currentTime, paused, duration, seekStart, seekEnd, live, at }`：`seekStart`／`seekEnd` 為 `video.seekable` 範圍（直播的 DVR 可回放範圍），`live` 為 `isLiveBroadcast` meta 為 true 且沒有 `endDate`，`at` 為取樣時間（ms）；另在 `seeked` 時立即送出，暫停中且沒有變化時不重送 |
+| `VOD_TIME` | top → viewer iframe | `{ currentTime }`（每 250ms 或 `timeupdate`）。（v41）實際送出 `{ currentTime, paused, duration, seekStart, seekEnd, live, at }`：`seekStart`／`seekEnd` 為 `video.seekable` 範圍（直播的 DVR 可回放範圍），`live` 為 `isLiveBroadcast` meta 為 true 且沒有 `endDate`，`at` 為取樣時間（ms）；另在 `seeked` 時立即送出，暫停中且沒有變化時不重送。（v50，T6.1，30.4）另帶 `anchorA`：面板回報過的本頁直播錨點（同一部影片；沒有為 `null`），面板 iframe 重建後沿用（F-08） |
+| `LIVE_ANCHOR` | 面板 iframe → top | （v50，T6.1，審查十一 30.4）`{ wallA: number \| null }`：直播牆上時間錨點採用（數字）或作廢（`null`）。top 依影片記住，經 `VOD_TIME.anchorA` 交回（F-08） |
 | `SEEK_TO` | viewer iframe → top | `{ seconds }`（v41：影片時間；top 限制在 `seekable` 範圍內） |
 | （v42 說明） | top → viewer iframe 的送出方式 | `web_accessible_resources` 設 `use_dynamic_url` 時，面板 iframe 的 `src` 是動態 ID 的網址，面板文件的實際 origin 可能是擴充功能 ID。top 一律以 `src` 的 origin 與 `'chrome-extension://' + runtime.id` **兩者**為 targetOrigin 各送一次（不符的被瀏覽器丟棄，面板只收到一次）。v41 只用 `src` 的 origin，實機上 top → 面板的訊息全部被丟棄（審查十一 13.1 (A)） |
 | `PANEL_READY` | viewer iframe → top | `{}`（v41：面板載入完成；top 回送 `THEME`、最近的 `CAPTURE_STATUS` 與 `VOD_TIME`） |
@@ -630,6 +631,10 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     3. **網址帶 `t=`**（或 `start=`、`#t=`；panel 的 clock 帶 `urlT: true`）或剛作廢過：第一個錨點要等使用者**從「非最新」點回最新**（點「直播」）後穩定 3 秒，或在最新穩定 10 秒才採用。
     4. 連線狀態顯示候選樣本數、作廢次數、「等點『直播』」；F-20 P10 另記事件（`live-seek`／`anchor-ok`／`anchor-void`，立即一筆）與 `anchorCand`、`anchorVoids`、`anchorStrict`、`urlT`、`seeks`。錨點採用或作廢時重新繪製可見列（時間碼可點與否改變）。
     5. AC：載入時先最新 → 2 秒後 seek 到 t=600（非最新）→ 不同步、沒有藍框、顯示提示。
+    6. （v50，T6.1，審查十一 30.4）**窄視窗（單欄）**：實機在直播最新時出現同步微調與「請先點直播…」提示（一般版面同一場是 tail）。推測窄版面讀不到徽章，或版面切換時面板 iframe 重新載入、錨點遺失。
+       - **在最新**的判斷（`CORE.atLiveEdge`）：徽章「最新」→ 最新；**讀不到徽章時不可直接當成倒轉**：本頁已知錨點 → 播放位置與 `(at − wallA)/1000` 差 < `PANEL.ANCHOR_EDGE_SEC` = 15 秒就是最新（徽章說「非最新」但與錨點只差 15 秒內也算，倒轉不到 15 秒等同在最新）；沒有錨點 → 延遲基準；連延遲都量不到（`seekable` 取不到）→ 當成在最新（跟隨到底）。
+       - **錨點存在 top frame**：錨點採用或作廢時，面板送 `LIVE_ANCHOR { wallA }`（4.3）；`panel.js` 依影片記住，`VOD_TIME` 帶 `anchorA`。面板 iframe 重建後，本頁還沒有錨點時直接沿用（同一個播放器、同一部影片的媒體時間連續），之後在最新時照常重新取樣。P10 事件 `anchor-top`。
+       - 實機確認：窄視窗時開 F-20 P10，看 `badge`（`missing`／`hidden`／`class`…）與 `anchor-top` 事件。
   - （v45）**同步微調的顯示**：內部仍存直播延遲（秒），畫面顯示「藍框提早 N 秒」（延遲為負）／「藍框延後 N 秒」（延遲為正）與說明「按 + 藍框往較新的訊息移動，按 − 往較舊移動」。儲存改用 `chrome.storage.local` 的 `liveSyncV2`（`{ byChannel, last }`；v44 的 `liveSync` 是在錯誤的錨點上校正的，不沿用）。只在**直播中**（不是待機室、未結束）且倒轉（sync）時顯示；待機室時播放器也可能回報 live，一律跟隨到底。
   - （v46，T5.5，審查十一第 23 節）**待機室判定**（`CORE.isWaitingRoom`）：場次還沒載入、等待開播確認（`startPending`）、沒有開播時間但有預定開播時間、或兩者都沒有但訊息全是 `pre`（頁面狀態提示不算）→ 待機室；已開播或已結束 → 不是。**不論播放器回報什麼**（待機室的播放器可能在播預告／倒數影片，`currentTime` 會走、徽章「非最新」，也可能回報 `live: false`）：一律跟隨到底，不同步、不量錨點、不依 VOD 排序、不顯示同步微調與同步提示、不顯示「回到播放位置」、不加 current 標記，時間碼不可點（`title`「待機室（還沒開播），不能跳轉」）。播放器時間比資料先到時，載入完成後依場次重新決定模式（v45 在場次未知時當成直播中，之後播放器不再回報就停在 sync）。
   - （v46，第 23 節）**同步提示的位置**：「請先點播放器的『直播』…」「此時間點之前沒有收錄…」是清單上方、版面內的一列（與 F-12 說明列相同），把清單往下推；文字完整、可換行；✕ 關閉後本頁不再顯示同一種提示（10.1 原則 7）。

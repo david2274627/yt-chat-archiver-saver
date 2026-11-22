@@ -328,10 +328,19 @@
   function liveLag(clock) {
     return clock && clock.live && typeof clock.seekEnd === 'number' ? clock.seekEnd - clock.currentTime : null;
   }
-  function atLiveEdge(clock, edgeSec, baseline) {
+  // v50（T6.1，審查十一 30.4）實機窄視窗（單欄）在直播最新卻判成倒轉。徽章讀不到時不可直接當成倒轉：
+  //   已知本頁的牆上時間錨點（wallA）→ 最新位置＝(at − wallA)/1000，播放位置與它差 < anchorEdgeSec 就是在最新
+  //   （徽章說「非最新」但與錨點差不到 anchorEdgeSec 也算：窄版面的徽章結構未確認，倒轉不到 15 秒等同在最新）；
+  //   沒有錨點 → 延遲基準；連延遲都量不到（seekable 取不到）→ 當成在最新（跟隨到底），不當成倒轉
+  function atLiveEdge(clock, edgeSec, baseline, wallA, anchorEdgeSec) {
+    if (!clock || !clock.live) return false;
+    const nearAnchor = typeof wallA === 'number' && Number.isFinite(wallA)
+      ? (clock.at - wallA) / 1000 - clock.currentTime < (anchorEdgeSec || edgeSec) : null;
+    if (clock.liveHead === true) return true;
+    if (clock.liveHead === false) return nearAnchor === true;
+    if (nearAnchor !== null) return nearAnchor;
     const lag = liveLag(clock);
-    if (lag == null) return false;
-    if (clock.liveHead === true || clock.liveHead === false) return clock.liveHead;
+    if (lag == null) return true;
     return lag <= (baseline || 0) + edgeSec;
   }
   // 基準延遲的更新：徽章說在最新 → 直接採用；徽章說不在最新、暫停中 → 不學；

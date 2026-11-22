@@ -886,7 +886,7 @@
     function wantMode() {
       if (!S.clock || waiting()) return 'tail';
       if (!S.clock.live) return 'sync';
-      return !onAir() || CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline) ? 'tail' : 'sync';
+      return !onAir() || CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline, S.wallA, C.PANEL.ANCHOR_EDGE_SEC) ? 'tail' : 'sync';
     }
     function setMode(mode) {
       if (mode === S.mode) return false;
@@ -1035,7 +1035,6 @@
       }
       // v45（21.1）待機室（還沒開播）時播放器也可能回報 live：不做時間軸同步，一律跟隨到底
       // v46（第 23 節）不論播放器回報 live 與否（預告／倒數影片 currentTime 會走、徽章「非最新」）
-      const mode = wantMode();
       // v45（T5.4，審查十一 20.2）牆上時間錨點：每次回到最新（從倒轉回來、或在最新時跳轉）重新量；
       // 在最新、播放中時每秒取一個樣本（最多 60 個），A＝中位數。倒轉中不更新。
       // 已知是待機室時不量（還沒開播，沒有意義）；場次還在載入時照常量（模式維持 tail，載入後若是直播即可使用）
@@ -1043,13 +1042,27 @@
       // 採用後 5 秒內被 seek 到非最新就作廢並重新提示；網址帶 t= 時等使用者點過「直播」或穩定 10 秒
       if (S.clock.live && !(S.stream && waiting())) {
         if (!S.anchor || liveChanged) S.anchor = CORE.anchorInit(c.urlT === true);
-        const acc0 = S.anchor.acceptedAt;
-        const r = CORE.anchorStep(S.anchor, S.clock, { seeked, edge: CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline),
+        // v50（T6.1，審查十一 30.4）面板 iframe 重建（版面切換）：沿用 top 記住的本頁錨點（同一部影片、同一個播放器），
+        // 不必重新等「最新且穩定」；之後在最新時照常重新取樣
+        if (S.anchor.wallA == null && S.anchor.acceptedAt == null && !S.anchor.fromTop && typeof c.anchorA === 'number' && Number.isFinite(c.anchorA)) {
+          S.anchor = Object.assign({}, S.anchor, { wallA: c.anchorA, strict: false, fromTop: true });
+          S.wallA = c.anchorA;
+          anchorEv = 'anchor-top';
+        }
+        const acc0 = S.anchor.acceptedAt, wa0 = S.anchor.wallA;
+        const r = CORE.anchorStep(S.anchor, S.clock, { seeked, edge: CORE.atLiveEdge(S.clock, C.PANEL.LIVE_EDGE_SEC, S.baseline, S.anchor.wallA, C.PANEL.ANCHOR_EDGE_SEC),
           stableMs: C.PANEL.ANCHOR_STABLE_MS, guardMs: C.PANEL.ANCHOR_GUARD_MS, strictMs: C.PANEL.ANCHOR_URL_T_MS, maxN: C.PANEL.WALL_ANCHOR_SAMPLES });
         S.anchor = r.state; S.wallA = r.state.wallA; S.wallSamples = r.state.samples;
+        // 錨點改變（採用、作廢）→ 告訴 top 記住（面板 iframe 重建後由 VOD_TIME 的 anchorA 交回）
+        if (embed && r.state.wallA !== wa0 && (r.state.wallA == null || S.lastSentA == null || Math.abs(r.state.wallA - S.lastSentA) >= 250)) {
+          S.lastSentA = r.state.wallA;
+          toTop({ type: C.FM.LIVE_ANCHOR, wallA: r.state.wallA });
+        }
         if (r.invalidated) S.hintOff.delete('anchor'); // 作廢：重新顯示「請先點直播…」（即使先前按過 ✕）
-        anchorEv = r.invalidated ? 'anchor-void' : r.state.acceptedAt != null && r.state.acceptedAt !== acc0 ? 'anchor-ok' : seeked ? 'live-seek' : '';
+        anchorEv = r.invalidated ? 'anchor-void' : r.state.acceptedAt != null && r.state.acceptedAt !== acc0 ? 'anchor-ok' : seeked ? 'live-seek' : anchorEv;
       } else { S.anchor = null; S.wallSamples = []; S.wallA = null; S.lastWallAt = 0; }
+      // v50（30.4）模式在錨點更新之後決定（wantMode 依錨點判斷是否在最新：沿用 top 的錨點、作廢都在同一次生效）
+      const mode = wantMode();
       if (setMode(mode)) { /* 已切換 */ } else if (seeked && mode === 'sync') setResume(false);
       else if (seeked && mode === 'tail' && S.clock.live) S.vl.toBottom(); // 跳回最新：回到跟隨到底
       // seekEnd 前進速度（連線狀態參考用；同步不使用 seekEnd）
@@ -1061,7 +1074,7 @@
       } else S.seekEndRate = null;
       // 時間碼的可點與文字依 clock 而定：重新繪製可見列；VOD 排序改變時重新套用（T5.3 (K)）
       if (vodOrder() !== S.sortedVod && !S.loading) apply({ reset: true });
-      else if (first || liveChanged || anchorEv === 'anchor-ok' || anchorEv === 'anchor-void') S.vl.refresh(); // v47：錨點採用／作廢 → 時間碼可點與否改變
+      else if (first || liveChanged || anchorEv === 'anchor-ok' || anchorEv === 'anchor-void' || anchorEv === 'anchor-top') S.vl.refresh(); // v47：錨點採用／作廢 → 時間碼可點與否改變
       if (mode === 'sync') doSync(!first && !seeked);
       if (S.clock.live && embed) { if (anchorEv) p10Tick(anchorEv); p10Tick(); }
     }

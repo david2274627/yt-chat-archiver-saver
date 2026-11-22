@@ -69,6 +69,7 @@
       ro: null, frameMo: null, themeMo: null, metaMo: null, timer: 0, vodTimer: 0, watchdog: 0,
       lastTheme: null, capture: null, lastVod: '', lastChatState: '', expanding: false,
       pageStart: Date.now(), anchorWarned: false, anchors: { teaser: false, legacy: false, header: false },
+      liveAnchor: null, // v50（30.4）{ videoId, wallA }：面板回報的直播牆上時間錨點
       boundVideo: null,
       // v49（T6）chat frame 的 CHAT_INPUT_STATE、頁面層付款視窗、目前的 clip 狀態、面板底部留白
       input: null, topPopup: false, clip: null, inset: -1, popTimer: 0, bodyMo: null,
@@ -453,8 +454,10 @@
       const live = info.isLiveBroadcast === true && info.endDate == null;
       const head = live ? liveHead() : { liveHead: null, badge: 'n/a' };
       // v43（T5.2）：seeks＝video 的 seeked 事件累計次數（面板據此解除同步暫停）；liveHead／badge＝「直播」徽章的判定（待實機確認）
+      // v50（T6.1，審查十一 30.4）anchorA：面板量到的牆上時間錨點（同一部影片），面板 iframe 重建後沿用
+      const anchorA = live && st.liveAnchor && st.liveAnchor.videoId === st.videoId ? st.liveAnchor.wallA : null;
       return { currentTime: v.currentTime, paused: !!v.paused, duration: dur, seekStart, seekEnd, live, at: Date.now(),
-        seeks: st.seeks || 0, liveHead: head.liveHead, badge: head.badge, urlT: live && urlHasT() };
+        seeks: st.seeks || 0, liveHead: head.liveHead, badge: head.badge, urlT: live && urlHasT(), anchorA };
     }
     // v47（T5.6，審查十一 26.2）網址帶 t=／start=（查詢字串或 #t=）：面板的第一個錨點要等使用者點過「直播」或穩定 10 秒
     function urlHasT() {
@@ -521,6 +524,11 @@
           st.inset = -1; applyClip('panel-ready'); // v49：面板底部留白
           sendVodTime(true);
         } else if (d.type === FM.SEEK_TO) seekTo(d.seconds);
+        else if (d.type === FM.LIVE_ANCHOR) {
+          // v50（30.4）錨點存在 top：面板 iframe 因版面切換重建時不會遺失（null＝作廢）
+          st.liveAnchor = typeof d.wallA === 'number' && Number.isFinite(d.wallA) && st.videoId ? { videoId: st.videoId, wallA: d.wallA } : null;
+          log('live-anchor', { set: !!st.liveAnchor });
+        }
         else if (d.type === FM.PANEL_CLOSE) close('panel-button');
         return;
       }
@@ -576,7 +584,8 @@
       start, destroy, open, close, toggle, evaluate,
       state: () => ({ mounted: st.mounted, paused: st.paused, pauseReason: st.pauseReason, videoId: st.videoId, dismissedFor: st.dismissedFor,
         ready: st.ready, anchors: Object.assign({}, st.anchors), capture: st.capture,
-        clip: st.clip ? Object.assign({}, st.clip) : null, input: st.input ? Object.assign({}, st.input) : null, topPopup: st.topPopup, inset: st.inset }),
+        clip: st.clip ? Object.assign({}, st.clip) : null, input: st.input ? Object.assign({}, st.input) : null, topPopup: st.topPopup, inset: st.inset,
+        liveAnchor: st.liveAnchor ? Object.assign({}, st.liveAnchor) : null }),
       _clock: clock, _onMessage: onMessage,
     };
     return api;

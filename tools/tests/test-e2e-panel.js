@@ -160,6 +160,30 @@
     await until(() => viewer().state.mode === 'tail' && viewer().state.vl.follow, 4000, () => '回到最新 ' + diag());
   });
 
+  // v50（T6.1，審查十一 30.4）窄視窗：版面切換時面板 iframe 重建、徽章讀不到 → 沿用 top 記住的錨點
+  test('T6.1（30.4）錨點存在 top：面板回報 LIVE_ANCHOR → panel.js 依影片記住；面板 iframe 重建後由 VOD_TIME anchorA 交回，徽章讀不到仍判為最新、倒轉照常同步', async () => {
+    await until(() => ctl.state().liveAnchor && ctl.state().liveAnchor.videoId === LIVE, 3000, () => 'top 記住錨點 ' + JSON.stringify(ctl.state().liveAnchor));
+    const A = ctl.state().liveAnchor.wallA;
+    assert(Math.abs(A - viewer().state.wallA) < 1000, 'top 的錨點＝面板的錨點');
+    // 版面切換：面板 iframe 重新載入（新的 viewer），播放器徽章不見了（窄版面）
+    badge.remove();
+    const f = panelFrame();
+    const oldDoc = vd();
+    f.src = f.src;
+    // 導航是非同步的：等到換成新的文件（舊的 viewer 也會看到徽章不見；contentWindow 本身在導航前後是同一個物件）
+    await until(() => vw() && vd() !== oldDoc && vw().__loaded && viewer() && viewer().state.clock && viewer().state.clock.badge === 'missing', 8000, () => '面板重建 ' + diag());
+    await until(() => viewer() && viewer().state.wallA === A, 3000, () => '沿用錨點 ' + (viewer() && viewer().state.wallA) + ' / ' + A);
+    eq(viewer().state.mode, 'tail', '讀不到徽章：依錨點判為最新');
+    assert(viewer().state.hintKind !== 'anchor', '不顯示「請先點直播」');
+    video.currentTime = edge() - 600;
+    await until(() => viewer().state.mode === 'sync' && cur(), 4000, () => '倒轉 ' + diag());
+    const m = liveMsgs.find((x) => x.id === cur());
+    assert(m && Math.abs(m.timestampAbs - (Date.now() - 600e3)) <= 15e3, '同步到約 10 分鐘前：' + cur());
+    video.currentTime = edge();
+    await until(() => viewer().state.mode === 'tail', 4000, () => '回到最新 ' + diag());
+    player.appendChild(badge);
+  });
+
   test('(B) background 推播 NEW_MESSAGES → 面板即時出現；標頭訊息數與「全部」一致', async () => {
     const v = viewer();
     const listeners = vw().__mock.listeners.message;

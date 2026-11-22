@@ -1477,6 +1477,65 @@
     assert(!pin.classList.contains('open'), '點提示 → 收合');
   });
 
+  test('T6.1（30.4）atLiveEdge：讀不到徽章時以本頁錨點判斷（差 < 15 秒＝最新）；徽章說非最新但與錨點差 < 15 秒也算；沒有錨點、連延遲都量不到 → 當成在最新（不當成倒轉）', () => {
+    const at = T0 + 3600e3;
+    const A = at - 50000e3; // 在最新時 currentTime 50000
+    const c = (ct, o) => Object.assign({ live: true, currentTime: ct, seekStart: 40000, seekEnd: null, at, liveHead: null }, o);
+    assert(CORE.atLiveEdge(c(50000), 15, null, A, 15), '錨點：在最新');
+    assert(CORE.atLiveEdge(c(49990), 15, null, A, 15), '差 10 秒：在最新');
+    assert(!CORE.atLiveEdge(c(49900), 15, null, A, 15), '倒轉 100 秒：不在最新');
+    assert(CORE.atLiveEdge(c(49995, { liveHead: false }), 15, null, A, 15), '徽章說非最新、與錨點只差 5 秒 → 在最新');
+    assert(!CORE.atLiveEdge(c(49900, { liveHead: false }), 15, null, A, 15), '徽章說非最新、倒轉 100 秒');
+    assert(CORE.atLiveEdge(c(49900, { liveHead: true }), 15, null, A, 15), '徽章說最新 → 最新');
+    assert(CORE.atLiveEdge(c(49000), 15, null, null, 15), '沒有錨點、seekEnd 取不到 → 在最新');
+    assert(!CORE.atLiveEdge(c(49000, { liveHead: false }), 15, null, null, 15), '沒有錨點、徽章說非最新');
+    assert(!CORE.atLiveEdge(c(49000, { live: false }), 15), 'VOD');
+  });
+
+  test('T6.1（30.4）窄視窗：面板 iframe 重建後沿用 top 記住的錨點（VOD_TIME anchorA）→ 讀不到徽章仍判為最新、不顯示「請先點直播」；倒轉照常同步；錨點採用時告訴 top（LIVE_ANCHOR）', async () => {
+    await resetDb();
+    const VN = 'vidNARROW01';
+    const now = Date.now();
+    const msgs = [];
+    for (let i = 0; i < 200; i++) msgs.push(mk({ id: 'n' + i, videoId: VN, timestampAbs: now - (200 - i) * 20e3, videoOffsetSec: 100000 + i * 20, runs: [{ text: '窄 ' + i }] }));
+    await put({ videoId: VN, title: '窄視窗', isLive: true, startedAt: now - 7 * 86400e3, lastMessageAt: now - 20e3, messageCount: 200, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    {
+      // 一般版面：徽章「最新」穩定 → 錨點採用 → LIVE_ANCHOR（測試頁沒有 parent：只看送出的值；top 端的保存見 test-e2e-panel）
+      let c = V.mount(host, { embed: true, videoId: VN });
+      await c.ready; await frame();
+      for (let k = 0; k <= 9; k++) c._onClock({ currentTime: 9998 - (9 - k), paused: false, duration: null, seekStart: 6400, seekEnd: 10000, live: true, at: now - (9 - k) * 1000, liveHead: true, badge: 'class' });
+      const A = c.state.lastSentA;
+      assert(typeof A === 'number' && A === c.state.wallA, 'LIVE_ANCHOR 送出採用的錨點');
+      assert(Math.abs(A - (now - 9998e3)) < 1500, '錨點 ≈ at − currentTime');
+      // 窄版面：面板 iframe 重建（新的 mount）、徽章找不到、seekable 取不到
+      c = V.mount(host, { embed: true, videoId: VN });
+      await c.ready; await frame();
+      const tick = (ct, at) => c._onClock({ currentTime: ct, paused: false, duration: null, seekStart: null, seekEnd: null, live: true, at, liveHead: null, badge: 'missing', anchorA: A });
+      tick(9998 + 5, now + 5000);
+      await frame(); await frame();
+      eq([c.state.mode, c.state.wallA], ['tail', A], '沿用錨點：在最新');
+      assert(c.state.hintKind !== 'anchor', '不顯示「請先點直播」');
+      // 倒轉 30 分鐘（讀不到徽章）→ 依錨點判斷為倒轉，照常同步
+      tick(9998 + 6 - 1800, now + 6000);
+      await frame(); await frame();
+      eq(c.state.mode, 'sync');
+      assert(c.state.hintKind !== 'anchor', '有錨點：不提示先點直播');
+      const m = msgs.find((x) => x.id === c.state.currentId);
+      assert(m && Math.abs(m.timestampAbs - (now + 6000 - 1800e3)) < 30e3, '同步到 30 分鐘前 ' + c.state.currentId);
+      // 回到最新
+      tick(9998 + 7, now + 7000);
+      await frame();
+      eq(c.state.mode, 'tail');
+      // 沒有 top 錨點、讀不到徽章、seekable 取不到 → 一樣是最新（v49 會判成倒轉並提示）
+      c = V.mount(host, { embed: true, videoId: VN });
+      await c.ready; await frame();
+      c._onClock({ currentTime: 500, paused: false, duration: null, seekStart: null, seekEnd: null, live: true, at: now, liveHead: null, badge: 'missing' });
+      await frame();
+      eq(c.state.mode, 'tail', '沒有任何依據 → 跟隨到底');
+    }
+  });
+
   test('T5.1 推播的後備：直播中超過 15 秒沒有推播 → 讀資料庫的新訊息（offset 索引，只讀新的部分）', async () => {
     await resetDb();
     const VP = 'vidPOLL0001';

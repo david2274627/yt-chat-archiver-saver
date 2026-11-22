@@ -255,7 +255,7 @@ function report(data) {
   // ---- v47（T5.6，審查十一 26.2 第 4 點）P10 事件：seek、錨點採用、錨點作廢（立即一筆）的時間序列
   const p10ev = (byProbe.P10 || []).filter((r) => r.kind !== 'live-clock' && r.data && typeof r.data.now === 'number');
   if (p10ev.length) {
-    const EVN = { 'live-seek': 'seek', 'anchor-ok': '錨點採用', 'anchor-void': '錨點作廢' };
+    const EVN = { 'live-seek': 'seek', 'anchor-ok': '錨點採用', 'anchor-void': '錨點作廢', 'anchor-top': '沿用本頁錨點（面板重建）' }; // v50（30.4）
     L('## P10 事件（seek／錨點採用／作廢）');
     L();
     L('時間以第一筆為 0（秒）。網址帶 t= 的載入：預期先出現 seek（到 t= 的位置、徽章非最新），之後才有「錨點採用」；採用後 5 秒內被 seek 到非最新＝「錨點作廢」。');
