@@ -414,12 +414,13 @@
         // v48（T5.7，28.3）時間來源、背景擷取
         itemsSwaps: 0, itemsStaleHeals: 0, ts_arrival: 0, ts_clock: 0, ts_capture: 0, hiddenCaptured: 0, hiddenBatches: 0, hiddenBulk: 0, hiddenBulkMsgs: 0, hiddenBatchMax: 0,
         // v50（T6.1，30.5）自己送出的訊息：看到暫時 id、替換配對（新節點／原地改 id／事後配對）、頁面移除已存節點（非修剪、非開頭）
-        ownTempSeen: 0, ownReplaced: 0, ownInPlace: 0, ownLate: 0, pageRemoved: 0,
+        // v51（32.2）合併次數依規則分開計（replacedTemp／Removed／Swap、late、inPlaceMerged）；idChanges、idFromEmpty、pageRemoved 是事件次數
+        ownTempSeen: 0, ownReplacedTemp: 0, ownReplacedRemoved: 0, ownReplacedSwap: 0, ownInPlaceMerged: 0, ownLate: 0, idChanges: 0, idFromEmpty: 0, pageRemoved: 0,
         // v51（T6.2，32.7）時間解析在未來而往前推、重建後早於擷取超過 24 小時
         clockFuture: 0, clockAmbiguous: 0 },
       seenIds: new Set(),
       // v50（30.5）最近 90 秒擷取的文字訊息（配對暫時節點 → 正式節點）：{ id, key, el, list, at, m, removedAt, head, trimmed, matched, reborn }
-      recent: [], trimmedEls: new WeakSet(),
+      recent: [], trimmedEls: new WeakSet(), ownRecent: [], // v51（32.2）最近 5 次合併的 id 形狀（P1 own.recent）
       observers: [], startSeq: 0, lastStatus: '', durationWait: 0,
       createdAt: Date.now(),
       p7: new Map(), // F-20 P7：reason:tag → 次數
@@ -690,33 +691,48 @@
     //   暫時 id（S.isTempChatId）、或被頁面移除（不是本套件修剪、不是列表開頭）、或所在的 #items 已被換掉且沒有以同 id 重新出現。
     // 配對到 → 正式節點沿用暫時節點的時間（到達時間、offset、phase），帶 replacesId 讓 background 合併成一筆（以正式 id 為主）。
     // 同一個人連續送出相同內容：兩個節點都還在頁面上、也都不是暫時 id → 不配對（不同訊息不可合併）
+    // v51（T6.2，審查十一 31.1、32.2）規則與統計：
+    //   - 暫時 id（S.isTempChatId：`C` 開頭、≤ 31 字、不是 `ChwK`，實機 `CM_E…|28`、`CITy…|27`）→ 配對（replacedTemp）。
+    //   - 頁面移除：只在「舊節點被移除後 OWN_REMOVE_WINDOW_MS（10 秒）內出現新節點」才算（replacedRemoved）；
+    //     舊節點又被插回頁面（YouTube 重新排版）→ 取消「被移除」。洗版的同一人兩次「777」不會配對（都還在頁面上，或相隔超過 10 秒）。
+    //   - 列表被換掉且沒有以同 id 重新出現 → 配對（replacedSwap）。
+    //   - id 原地改變：**同作者同內容才合併**（inPlaceMerged）；不同作者或內容（節點被重複利用）→ 當成新的一則，不合併。
+    //   - P1 的 idChanges、pageRemoved 是「觀察到的事件次數」，不是合併次數；合併次數是 replaced*、late、inPlaceMerged
     const isTemp = (id) => S.isTempChatId(id);
     const idShape = (id) => ({ p: String(id || '').slice(0, 4), len: String(id || '').length }); // 只有前 4 碼與長度（不含內容）
+    const OWN_REMOVE_WINDOW_MS = 10 * 1000;
+    const OWN_P7_MAX = 30; // P7 own-replace：合併一定記（每場上限 30 筆），不受 P7_MAX_PER_TAG 限制
     function pruneRecent() {
       const t = now() - C.OWN_REPLACE_WINDOW_MS;
       while (st.recent.length && (st.recent[0].at < t || st.recent.length > 400)) st.recent.shift();
     }
-    function looksTemp(e) {
-      if (isTemp(e.id)) return true;
-      if (e.removedAt != null) return !e.trimmed && !e.head;
-      return !e.el.isConnected && e.list !== st.items && !e.reborn && !e.trimmed;
+    // 看得出是暫時節點的依據：'temp'／'removed'／'swap'；看不出 → ''
+    function tempRule(e) {
+      if (isTemp(e.id)) return 'temp';
+      if (e.removedAt != null) return !e.trimmed && !e.head && now() - e.removedAt <= OWN_REMOVE_WINDOW_MS ? 'removed' : '';
+      return !e.el.isConnected && e.list !== st.items && !e.reborn && !e.trimmed ? 'swap' : '';
     }
     function ownAdopt(m, e) {
       m.timestampAbs = e.m.timestampAbs;
       if (e.m.tsSource) m.tsSource = e.m.tsSource; else delete m.tsSource;
       m.videoOffsetSec = e.m.videoOffsetSec;
       m.phase = e.m.phase;
-      m.replacesId = e.id;
+      if (e.id) m.replacesId = e.id;
+      else m.replacesFallback = { type: e.m.type, authorHandle: e.m.authorHandle || '', authorChannelId: e.m.authorChannelId || '', runs: e.m.runs || [], timestampAbs: e.m.timestampAbs };
     }
     function probeOwn(kind, e, el, m, extra) {
+      const rec = Object.assign({ kind, oldId: e ? idShape(e.id) : null, newId: m ? idShape(m.id) : null, dtMs: e ? now() - e.at : null }, extra || {});
+      if (kind !== 'temp-seen') { st.ownRecent.push(rec); if (st.ownRecent.length > 5) st.ownRecent.shift(); } // P1 own.recent：記錄開始前的合併也看得到
       if (!opts.onDiag) return;
-      const n = st.p7.get('own:' + kind) || 0;
-      if (n >= C.DIAG.P7_MAX_PER_TAG) return;
-      st.p7.set('own:' + kind, n + 1);
+      const n = st.p7.get('own') || 0;
+      if (n >= OWN_P7_MAX) return;
+      st.p7.set('own', n + 1);
       const attrs = (x) => (x && x.getAttributeNames ? x.getAttributeNames().filter((a) => a !== 'id' && !a.startsWith('data-ytcas')).slice(0, 20) : []);
-      diag('P7', 'own-replace', Object.assign({ kind, oldId: e ? idShape(e.id) : null, newId: m ? idShape(m.id) : null,
-        dtMs: e ? now() - e.at : null, oldRemoved: !!(e && e.removedAt != null), oldHead: !!(e && e.head), oldTempId: !!(e && isTemp(e.id)),
-        sameEl: !!(e && el && e.el === el), oldAttrs: e ? attrs(e.el) : [], newAttrs: attrs(el) }, extra || {}));
+      diag('P7', 'own-replace', Object.assign({}, rec, { oldRemoved: !!(e && e.removedAt != null), oldHead: !!(e && e.head), oldTempId: !!(e && isTemp(e.id)),
+        sameEl: !!(e && el && e.el === el), oldAttrs: e ? attrs(e.el) : [], newAttrs: attrs(el) }));
+    }
+    function remember(el, m, key) {
+      if (!st.recent.some((e) => e.id === m.id && e.el === el)) st.recent.push({ id: m.id, key, el, list: st.items, at: now(), m: Object.assign({}, m), removedAt: null, head: false, trimmed: false, matched: !!(m.replacesId || m.replacesFallback), reborn: false });
     }
     function ownMatch(el, m, how) {
       if (source === 'replay') return;
@@ -724,22 +740,28 @@
       if (!key) return;
       pruneRecent();
       // 同 id 重新出現（列表被換掉後的新節點）：舊紀錄改指向新節點，不再當成暫時節點
-      for (const e of st.recent) if (e.id === m.id) { e.reborn = true; e.el = el; e.list = st.items; e.removedAt = null; }
+      for (const e of st.recent) if (m.id && e.id === m.id) { e.reborn = true; e.el = el; e.list = st.items; e.removedAt = null; }
       if (isTemp(m.id)) {
         st.stats.ownTempSeen++;
         if (!st.recent.some((e) => e.id === m.id)) probeOwn('temp-seen', null, el, m, { how });
       } else {
-        const e = st.recent.find((x) => x.key === key && !x.matched && x.id !== m.id && !isTemp(m.id) && looksTemp(x));
+        let rule = '';
+        const e = st.recent.find((x) => x.key === key && !x.matched && x.id !== m.id && (rule = tempRule(x)));
         if (e) {
           ownAdopt(m, e);
           e.matched = true;
-          st.stats.ownReplaced++;
-          probeOwn('new-node', e, el, m, { how });
+          st.stats[rule === 'temp' ? 'ownReplacedTemp' : rule === 'removed' ? 'ownReplacedRemoved' : 'ownReplacedSwap']++;
+          probeOwn('new-node', e, el, m, { how, rule });
         }
       }
-      if (!st.recent.some((e) => e.id === m.id)) st.recent.push({ id: m.id, key, el, list: st.items, at: now(), m: Object.assign({}, m), removedAt: null, head: false, trimmed: false, matched: !!m.replacesId, reborn: false });
+      remember(el, m, key);
     }
-    // 頁面移除了已存的節點（不是本套件修剪）。之前已擷取、同作者同內容、仍在頁面上、沒配對過的正式節點 → 事後配對（暫時節點晚於正式節點才移除）
+    // 已存的節點又被插回頁面（YouTube 重新排版）→ 不再當成「被移除」
+    function onReadded(n) {
+      for (const e of st.recent) if (e.el === n) e.removedAt = null;
+    }
+    // 頁面移除了已存的節點（不是本套件修剪）。之前已擷取、同作者同內容、仍在頁面上、沒配對過的正式節點 → 事後配對（暫時節點晚於正式節點才移除）。
+    // 事後配對只限暫時 id，或正式節點在移除前 OWN_REMOVE_WINDOW_MS 內才出現
     function onRemoved(n, prev) {
       const e = st.recent.find((x) => x.el === n && x.id === n.id);
       if (!e) return;
@@ -750,28 +772,36 @@
       e.head = !p;
       st.stats.pageRemoved++;
       if (e.head || e.matched || st.mode !== 'capturing') return;
-      const later = st.recent.find((x) => x !== e && x.key === e.key && !x.matched && !isTemp(x.id) && x.at >= e.at && x.el.isConnected && x.id !== e.id);
+      const t = now();
+      const later = st.recent.find((x) => x !== e && x.key === e.key && !x.matched && !isTemp(x.id) && x.at >= e.at && x.el.isConnected && x.id !== e.id
+        && (isTemp(e.id) || t - x.at <= OWN_REMOVE_WINDOW_MS));
       if (!later) return;
       e.matched = true; later.matched = true;
       const fix = Object.assign({}, later.m);
       ownAdopt(fix, e);
       later.m = fix;
       st.stats.ownLate++;
-      probeOwn('late', e, later.el, fix);
+      probeOwn('late', e, later.el, fix, { rule: isTemp(e.id) ? 'temp' : 'removed' });
       enqueue(fix);
     }
-    // 同一個節點的 id 原地改變（YouTube 沿用節點、換成正式 id）：重新解析並帶 replacesId（同一個節點＝同一則訊息，一律合併）
+    // 同一個節點的 id 原地改變：重新解析。**同作者同內容**（最近 90 秒內擷取過）才帶 replacesId 合併；
+    // 不同作者或內容（YouTube 重複利用節點顯示別則訊息）→ 當成新的一則，不合併
     function onIdChanged(el, oldId) {
       if (!el.id || el.id === oldId || el.dataset[SAVED] !== '1' || st.mode !== 'capturing') return;
+      st.stats.idChanges++;
+      if (!oldId) st.stats.idFromEmpty++;
       let m = null;
       try { m = parseMessage(el, ctxNow()); } catch (_) { /* ignore */ }
       if (!m) return;
-      const e = st.recent.find((x) => x.el === el && x.id === oldId);
-      if (e) { ownAdopt(m, e); e.matched = true; e.id = m.id; e.m = Object.assign({}, m); }
-      else m.replacesId = oldId;
-      m.replaceInPlace = true;
-      st.stats.ownInPlace++;
-      probeOwn('in-place', e || { id: oldId, el, at: now(), removedAt: null }, el, m);
+      const e = st.recent.find((x) => x.el === el && x.id === (oldId || ''));
+      const key = C.ownKey(m);
+      if (e && (key ? key === e.key : C.ownKey(e.m) === '' && JSON.stringify(e.m.runs || []) === JSON.stringify(m.runs || []) && (e.m.authorHandle || '') === (m.authorHandle || ''))) {
+        ownAdopt(m, e);
+        m.replaceInPlace = true;
+        e.matched = true; e.id = m.id; e.m = Object.assign({}, m);
+        st.stats.ownInPlaceMerged++;
+        probeOwn('in-place', e, el, m, { rule: 'same-node', fromEmpty: !oldId });
+      } else if (key) remember(el, m, key);
       if (m.id) st.seenIds.add(m.id);
       enqueue(m);
     }
@@ -881,7 +911,7 @@
         if (r.type === 'childList') {
           if (r.target !== st.items) continue;
           st.stats.observedAdded += r.addedNodes.length;
-          r.addedNodes.forEach((n) => captureNode(n, 'observer', false, batch));
+          r.addedNodes.forEach((n) => { if (n.nodeType === 1 && n.dataset[SAVED] === '1') onReadded(n); else captureNode(n, 'observer', false, batch); });
         }
         else if (r.type === 'attributes' && r.attributeName === 'id') {
           if (r.target.parentElement === st.items) onIdChanged(r.target, r.oldValue);
@@ -1102,7 +1132,11 @@
         itemsSwaps: s.itemsSwaps, itemsStaleHeals: s.itemsStaleHeals,
         // v50（T6.1，30.5）自己送出的訊息：tempSeen＝看到暫時 id、replaced＝新節點配對、inPlace＝原地改 id、late＝事後配對、
         // pageRemoved＝頁面移除已存節點（不是修剪、不是列表開頭）
-        own: { tempSeen: s.ownTempSeen, replaced: s.ownReplaced, inPlace: s.ownInPlace, late: s.ownLate, pageRemoved: s.pageRemoved } };
+        // v51（T6.2，32.2）合併次數（merged：依規則分開）與觀察到的事件次數（events）分開，名稱即語意
+        own: { tempSeen: s.ownTempSeen,
+          merged: { temp: s.ownReplacedTemp, removed: s.ownReplacedRemoved, swap: s.ownReplacedSwap, late: s.ownLate, inPlace: s.ownInPlaceMerged },
+          events: { idChanges: s.idChanges, idFromEmpty: s.idFromEmpty, pageRemoved: s.pageRemoved },
+          recent: st.ownRecent.slice() } };
       if (s.captured || final) console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), obj);
       // F-20 P1／P2：同一份統計寫入診斷記錄（只有筆數）；時間來源一併記錄，供開播判斷驗證
       diag('P1', final ? 'stats-final' : 'stats', Object.assign({}, obj, { times: {

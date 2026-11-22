@@ -1513,11 +1513,11 @@
     const t0 = 1_700_100_000_000;
     const own = (o) => Object.assign({ type: 'text', authorHandle: '@又新-david', runs: [{ text: '早安' }] }, o);
     // 1. 暫時節點（到達時間）→ 18 秒後正式節點（顯示時間，沒有提示）
-    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'LCC.tmp1', timestampAbs: t0, tsSource: 'arrival', videoOffsetSec: 100, phase: 'live' })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'CTMPAAAAAAAAAAAAAAAAtmp1', timestampAbs: t0, tsSource: 'arrival', videoOffsetSec: 100, phase: 'live' })] });
     const r1 = await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKreal1', timestampAbs: t0 + 18000, tsSource: 'clock', videoOffsetSec: 118, phase: 'pre' })] });
     let list = await DB.queryMessages(V);
     eq(list.map((m) => m.id), ['ChwKreal1'], '只剩正式 id');
-    eq([list[0].timestampAbs, list[0].tsSource, list[0].videoOffsetSec, list[0].phase, list[0].aliasIds], [t0, 'arrival', 100, 'live', ['LCC.tmp1']]);
+    eq([list[0].timestampAbs, list[0].tsSource, list[0].videoOffsetSec, list[0].phase, list[0].aliasIds], [t0, 'arrival', 100, 'live', ['CTMPAAAAAAAAAAAAAAAAtmp1']]);
     eq([r1.ownMerged, r1.changed.map((m) => m.id)], [1, ['ChwKreal1']], '推播合併後的紀錄');
     eq((await DB.getStream(V)).messageCount, 1, '筆數不重複計算');
     // 同一則正式訊息再送一次（回溯）：不再動
@@ -1528,23 +1528,23 @@
       own({ id: 'ChwKb', runs: [{ text: '8888' }], timestampAbs: t0 + 70000, videoOffsetSec: 170 })] });
     eq((await DB.queryMessages(V)).filter((m) => m.runs[0].text === '8888').length, 2, '正式 id 之間不合併');
     // 3. 不同作者、相同內容、其中一筆暫時 id → 不合併
-    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'LCC.tmp2', runs: [{ text: '草' }], timestampAbs: t0 + 80000, tsSource: 'arrival', videoOffsetSec: 180 }),
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'CTMPAAAAAAAAAAAAAAAAtmp2', runs: [{ text: '草' }], timestampAbs: t0 + 80000, tsSource: 'arrival', videoOffsetSec: 180 }),
       own({ id: 'ChwKother', authorHandle: '@someone', runs: [{ text: '草' }], timestampAbs: t0 + 81000, videoOffsetSec: 181 })] });
     eq((await DB.queryMessages(V)).filter((m) => m.runs[0].text === '草').length, 2, '不同作者不合併');
     // 4. 連續送出相同內容兩次：暫時 ×2 → 正式 ×2，各配各的（時間最近）
-    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'LCC.x1', runs: [{ text: 'hi' }], timestampAbs: t0 + 200000, tsSource: 'arrival', videoOffsetSec: 300 }),
-      own({ id: 'LCC.x2', runs: [{ text: 'hi' }], timestampAbs: t0 + 203000, tsSource: 'arrival', videoOffsetSec: 303 })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'CTMPAAAAAAAAAAAAAAAAx1', runs: [{ text: 'hi' }], timestampAbs: t0 + 200000, tsSource: 'arrival', videoOffsetSec: 300 }),
+      own({ id: 'CTMPAAAAAAAAAAAAAAAAx2', runs: [{ text: 'hi' }], timestampAbs: t0 + 203000, tsSource: 'arrival', videoOffsetSec: 303 })] });
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKx1', runs: [{ text: 'hi' }], timestampAbs: t0 + 201000, tsSource: 'clock', videoOffsetSec: 301 })] });
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKx2', runs: [{ text: 'hi' }], timestampAbs: t0 + 204000, tsSource: 'clock', videoOffsetSec: 304 })] });
     const his = (await DB.queryMessages(V)).filter((m) => m.runs[0].text === 'hi').sort((a, b) => a.timestampAbs - b.timestampAbs);
-    eq(his.map((m) => [m.id, m.timestampAbs - t0, m.aliasIds]), [['ChwKx1', 200000, ['LCC.x1']], ['ChwKx2', 203000, ['LCC.x2']]], '兩則各自保留');
+    eq(his.map((m) => [m.id, m.timestampAbs - t0, m.aliasIds]), [['ChwKx1', 200000, ['CTMPAAAAAAAAAAAAAAAAx1']], ['ChwKx2', 203000, ['CTMPAAAAAAAAAAAAAAAAx2']]], '兩則各自保留');
     // 5. 正式節點先存、暫時節點晚到 → 也合併（以正式 id 為主、時間取到達時間）
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKlate', runs: [{ text: '晚到' }], timestampAbs: t0 + 400000, tsSource: 'clock', videoOffsetSec: 500 })] });
-    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'LCC.late', runs: [{ text: '晚到' }], timestampAbs: t0 + 390000, tsSource: 'arrival', videoOffsetSec: 490 })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'CTMPAAAAAAAAAAAAAAAAlate', runs: [{ text: '晚到' }], timestampAbs: t0 + 390000, tsSource: 'arrival', videoOffsetSec: 490 })] });
     const late = (await DB.queryMessages(V)).filter((m) => m.runs[0].text === '晚到');
-    eq(late.map((m) => [m.id, m.timestampAbs - t0, m.tsSource, m.aliasIds]), [['ChwKlate', 390000, 'arrival', ['LCC.late']]]);
+    eq(late.map((m) => [m.id, m.timestampAbs - t0, m.tsSource, m.aliasIds]), [['ChwKlate', 390000, 'arrival', ['CTMPAAAAAAAAAAAAAAAAlate']]]);
     // 6. 超過 90 秒 → 不合併
-    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'LCC.far', runs: [{ text: '遠' }], timestampAbs: t0 + 600000, tsSource: 'arrival', videoOffsetSec: 700 })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'CTMPAAAAAAAAAAAAAAAAfar', runs: [{ text: '遠' }], timestampAbs: t0 + 600000, tsSource: 'arrival', videoOffsetSec: 700 })] });
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKfar', runs: [{ text: '遠' }], timestampAbs: t0 + 691000, videoOffsetSec: 791 })] });
     eq((await DB.queryMessages(V)).filter((m) => m.runs[0].text === '遠').length, 2, '> 90 秒不合併');
     const s = await DB.getStream(V);
@@ -1553,7 +1553,7 @@
     assert(stored.every((m) => !('replacesId' in m) && !('replaceInPlace' in m)), '替換提示不存');
   });
 
-  test('T6.1 自己送出的訊息（30.5）：擷取端帶 replacesId（看得出前一筆是暫時節點，id 不必符合暫時格式）→ 合併；原地改 id（replaceInPlace）不比對內容；內容不同的 replacesId 不合併', async () => {
+  test('T6.1 自己送出的訊息（30.5）：擷取端帶 replacesId（看得出前一筆是暫時節點，id 不必符合暫時格式）→ 合併；原地改 id 同作者同內容才合併（v51：不同內容或作者絕不合併）；內容不同的 replacesId 不合併', async () => {
     await resetAll();
     U._resetTwins();
     const t0 = 1_700_200_000_000;
@@ -1561,11 +1561,17 @@
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKpending', timestampAbs: t0, tsSource: 'arrival', videoOffsetSec: 10 })] });
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKfinal', timestampAbs: t0, tsSource: 'arrival', videoOffsetSec: 10, replacesId: 'ChwKpending' })] });
     eq((await DB.queryMessages(V)).map((m) => [m.id, m.aliasIds]), [['ChwKfinal', ['ChwKpending']]]);
-    // 原地改 id：內容也跟著變（例如表符 alt 晚到）仍合併
+    // 原地改 id、同作者同內容 → 合併
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKold2', runs: [{ text: 'a' }], timestampAbs: t0 + 5000, videoOffsetSec: 15 })] });
-    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKnew2', runs: [{ text: 'a :x:' }], timestampAbs: t0 + 5000, videoOffsetSec: 15, replacesId: 'ChwKold2', replaceInPlace: true })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKnew2', runs: [{ text: 'a' }], timestampAbs: t0 + 5000, videoOffsetSec: 15, replacesId: 'ChwKold2', replaceInPlace: true })] });
     assert((await DB.queryMessages(V)).some((m) => m.id === 'ChwKnew2' && m.aliasIds.includes('ChwKold2')), '原地改 id 合併');
     assert(!(await DB.queryMessages(V)).some((m) => m.id === 'ChwKold2'), '舊 id 刪除');
+    // v51（32.2）原地改 id、但內容或作者不同（節點被重複利用）→ 絕不合併
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKold3', runs: [{ text: '777' }], timestampAbs: t0 + 6000, videoOffsetSec: 16 })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKnew3', runs: [{ text: '888' }], timestampAbs: t0 + 6000, videoOffsetSec: 16, replacesId: 'ChwKold3', replaceInPlace: true })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKnew4', authorHandle: '@other', runs: [{ text: '777' }], timestampAbs: t0 + 6000, videoOffsetSec: 16, replacesId: 'ChwKold3', replaceInPlace: true })] });
+    const ids3 = (await DB.queryMessages(V)).map((m) => m.id);
+    assert(['ChwKold3', 'ChwKnew3', 'ChwKnew4'].every((x) => ids3.includes(x)), '不同內容／不同作者都保留：' + ids3.join(','));
     // replacesId 指到內容不同的訊息 → 不合併
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKq1', runs: [{ text: 'q1' }], timestampAbs: t0 + 9000, videoOffsetSec: 19 })] });
     await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKq2', runs: [{ text: 'q2' }], timestampAbs: t0 + 9000, videoOffsetSec: 19, replacesId: 'ChwKq1' })] });
@@ -1580,21 +1586,21 @@
     const own = (o) => Object.assign({ type: 'text', authorHandle: '@me', runs: [{ text: '舊資料' }] }, o);
     // 以匯入（preserve）寫入：不經過寫入時的合併 → 模擬既有的重複資料
     await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [
-      own({ id: 'LCC.o1', timestampAbs: t0, tsSource: 'arrival', videoOffsetSec: 50, phase: 'live' }),
+      own({ id: 'CTMPAAAAAAAAAAAAAAAAo1', timestampAbs: t0, tsSource: 'arrival', videoOffsetSec: 50, phase: 'live' }),
       own({ id: 'ChwKo1', timestampAbs: t0 + 15000, tsSource: 'clock', videoOffsetSec: 65, phase: 'pre' }),
       own({ id: 'ChwKs1', runs: [{ text: '8888' }], timestampAbs: t0 + 20000, videoOffsetSec: 70 }),
       own({ id: 'ChwKs2', runs: [{ text: '8888' }], timestampAbs: t0 + 25000, videoOffsetSec: 75 }),
     ] });
     eq(await count(V), 4);
     const pre = await BG.fixOwnDuplicates();
-    eq([pre.dryRun, pre.pairs, pre.tempIds, pre.streams, pre.sameTextBothReal.pairs, pre.sameTextBothReal.idShapes], [true, 1, 1, [{ v: V.slice(0, 4), n: 1 }], 1, [{ k: 'ChwK|6 + ChwK|6', n: 1 }]]);
+    eq([pre.dryRun, pre.pairs, pre.tempIds, pre.streams, pre.sameTextBothReal.pairs, pre.sameTextBothReal.idShapes], [true, 1, 1, [{ v: V.slice(0, 4), n: 1 }], 1, [{ k: 'ChwK|6 + ChwK|6 @ live + live', n: 1 }]]);
     eq(await count(V), 4, '預覽不寫入');
     const ex = await BG.fixOwnDuplicates({ dryRun: false });
     eq([ex.dryRun, ex.merged], [false, 1]);
     const list = await DB.queryMessages(V);
     eq(list.length, 3);
     const m = list.find((x) => x.id === 'ChwKo1');
-    eq([m.timestampAbs, m.tsSource, m.videoOffsetSec, m.phase, m.aliasIds], [t0, 'arrival', 50, 'live', ['LCC.o1']]);
+    eq([m.timestampAbs, m.tsSource, m.videoOffsetSec, m.phase, m.aliasIds], [t0, 'arrival', 50, 'live', ['CTMPAAAAAAAAAAAAAAAAo1']]);
     eq((await DB.getStream(V)).messageCount, 3, '重算筆數');
     eq((await BG.fixOwnDuplicates()).pairs, 0, '重跑為 0');
     assert(!JSON.stringify(pre).includes('舊資料') && !JSON.stringify(pre).includes('@me'), '預覽不含內容與作者');

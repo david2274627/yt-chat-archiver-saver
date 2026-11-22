@@ -136,8 +136,12 @@ yt-live-chat-renderer
   - 第一份是到達時間（秒數不同）。第二份內容相同，時間碼是「≈」（顯示的分鐘）、phase `pre`。
   - 推測：YouTube 先插入「送出中」的暫時節點（本機 id），伺服器確認後換成正式節點（正式 id）；兩個 id 不同，F-14 依 id 合併失敗。
   - 第二份是 `clock` → 正式節點不是由 observer 以「即時到達」擷取（回溯、補掃，或列表被換掉後重新擷取）。
+- （2026-11-22 實測，審查十一 31.1、32.2）`LCC.` 的推測**錯誤**：`fixOwnDuplicates` 預覽 `tempIds 0`；T6.1 實測 P1 `tempSeen 0`、`replaced 3`（靠頁面移除／列表替換配對成功，新資料不重複）。
+  - 線索：同作者同內容 90 秒內、**形狀不同**的一對 `CM_E|28 + ChwK|40`（22 對）、`CITy|27 + ChwK|40`（11 對）。正式 id 是 `ChwK…` 40 字（protobuf 的 base64），暫時 id 是 `C` 開頭、27～28 字、前 4 碼會變動。
+  - v51 規則：`C` 開頭、總長 ≤ 31、base64 字元、不是 `ChwK`（`selectors.js` `chat.tempIdRe`）。**部分驗證**：格式來自使用者資料的形狀統計；下次實測看 P1 `own.tempSeen` 是否 > 0、`fixOwnDuplicates` 預覽 `pairs` 是否約 33。
+  - 同形狀的 `N-Lv|52 + N-Lv|52`：v2.6.0 遷移資料的 id（`${videoId}_${元素 id}` = 11＋1＋40 字），兩筆的 YouTube id 不同 → 不同訊息（洗版），不是重複儲存。`unkn|55` 尚未確認來源；v51 預覽加上來源類別（`@ legacy + legacy` 等）以便判斷。
 - **尚未確認**（下次實測以 F-20 P7 `own-replace`、P1 `own` 記錄；只有 id 前 4 碼與長度、屬性名稱，沒有內容）：
-  1. 暫時節點的 id 格式。推測以 `LCC.` 開頭（`selectors.js` `chat.tempIdRe`，**未驗證**）；P1 `own.tempSeen` 為 0 代表推測不對。
+  1. ~~暫時節點的 id 格式~~（見上，v51 改為形狀規則）。
   2. 替換方式：移除暫時節點＋插入正式節點（P7 `kind: new-node`／`late`）、同一個節點原地改 id（`in-place`），或整個 `#items` 換掉（`itemsSwaps` 增加）。
   3. 暫時節點有沒有特別的屬性（P7 `oldAttrs`／`newAttrs` 比對），例如「送出中」狀態。
 - 擷取端不依賴第 1 點：頁面移除已存節點（不是修剪、不是列表開頭）、id 原地改變、列表被換掉，都當成替換的證據（SPEC F-14 v50）。

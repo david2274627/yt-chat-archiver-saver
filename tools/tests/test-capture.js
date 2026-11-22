@@ -1265,16 +1265,16 @@
     const me = (id, text) => textMsg({ id, author: '@又新-david', ts: '下午10:24', runs: [{ text }] });
     items.append(textMsg({ id: 'OWN-OLDER', author: '@x', ts: '下午10:23' })); // 列表開頭的其他訊息
     await until(() => last('OWN-OLDER'), 3000);
-    // 1. 暫時 id（LCC.）→ 18 秒後正式節點（暫時節點還在頁面上）
+    // 1. 暫時 id（CTMPAAAAAAAAAAAAAAAA）→ 18 秒後正式節點（暫時節點還在頁面上）
     T = NOW + 20000;
-    const tmp = me('LCC.own-temp-1', '早安');
+    const tmp = me('CTMPAAAAAAAAAAAAAAAAown-temp-1', '早安');
     items.append(tmp);
-    await until(() => last('LCC.own-temp-1'), 3000);
+    await until(() => last('CTMPAAAAAAAAAAAAAAAAown-temp-1'), 3000);
     T = NOW + 38000;
     items.append(me('ChwKown-real-1', '早安'));
     await until(() => last('ChwKown-real-1'), 3000);
     let r = last('ChwKown-real-1');
-    eq([r.replacesId, r.timestampAbs, r.tsSource], ['LCC.own-temp-1', NOW + 20000, 'arrival'], '暫時 id');
+    eq([r.replacesId, r.timestampAbs, r.tsSource], ['CTMPAAAAAAAAAAAAAAAAown-temp-1', NOW + 20000, 'arrival'], '暫時 id');
     tmp.remove();
     // 2. 暫時 id 格式不符：頁面移除舊節點（不是開頭）＋新節點
     T = NOW + 45000;
@@ -1328,15 +1328,80 @@
     r = last('ChwKown-real-6');
     eq([r.replacesId, r.timestampAbs], ['ChwKown-pend-6', NOW + 85000]);
     const st = e.state().stats;
-    eq([st.ownTempSeen, st.ownReplaced, st.ownInPlace, st.ownLate], [1, 2, 1, 1]);
+    eq([st.ownTempSeen, st.ownReplacedTemp, st.ownReplacedRemoved, st.ownInPlaceMerged, st.ownLate], [1, 1, 1, 1, 1]);
     e.stop();
     const p7 = recs.filter((x) => x.p === 'P7' && x.k === 'own-replace').map((x) => x.d);
-    assert(p7.length >= 4, 'P7 own-replace：' + p7.length);
+    eq(p7.filter((x) => x.kind !== 'temp-seen').length, 4, 'P7 own-replace：每次合併一定記一筆');
     const s = JSON.stringify(p7);
     assert(!s.includes('早安') && !s.includes('又新') && !s.includes('own-real'), 'P7 不含內容、作者與完整 id');
     eq(p7.find((x) => x.kind === 'new-node').newId, { p: 'ChwK', len: 'ChwKown-real-1'.length });
+    eq(p7.filter((x) => x.kind === 'new-node').map((x) => x.rule), ['temp', 'removed']);
     const p1 = recs.filter((x) => x.p === 'P1').pop();
-    assert(p1 && p1.d.own && p1.d.own.replaced === 2, 'P1 own 統計');
+    const own = p1 && p1.d.own;
+    eq([own.merged.temp, own.merged.removed, own.merged.late, own.merged.inPlace], [1, 1, 1, 1], 'P1 own.merged（合併次數）');
+    assert(own.events.idChanges >= 1 && own.events.pageRemoved >= 3, 'P1 own.events（事件次數）' + JSON.stringify(own.events));
+    eq(own.recent.length, 4, 'P1 own.recent：最近的合併（記錄開始前的也看得到）');
+  });
+
+  test('T6.2（32.2）防誤合：同一人兩次「777」（第一則被頁面重新排版移除又插回、或移除後超過 10 秒才出現第二則）不配對；節點原地換成不同內容或不同作者 → 不合併、當成新的一則；暫時 id 新格式（CM_E…|28、CITy…|27）', async () => {
+    const S = self.YTCAS_SEL;
+    assert(S.isTempChatId('CM_E' + 'a'.repeat(24)) && S.isTempChatId('CITy' + 'b'.repeat(23)), '暫時 id：C 開頭、27～28 字');
+    assert(!S.isTempChatId('ChwK' + 'c'.repeat(36)) && !S.isTempChatId('ChwKshort1234567890abc') && !S.isTempChatId('LCC.abc') && !S.isTempChatId('ytcas-raid-0123456789abcdef'), '正式 id、後備 id 不是暫時');
+    const { items } = buildChat();
+    const send = mockSend();
+    let T = NOW;
+    const e = engine({ send, now: () => T });
+    e.start();
+    e.setInfo({ videoId: 'testVidOwn3', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    const all = () => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    const last = (id) => all().filter((x) => x.id === id).pop();
+    const spam = (id, text, author) => textMsg({ id, author: author || '@spam', ts: '下午10:24', runs: [{ text: text || '777' }] });
+    items.append(textMsg({ id: 'S-HEAD', author: '@x', ts: '下午10:23' }));
+    // 1. 第一則「777」被頁面移除又插回（重新排版）→ 第二則「777」不配對
+    T = NOW + 20000;
+    const a = spam('ChwKspam-a');
+    items.append(a);
+    await until(() => last('ChwKspam-a'), 3000);
+    const after = a.nextSibling;
+    a.remove(); items.insertBefore(a, after); // 同一次回呼內移除＋插回
+    await sleep(30);
+    T = NOW + 25000;
+    items.append(spam('ChwKspam-b'));
+    await until(() => last('ChwKspam-b'), 3000);
+    assert(!last('ChwKspam-b').replacesId, '插回的節點不算被移除');
+    // 2. 第一則被頁面移除後超過 10 秒才出現第二則 → 不配對
+    T = NOW + 30000;
+    const c = spam('ChwKspam-c', '7777');
+    items.append(c);
+    await until(() => last('ChwKspam-c'), 3000);
+    c.remove();
+    await sleep(30);
+    T = NOW + 45000;
+    items.append(spam('ChwKspam-d', '7777'));
+    await until(() => last('ChwKspam-d'), 3000);
+    assert(!last('ChwKspam-d').replacesId, '移除後超過 10 秒：不配對');
+    // 3. 節點原地換成不同內容（YouTube 重複利用節點）→ 不合併
+    T = NOW + 50000;
+    const r1 = spam('ChwKreuse-1', '第一則');
+    items.append(r1);
+    await until(() => last('ChwKreuse-1'), 3000);
+    r1.querySelector('#message').textContent = '完全不同';
+    r1.id = 'ChwKreuse-2';
+    await until(() => last('ChwKreuse-2'), 3000);
+    assert(!last('ChwKreuse-2').replacesId && !last('ChwKreuse-2').replaceInPlace, '不同內容：不合併');
+    // 4. 原地換成不同作者 → 不合併
+    const r3 = spam('ChwKreuse-3', '同一句', '@alice');
+    items.append(r3);
+    await until(() => last('ChwKreuse-3'), 3000);
+    r3.querySelector('#author-name').firstChild.textContent = '@bob';
+    r3.id = 'ChwKreuse-4';
+    await until(() => last('ChwKreuse-4'), 3000);
+    assert(!last('ChwKreuse-4').replacesId, '不同作者：不合併');
+    const st = e.state().stats;
+    eq([st.ownReplacedRemoved, st.ownLate, st.ownInPlaceMerged], [0, 0, 0], '沒有任何合併');
+    assert(st.idChanges === 2 && st.pageRemoved >= 2, '事件次數照計 ' + JSON.stringify([st.idChanges, st.pageRemoved]));
+    e.stop();
   });
 
   test('T6.1 自己送出的訊息（30.5）：本套件修剪掉的舊節點不算替換（同作者同內容的新訊息照常存成新的一則）', async () => {

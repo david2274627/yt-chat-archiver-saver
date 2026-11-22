@@ -428,6 +428,13 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - 檢視器收到合併後的紀錄時，清單中以 id 或別名對到的其他筆一併移除，依新的時間重新排列。
   - 既有資料：`YTCAS_BG.fixOwnDuplicates()` 預覽（筆數、各場筆數，videoId 4 碼；暫時 id 總數；「兩筆都是正式 id、同作者同內容 90 秒內」的 id 形狀＝前 4 碼＋長度，用來核對暫時 id 格式，不合併）→ `{ dryRun: false }` 執行並重算筆數。
   - F-20：P1 `own`（`tempSeen`／`replaced`／`inPlace`／`late`／`pageRemoved`）；P7 `own-replace`（種類、新舊 id 的前 4 碼與長度、時間差、是否被移除／是否列表開頭／是否同一個節點、兩個元素的屬性名稱），不含內容與作者。
+  - （v51，T6.2，審查十一 31.1、32.2）**修正**：
+    - 暫時 id 的格式：v50 推測的 `LCC.` 是錯的（實機 `tempIds 0`）。依使用者 `fixOwnDuplicates` 預覽的線索（形狀不同的一對 `CM_E|28 + ChwK|40` 22 對、`CITy|27 + ChwK|40` 11 對），改為 **`C` 開頭、總長 ≤ 31、base64 字元、不是 `ChwK` 開頭**（正式 id 為 `ChwK…` 40 字）。
+    - 頁面移除的規則收緊：新節點要在舊節點被移除後 **10 秒內**出現才算；舊節點又被插回頁面（YouTube 重新排版）→ 取消「被移除」。事後配對同樣只限暫時 id，或正式節點在移除前 10 秒內出現。同一人洗版的兩次「777」不配對。
+    - **id 原地改變只在同作者同內容時合併**（v50 不比對，節點被重複利用顯示別則訊息時會誤合）；不同作者或內容 → 當成新的一則。舊節點擷取時還沒有 id（存成後備 id）→ 帶 `replacesFallback`，background 算出那筆的後備 id 再依同樣規則合併。
+    - P1 `own` 改為 `{ tempSeen, merged: { temp, removed, swap, late, inPlace }, events: { idChanges, idFromEmpty, pageRemoved }, recent }`：**`merged` 是合併次數，`events` 是觀察到的事件次數**（v50 的 `inPlace`／`pageRemoved` 數千是事件次數，例如 YouTube 重新設定 id、重新排版，大多不會合併）；`recent` 是最近 5 次合併的 id 形狀（記錄開始前的也看得到）。
+    - P7 `own-replace`：每次合併一定記一筆（每場上限 30），不受 `P7_MAX_PER_TAG` 限制；帶 `rule`（`temp`／`removed`／`swap`／`same-node`）。
+    - `fixOwnDuplicates` 預覽的 `sameTextBothReal.idShapes` 加上來源類別（例如 `N-Lv|52 + N-Lv|52 @ legacy + legacy`）。
 - （v51，T6.2，審查十一 32.9）**等待開播期間一律暫定 `pre`**：有預定時間、還沒有開播時間（`startedAt`）→ 新訊息一律 `pre`，不以預定時間推算 `live`（`capture.js` `livePhase`）。實機：預定時間剛過、頁面 meta 下一次重讀（`startPending`）之前到的一則被判成 `live`，之後的又是 `pre`，面板分段標題來回出現。確認開播後由 background 依實際時間重算 `pre → live`（v48 起的機制）。面板與後台的直播／待機室清單也依 phase 分段（頁面狀態提示 → `pre` → `live` → `post`，`CORE.sortByPhase`），段內維持時間順序，每段標題只出現一次（與 VOD 的 v45 規則一致）。
 - **收錄紀錄 `capture_sessions`**（4.1）：每次開始收錄（chat frame 開始擷取）記一筆，結束時補 `endedAt`、`lastOffset`、`added`、`merged`、`phases`。
   - 後台場次清單顯示「直播收錄 2 次・重播 1 次」，以及**時間軸覆蓋範圍**（只會收錄實際有開著的時段，中途離開的空檔一目了然；含 `pre`／`post`）。

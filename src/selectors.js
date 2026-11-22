@@ -178,9 +178,11 @@
       // 刪除狀態：span#deleted-state 確認存在（筆記 2.4）；被刪除時的屬性名稱與內容待實機確認
       deleted: { attr: 'is-deleted', stateEl: '#deleted-state' },
       // v50（T6.1，審查十一 30.5）自己送出的訊息：YouTube 先插入「送出中」的暫時節點，伺服器確認後換成正式節點（id 不同）。
-      // 暫時 id 的格式**待實機確認**（推測以 LCC. 開頭；dom-notes 2.9）。F-20 P7 own-replace 記錄新舊 id 的前 4 碼與長度供核對。
-      // 格式不符時，擷取端仍以「節點被頁面移除／id 原地改變／列表被換掉」判斷替換（capture.js），不依賴這條
-      tempIdRe: /^LCC\./,
+      // v51（T6.2，審查十一 31.1、32.2）v50 推測的 `LCC.` 開頭是錯的（實機 tempIds 0）。使用者的 fixOwnDuplicates 預覽：
+      //   同作者同內容 90 秒內、形狀不同的一對 `CM_E|28 + ChwK|40`（22 對）、`CITy|27 + ChwK|40`（11 對），與 3 則自己送出的訊息吻合。
+      //   正式 id 為 `ChwK` 開頭、40 字（protobuf 的 base64）；暫時 id 為 `C` 開頭、27～28 字、不是 `ChwK`。
+      //   規則：`C` 開頭、總長 ≤ 31、base64 字元、不是 `ChwK` 開頭（dom-notes 2.9）。前 4 碼會變動，不比對
+      tempIdRe: /^(?!ChwK)C[A-Za-z0-9_\-+/=%]{19,30}$/,
 
       // F-10 彈窗與按鈕（筆記 2.5）
       emojiPickerButton: '#emoji-picker-button',

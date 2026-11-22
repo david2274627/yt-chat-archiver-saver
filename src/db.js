@@ -308,6 +308,7 @@
     // v50（30.5）擷取端的替換提示只在寫入當下使用，不存
     delete r.replacesId;
     delete r.replaceInPlace;
+    delete r.replacesFallback;
     r.fp = makeFp(r);
     return r;
   }
@@ -372,7 +373,10 @@
   async function findTwin(store, rec, hint) {
     if (hint.replacesId && hint.replacesId !== rec.id) {
       const o = await req(store.get(hint.replacesId));
-      if (o && o.videoId === rec.videoId && (hint.inPlace || (C.ownKey(o) && C.ownKey(o) === C.ownKey(rec)))) return { other: o, realIsRec: true };
+      // v51（T6.2，32.2）原地改 id 也要同作者同內容（v50 不比對）；非文字訊息（ownKey 空）只在原地改 id 時以作者與內容比對
+      const ko = C.ownKey(o || {}), kr = C.ownKey(rec);
+      const same = ko ? ko === kr : (hint.inPlace && !kr && o && (o.authorHandle || '') === (rec.authorHandle || '') && normText(o.runs) === normText(rec.runs) && o.type === rec.type);
+      if (o && o.videoId === rec.videoId && same) return { other: o, realIsRec: true };
     }
     const key = C.ownKey(rec);
     if (!key) return null;
@@ -530,7 +534,9 @@
           }
           // v50（T6.1，審查十一 30.5）自己送出的訊息：暫時節點與正式節點合併成一筆（以正式 id 為主）
           if (ctx.source !== 'replay' && !ctx.preserve) {
-            const tw = await findTwin(store, rec, { replacesId: typeof raw.replacesId === 'string' ? raw.replacesId : '', inPlace: !!raw.replaceInPlace });
+            // v51（32.2）replacesFallback：舊節點擷取時還沒有 id（存成後備 id）→ 依同一套規則算出那筆的後備 id
+            const rf = raw.replacesFallback && typeof raw.replacesFallback === 'object' ? fallbackId(raw.replacesFallback) : '';
+            const tw = await findTwin(store, rec, { replacesId: typeof raw.replacesId === 'string' && raw.replacesId ? raw.replacesId : rf, inPlace: !!raw.replaceInPlace });
             if (tw) {
               const real = tw.realIsRec ? rec : tw.other, temp = tw.realIsRec ? tw.other : rec;
               const folded = fix(foldTwin(real, temp));
@@ -1221,7 +1227,9 @@
     for (const p of pairs) { if (!byVid.has(p.real.videoId)) byVid.set(p.real.videoId, []); byVid.get(p.real.videoId).push(p); }
     const shape = (id) => String(id || '').slice(0, 4) + '|' + String(id || '').length;
     const shapes = new Map();
-    for (const [a, b] of suspects) { const k = [shape(a.id), shape(b.id)].sort().join(' + '); shapes.set(k, (shapes.get(k) || 0) + 1); }
+    // v51（31.1 第 3 點）來源類別（live／replay／legacy／import）一併列出：例如 `N-Lv|52` 是 v2.6.0 遷移資料（`videoId_元素 id`）
+    const srcOf = (m) => (Array.isArray(m.sources) && m.sources.length ? m.sources.slice().sort().join('/') : '?');
+    for (const [a, b] of suspects) { const k = [shape(a.id), shape(b.id)].sort().join(' + ') + ' @ ' + [srcOf(a), srcOf(b)].sort().join(' + '); shapes.set(k, (shapes.get(k) || 0) + 1); }
     const out = { dryRun, pairs: pairs.length, tempIds: all.filter((m) => isTempId(m.id)).length,
       streams: Array.from(byVid, ([v, ps]) => ({ v: String(v).slice(0, 4), n: ps.length })),
       sameTextBothReal: { pairs: suspects.length, idShapes: Array.from(shapes, ([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n).slice(0, 5) },
