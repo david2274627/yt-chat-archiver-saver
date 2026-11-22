@@ -84,7 +84,8 @@ button { font: inherit; color: inherit; }
   background: var(--ytcas-surface); border-radius: var(--ytcas-radius-sm); box-shadow: var(--ytcas-shadow-1); font-size: var(--ytcas-fs-sm); }
 .pin .tag { flex: none; color: var(--ytcas-owner); font-weight: 700; }
 .pin .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ytcas-text-2); }
-.pin.open .txt { white-space: normal; color: var(--ytcas-text); }
+/* v50（T6.1，30.2）展開＝看完整內容：長網址換行；很長時卡片內捲動，不把清單擠掉 */
+.pin.open .txt { white-space: normal; overflow-wrap: anywhere; color: var(--ytcas-text); max-height: 40vh; overflow-y: auto; }
 .pin .hint { flex: none; color: var(--ytcas-text-3); }
 
 /* ---------- 訊息列 ---------- */

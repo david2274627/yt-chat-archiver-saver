@@ -1445,6 +1445,38 @@
     assert(c.els.pills.all.querySelector('.num').textContent === '6', '「全部」筆數');
   });
 
+  test('T6.1 置頂卡（30.2，使用者選 A）：展開看完整內容（換行、長網址折行）；卡內連結可點且不切換展開／收合（滑鼠與 Enter）；點卡片其他地方照常切換', async () => {
+    await resetDb();
+    const VP = 'vidPINLINK1';
+    const longUrl = 'https://example.com/' + 'a'.repeat(300);
+    const pinned = [mk({ id: 'pin1', videoId: VP, authorHandle: '@host', pinnedAt: T0, pinnedLastAt: T0,
+      runs: [{ text: '很長的置頂說明 '.repeat(20) }, { text: '連結', link: { url: longUrl } }] })];
+    await put({ videoId: VP, title: '置頂', isLive: true, startedAt: T0, lastMessageAt: T0, messageCount: 1, versions: [], linkedVideos: [] }, [mk({ id: 'pm1', videoId: VP })], pinned);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VP });
+    await c.ready; await frame();
+    const pin = c.els.pin;
+    assert(!pin.hidden, '置頂卡顯示');
+    const txt = () => pin.querySelector('.txt');
+    eq(getComputedStyle(txt()).whiteSpace, 'nowrap', '收合：一行');
+    pin.querySelector('.txt').click(); await frame();
+    assert(pin.classList.contains('open'), '點文字 → 展開');
+    eq([getComputedStyle(txt()).whiteSpace, getComputedStyle(txt()).overflowWrap], ['normal', 'anywhere'], '展開：完整內容、長網址折行');
+    assert(txt().scrollWidth <= txt().clientWidth + 1, '展開後沒有水平溢出');
+    const a = pin.querySelector('.txt a[href]');
+    assert(a && a.href === longUrl, '連結保留完整網址');
+    // 不讓測試頁真的開新分頁：攔下預設動作，只看卡片是否切換
+    a.addEventListener('click', (e) => e.preventDefault(), { once: true });
+    a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await frame();
+    assert(pin.classList.contains('open'), '點連結不收合');
+    pin.querySelector('.txt a[href]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await frame();
+    assert(pin.classList.contains('open'), 'Enter 在連結上不收合');
+    pin.querySelector('.hint').click(); await frame();
+    assert(!pin.classList.contains('open'), '點提示 → 收合');
+  });
+
   test('T5.1 推播的後備：直播中超過 15 秒沒有推播 → 讀資料庫的新訊息（offset 索引，只讀新的部分）', async () => {
     await resetDb();
     const VP = 'vidPOLL0001';

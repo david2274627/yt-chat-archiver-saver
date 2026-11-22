@@ -156,6 +156,27 @@
     eq([m.hasInput, m.purchase, m.bottomZoneHeight], [false, false, 1], 'VOD 仍是沒有輸入區（面板全高）');
   });
 
+  test('T6.1（30.2，使用者選 A）面板開啟時原生置頂列也隱藏（visibility）→ 不算底部互動區（只露出輸入列）；投票卡照樣露出；退讓或關閉 → 置頂列恢復並重新回報', async () => {
+    reset();
+    const sent = [];
+    const CI = W().YTCAS_CHAT_INPUT;
+    const ci = CI.create({ doc: D(), win: W(), S: W().YTCAS_SEL, C: W().YTCAS_CONST, post: (type, d) => sent.push(d),
+      accept: (e) => e.source === W().parent && !!e.data && e.data.__ytcas === true });
+    ci.start();
+    const bz = () => sent[sent.length - 1].bottomZoneHeight;
+    const vis = (s) => W().getComputedStyle(q(s)).visibility;
+    eq(bz(), 115, '面板關閉：置頂列＋輸入列');
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
+    await until(() => bz() === 62, 2000, '隱藏置頂列後重新回報');
+    eq([vis('yt-live-chat-banner-manager'), vis('#input-panel'), W().getComputedStyle(q('yt-live-chat-banner-manager')).display], ['hidden', 'visible', 'block'], '只用 visibility');
+    place(q('#action-panel'), 355, 130);
+    await until(() => bz() === 245, 2000, '投票卡照樣露出');
+    q('#action-panel').hidden = true;
+    frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: true, reason: 'theater' }, location.origin);
+    await until(() => bz() === 115 && vis('yt-live-chat-banner-manager') === 'visible', 2000, '退讓 → 置頂列恢復');
+    ci.stop();
+  });
+
   test('T6.1（30.1）表符選單在輸入列下方（輸入列被往上推）：bottomZoneHeight 涵蓋被推上去的輸入列（top 端取 min(popupTop, 底部互動區頂端) − 8）', () => {
     reset();
     place(q('#panel-pages'), 200, 400); // #input-panel 在 #panel-pages 頂端（200）

@@ -173,7 +173,10 @@
       for (const el of want) st.ro.observe(el);
       st.observed = want;
     }
-    // 6.2 第 2 點：面板開啟且未退讓 → 隱藏原生訊息列表與頂部列（visibility，不改 height／display）
+    // 6.2 第 2 點：面板開啟且未退讓 → 隱藏原生訊息列表與頂部列（visibility，不改 height／display）。
+    // v50（T6.1，審查十一 30.2，使用者選 A）原生置頂列也隱藏：置頂只用面板的置頂卡（F-07，可展開看完整內容），
+    // 原生置頂列不可見 → 不算進底部互動區，面板多出約 50～100px。投票卡（#action-panel）照樣露出。
+    // 擷取端讀置頂列的 DOM 不受 visibility 影響（F-07 照常收錄）
     function setHidden(on) {
       if (on === st.hide) return;
       st.hide = on;
@@ -181,9 +184,10 @@
       if (on && !s) {
         s = doc.createElement('style');
         s.id = HIDE_STYLE_ID;
-        s.textContent = S.chat.itemList + ', ' + S.chat.header + ' { visibility: hidden !important; }';
+        s.textContent = [S.chat.itemList, S.chat.header, S.chat.bannerContainer].join(', ') + ' { visibility: hidden !important; }';
         (doc.head || doc.documentElement).appendChild(s);
       } else if (!on && s) s.remove();
+      if (st.started) schedule(false); // 置頂列顯示與否會改變底部互動區（stop 之後不再回報）
     }
     const onUser = () => { schedule(false); win.setTimeout(() => schedule(false), 300); };
     const onResize = () => schedule(false);

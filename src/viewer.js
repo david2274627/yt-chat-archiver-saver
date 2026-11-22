@@ -505,8 +505,11 @@
     }
 
     // ---------------- 置頂卡片（F-07）
-    pin.addEventListener('click', () => { S.pinOpen = !S.pinOpen; renderPin(); });
-    pin.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); S.pinOpen = !S.pinOpen; renderPin(); } });
+    // v50（T6.1，審查十一 30.2，使用者選 A）直播有輸入區時不露出原生置頂列，只用這張卡：展開看完整內容，
+    // 卡內的連結與頭像連結照常開啟（不切換展開／收合；Enter 也交給連結）
+    const inLink = (e) => !!(e.target && e.target.closest && e.target.closest('a[href]'));
+    pin.addEventListener('click', (e) => { if (inLink(e)) return; S.pinOpen = !S.pinOpen; renderPin(); });
+    pin.addEventListener('keydown', (e) => { if (inLink(e)) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); S.pinOpen = !S.pinOpen; renderPin(); } });
     function renderPin() {
       const p = S.pinned[0];
       pin.hidden = !p;
