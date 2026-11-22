@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v50**（前版：v49；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v51**（前版：v50；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -50,6 +50,7 @@
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
+- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）。
 
 ---
 
@@ -337,6 +338,12 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - （v33，T3.5）**聊天室歡迎／守則提示**（`yt-live-chat-viewer-engagement-message-renderer`）每次重新整理元素 id 都不同：收錄時改以 `constants.js` 的 `viewerEngagementId(videoId, runs)`（`ytcas-ve-` ＋ 場次與正規化內容的雜湊）作為 id，同一場同內容只存一筆。`cleanupJunkSystem` 一併合併既有重複：同一場同內容保留 `firstSeenAt` 最早的一筆、改用內容 id（原 id 記入 `aliasIds`），其餘刪除；範圍限制同上（收錄來源、T3 部署後）。
 - 置頂訊息擷取（v25 確認）：新版面置頂列位於輸入列上方，來源仍是 `yt-live-chat-banner-manager`（`chat.bannerContainer`）＞ `yt-live-chat-banner-renderer` ＞ `#contents` 內的 `yt-live-chat-text-message-renderer#<訊息 id>`（結構同一般訊息），見 `docs/youtube-dom-notes.md` 2.4。
 - （v42，T5.1，審查十一 13.1 (C)）**直播訊息時間精度**：`#timestamp` 只到分鐘。observer 即時擷取的訊息，若擷取時間與顯示的分鐘（取中點）相差 ≤ 90 秒，`timestampAbs` 用**到達時間**（`tsSource: 'arrival'`）；回溯、補掃、修剪前補擷取的歷史訊息與相差太多的，用顯示時間（`'clock'`：擷取時間落在該分鐘內時為擷取時間，否則為該分鐘的開頭或最後一刻）；解析失敗用擷取時間（`'capture'`）。重播不變。`timestampUsec` 等元件的 JavaScript 屬性由頁面設定，content script 的隔離環境讀不到，不採用。
+- （v51，T6.2，審查十一 32.7）**直播／待機室訊息的時間不得在未來**：實機待機室進入頁面時載入的歷史訊息有前幾天的（YouTube 只顯示時間、不顯示日期）。v50 以「晚超過 12 小時才當前一天」判斷，昨天的「下午11:13」在今天 20:22 擷取被當成今天 23:13，還被分到「直播中」。
+  - 規則（`capture.js` `clockInfo`／`parseClock`）：每則有一個上限 `ceil`（預設＝擷取時間＋`C.CLOCK_FUTURE_TOL_MS` = 60 秒），取「同一個顯示時間」不晚於 `ceil` 的最近一次（往前推整天）；結果晚於擷取時間（時鐘誤差 60 秒內）→ 擷取時間。沒有上午／下午標記且 ≤ 12 點 → h 與 h＋12 兩種解讀取不晚於 `ceil` 的較晚者。
+  - **回溯擷取依 DOM 順序重建日期**：`#items` 依時間排列，從最新一則往回，每一則的 `ceil` ＝下一則（較新）的時間 → 可以重建跨好幾天的日期。重建後早於擷取時間超過 24 小時的標 `tsSource: 'clock-ambiguous'`（中間可能隔了不只一天；面板「≈」的說明加「日期可能不準」）。
+  - F-20：P1 `clockFuture`（以「今天」解讀會在未來、往前推了的筆數）、`clockAmbiguous`、`tsSource.ambiguous`；P7 `ts-format`（原因 `future`／`ambiguous`／`unparsed`，`#timestamp` 的形狀：數字 → `d`、上午／下午 → `A`／`P`、其他字元 → `?`，加 `Date.now()`、`getTimezoneOffset()`、`Intl` 時區名稱；不記原文）。
+  - background 寫入時的保底：`tsSource` 為 `clock` 的直播訊息晚於寫入時間＋60 秒 → 往前推整天、標 `clock-ambiguous`（還沒重新注入的舊版擷取端）。
+  - 既有資料：`YTCAS_BG.fixFutureTimes()` 預覽（筆數、phase 會改變的筆數、最多晚幾分鐘、各場筆數，videoId 4 碼）→ `{ dryRun: false }`：時間晚於該筆 `firstSeenAt`＋60 秒（到達時間、重播來源除外）→ 往前推整天到不晚於寫入時間，phase／offset 依場次重算，標 `clock-ambiguous`（舊資料沒有保存原始文字與 DOM 順序，無法依順序重建），重算場次的 `lastMessageAt`。
   - （v48，T5.7，審查十一 28.3）**背景分頁的限制**：分頁在背景時 Chrome 會節流（計時器在背景 5 分鐘後最多每分鐘一次），YouTube 聊天室的更新會**成批到達**，到達時間不是發送時間。擷取端在 `document.hidden` 時，同一次 observer 回呼新增超過 `C.ARRIVAL_HIDDEN_BATCH_MAX` = 2 則 → 這批**不用到達時間**、改用顯示時間（`clock`）；背景時仍逐則到達（批次 ≤ 2）照常用到達時間。審查提的「到達時間落在顯示的那一分鐘內就採用」不採用：成批到達時，同一分鐘內的到達時間仍可能晚數十秒，秒數看起來精確但是錯的，比只到分鐘更容易誤導。因此**背景分頁的直播訊息可能只有分鐘精度**（實機 `_k5N…` 秒數全是 `:14`）；檢視器以「≈」標示（F-08）。F-20 P1 記錄 `tsSource` 分布（arrival／clock／capture）、背景擷取筆數與批次大小，用來確認實際比例。
   - （v48，審查十一 28.3 第 3 點，使用者 2026-11-22 同意）**「≈」標記**：`tsSource: 'clock'` 且不是重播來源（`offsetSource` 不是 `replay`）的訊息，時間碼前加淡色「≈」（`--ytcas-text-3`，`aria-hidden`；卡片內跟隨卡片文字色），`title` 加「只精確到分鐘（YouTube 只顯示到分鐘）」。面板與後台一致；VOD 排序（顯示影片時間）時不加。
 - （v42，T5.1，審查十一第 10 節）**頭像延遲載入**：擷取當下 `yt-img-shadow` 的 `img` 可能還沒有 https 網址（空的或 `data:` 佔位圖）。擷取端監看該 `img` 的 `src` 最多 10 秒，取得後補送同一則（F-14 只補空欄位）；節點被修剪或逾時就放棄，同時監看上限 60。background 寫入時，沒有頭像的訊息以**同場次同作者**（`@handle` 或頻道 id，**不用名稱**）已知的頭像補上。檢視器顯示順序：訊息本身 → 同場次同作者 → `channels`（F-03）→ 首字圓點。既有紀錄：`YTCAS_BG.fillAvatars()`（預覽）／`{ dryRun: false }`。（v45，審查十一 20.3）快取上限：background 每場 5,000 位作者、最多 5 場；面板 `PANEL.AVATAR_CACHE_MAX` = 2,000 位（LRU）。

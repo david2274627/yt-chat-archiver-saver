@@ -284,6 +284,13 @@ async function fixGiftAuthors(opts) {
   console.info('[ytcas] 禮物作者' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
 }
+// v51（T6.2，審查十一 32.7）訊息時間晚於寫入時間（前幾天的待機室訊息被當成今天）。
+// 用法：await YTCAS_BG.fixFutureTimes()（預覽：筆數、phase 會改變的筆數、最多晚幾分鐘、各場筆數，videoId 4 碼）→ { dryRun: false }
+async function fixFutureTimes(opts) {
+  const r = await DB.fixFutureTimes({ dryRun: !(opts && opts.dryRun === false) });
+  console.info('[ytcas] 未來時間的訊息' + (r.dryRun ? '（預覽）' : ''), r);
+  return r;
+}
 // v50（T6.1，審查十一 30.5 第 4 點）自己送出的訊息被存成兩筆（暫時 id＋正式 id）。
 // 用法：await YTCAS_BG.fixOwnDuplicates()（預覽：筆數、各場筆數，videoId 4 碼）→ await YTCAS_BG.fixOwnDuplicates({ dryRun: false })
 async function fixOwnDuplicates(opts) {
@@ -1191,4 +1198,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

@@ -55,9 +55,16 @@
   }
 
   // 直播 #timestamp（當地時間，只到分鐘；例「下午10:23」「10:23 PM」「22:23」）→ ms。
-  // 擷取時間夾在該分鐘範圍內（SPEC F-02 v29）；比擷取時間晚超過 12 小時視為前一天；解析失敗回傳 null。
+  // 擷取時間夾在該分鐘範圍內（SPEC F-02 v29）；解析失敗回傳 null。
+  // v51（T6.2，審查十一 32.7）**結果不得在未來**：實機待機室進入頁面時載入的歷史訊息有前幾天的（YouTube 只顯示時間、不顯示日期），
+  //   v50 以「晚超過 12 小時才當前一天」判斷 → 昨天的「下午11:13」在今天 20:22 擷取被當成今天 23:13（未來），還被分到「直播中」。
+  //   規則：ceil（這則最晚可能的時間；預設＝擷取時間＋CLOCK_FUTURE_TOL_MS）→ 取「同一個顯示時間」不晚於 ceil 的最近一次（往前推整天）。
+  //   沒有上午／下午標記且 ≤ 12 點（可能是沒標記的 12 小時制）→ h 與 h＋12 兩種解讀取不晚於 ceil 的較晚者。
+  //   回溯擷取（backlog）由 backfill 依 DOM 順序從最新一則往回傳 ceil（下一則的時間），重建跨好幾天的日期。
   const CLOCK_RE = /(上午|下午|午前|午後|AM|PM|a\.m\.|p\.m\.)?\s*(\d{1,2})[:：](\d{2})(?:[:：](\d{2}))?\s*(上午|下午|AM|PM|a\.m\.|p\.m\.)?/i;
-  function parseClock(text, now) {
+  const DAY_MS = 24 * 3600 * 1000;
+  // 回傳 { ts, futureShift（同一天的解讀在未來、往前推了）, daysBack（相對擷取當天往前推的天數）, marker, sec } 或 null
+  function clockInfo(text, now, ceil) {
     const m = CLOCK_RE.exec(String(text || ''));
     if (!m) return null;
     let h = Number(m[2]);
@@ -70,12 +77,29 @@
     if ((pm || am) && h > 12) return null;
     if (pm && h < 12) h += 12;
     if (am && h === 12) h = 0;
-    const d = new Date(now);
-    d.setHours(h, min, sec == null ? 0 : sec, 0);
-    let base = d.getTime();
-    if (base - now > 12 * 3600 * 1000) base -= 24 * 3600 * 1000;
-    const span = sec == null ? 59999 : 999;
-    return Math.min(Math.max(now, base), base + span);
+    const lim = typeof ceil === 'number' && Number.isFinite(ceil) ? ceil : now + C.CLOCK_FUTURE_TOL_MS;
+    const at = (hh) => { const d = new Date(now); d.setHours(hh, min, sec == null ? 0 : sec, 0); return d.getTime(); };
+    // 同一個顯示時間不晚於 lim 的最近一次
+    const latest = (base) => base + Math.floor((lim - base) / DAY_MS) * DAY_MS;
+    const today = at(h);
+    let ts = latest(today);
+    if (!ap && h <= 12) { const alt = latest(at(h === 12 ? 0 : h + 12)); if (alt > ts) ts = alt; }
+    const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+    return { ts, futureShift: today > now + C.CLOCK_FUTURE_TOL_MS && ts < today, daysBack: Math.max(0, Math.ceil((startOfDay.getTime() - ts) / DAY_MS)),
+      marker: !!ap, sec: sec != null };
+  }
+  const lastClock = { info: null, text: '' }; // parseMessage 最後一次的時間解析（擷取引擎統計 clockFuture、P7 ts-format 用；同步讀取）
+  function parseClock(text, now, ceil) {
+    const c = clockInfo(text, now, ceil);
+    if (!c) return null;
+    const span = c.sec ? 999 : 59999;
+    // 夾在該分鐘範圍內、且不晚於擷取時間（未來 CLOCK_FUTURE_TOL_MS 內的時鐘誤差 → 擷取時間）
+    return c.ts > now ? now : Math.min(now, c.ts + span);
+  }
+  // P7 ts-format：#timestamp 文字的「形狀」（數字 → d、標記 → A／P，其他字元只保留冒號、空白、負號），不記原文
+  function clockShape(text) {
+    const s = String(text || '').trim().slice(0, 24);
+    return s.replace(/上午|午前|AM|a\.m\./gi, 'A').replace(/下午|午後|PM|p\.m\./gi, 'P').replace(/\d/g, 'd').replace(/[^dAP:：\s-]/g, '?').replace(/：/g, ':');
   }
 
   // 顯示時間所在分鐘的開頭（ms）；解析失敗回傳 null（與 parseClock 同一套規則，只是不夾到擷取時間）
@@ -286,14 +310,18 @@
       // 其餘一律落在分鐘的開頭或最後一刻 → 同一分鐘的訊息時間相同、offset 的秒數全部一樣。
       // 即時到達（observer 擷取）的訊息改用到達時間，只要與顯示的分鐘相差 ≤ 90 秒（時鐘誤差、傳遞延遲）；
       // 進入頁面時的歷史訊息（回溯、補掃、修剪前補擷取）維持用顯示時間。tsSource 記錄來源
-      const ts = parseClock(tsText, ctx.now);
-      const minute = ts == null ? null : clockMinute(tsText, ctx.now);
+      // v51（32.7）ctx.clockCeil：回溯擷取時由 backfill 依 DOM 順序給「下一則（較新）的時間」，重建跨日日期
+      const ci = clockInfo(tsText, ctx.now, ctx.clockCeil);
+      lastClock.info = ci; lastClock.text = tsText;
+      const ts = ci ? parseClock(tsText, ctx.now, ctx.clockCeil) : null;
+      const minute = ts == null || ctx.clockCeil != null ? null : clockMinute(tsText, ctx.now);
       if (ctx.arrival && (ts == null || (minute != null && Math.abs(ctx.now - (minute + 30000)) <= 90000))) {
         m.timestampAbs = ctx.now;
         m.tsSource = 'arrival';
       } else {
         m.timestampAbs = ts == null ? ctx.now : ts;
-        m.tsSource = ts == null ? 'capture' : 'clock';
+        // 重建後比擷取時間早超過 24 小時：日期是依順序推出來的（中間可能隔了好幾天）→ clock-ambiguous（面板「≈」加註日期可能不準）
+        m.tsSource = ts == null ? 'capture' : (ctx.now - ts >= DAY_MS ? 'clock-ambiguous' : 'clock');
       }
       // 開播時間未定：offset 先存 null，開播後由 background 回填（F-14）。
       // T3.6：預定時間未到，或預定時間已過但尚未確認開播（startPending）→ pre（livePhase）
@@ -383,7 +411,9 @@
         // v48（T5.7，28.3）時間來源、背景擷取
         itemsSwaps: 0, itemsStaleHeals: 0, ts_arrival: 0, ts_clock: 0, ts_capture: 0, hiddenCaptured: 0, hiddenBatches: 0, hiddenBulk: 0, hiddenBulkMsgs: 0, hiddenBatchMax: 0,
         // v50（T6.1，30.5）自己送出的訊息：看到暫時 id、替換配對（新節點／原地改 id／事後配對）、頁面移除已存節點（非修剪、非開頭）
-        ownTempSeen: 0, ownReplaced: 0, ownInPlace: 0, ownLate: 0, pageRemoved: 0 },
+        ownTempSeen: 0, ownReplaced: 0, ownInPlace: 0, ownLate: 0, pageRemoved: 0,
+        // v51（T6.2，32.7）時間解析在未來而往前推、重建後早於擷取超過 24 小時
+        clockFuture: 0, clockAmbiguous: 0 },
       seenIds: new Set(),
       // v50（30.5）最近 90 秒擷取的文字訊息（配對暫時節點 → 正式節點）：{ id, key, el, list, at, m, removedAt, head, trimmed, matched, reborn }
       recent: [], trimmedEls: new WeakSet(),
@@ -565,7 +595,38 @@
     // ------------------------------------------------ 擷取
     // how：observer／backfill／sweep（定時補掃）／trim（修剪前補擷取）／pending（等待期超過上限）
     // force：等待場次資訊期間（pending）也解析並排入佇列（收錄開始後才送出）
-    function captureNode(el, how, force, batch) {
+    // v51（T6.2，審查十一 32.7）回溯擷取（backlog）的日期重建：#items 依時間排列，從最新一則往回，
+    // 每一則的時間不得晚於下一則（較新）→ 各節點的 ceil（parseClock 取不晚於 ceil 的那一天）。重播不需要（影片時間）
+    function backlogCeils() {
+      const map = new Map();
+      if (!st.items || source === 'replay') return map;
+      const t = now();
+      let ceil = t + C.CLOCK_FUTURE_TOL_MS;
+      const kids = st.items.children;
+      for (let i = kids.length - 1; i >= 0; i--) {
+        const el = kids[i];
+        const tsText = clean((el.querySelector(S.chat.timestamp) || {}).textContent);
+        const ci = tsText ? clockInfo(tsText, t, ceil) : null;
+        if (!ci) continue;
+        map.set(el, ceil);
+        ceil = ci.ts + (ci.sec ? 999 : 59999);
+      }
+      return map;
+    }
+    // P7 ts-format：時間解析在未來（往前推）、重建後超過 24 小時、或解析失敗時，記 #timestamp 的形狀（不記原文）、
+    // Date.now() 與時區名稱。每種原因每場最多 P7_MAX_PER_TAG 次
+    function probeTs(reason, text) {
+      if (!opts.onDiag) return;
+      const k = 'ts:' + reason;
+      const n = st.p7.get(k) || 0;
+      if (n >= C.DIAG.P7_MAX_PER_TAG) return;
+      st.p7.set(k, n + 1);
+      let tz = '';
+      try { tz = String(Intl.DateTimeFormat().resolvedOptions().timeZone || '').slice(0, 40); } catch (_) { /* ignore */ }
+      diag('P7', 'ts-format', { reason, shape: clockShape(text), len: String(text || '').length, now: Date.now(), tzOffsetMin: new Date().getTimezoneOffset(), tz });
+    }
+
+    function captureNode(el, how, force, batch, ceil) {
       if (el.nodeType !== 1 || el.dataset[SAVED]) return;
       if (!st.items || el.parentElement !== st.items) return; // T3.4 防呆：只擷取 #items 的直接子節點
       if (st.mode !== 'capturing' && !(force && st.mode === 'pending')) return;
@@ -575,9 +636,19 @@
       const hidden = !!doc.hidden;
       const bulk = hidden && how === 'observer' && (batch || 0) > C.ARRIVAL_HIDDEN_BATCH_MAX;
       let m = null;
-      try { m = parseMessage(el, Object.assign(ctxNow(), { arrival: how === 'observer' && !bulk })); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
+      lastClock.info = null; lastClock.text = '';
+      const cx = Object.assign(ctxNow(), { arrival: how === 'observer' && !bulk });
+      if (typeof ceil === 'number') cx.clockCeil = ceil;
+      try { m = parseMessage(el, cx); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
       if (!m) { el.dataset[SAVED] = 'skip'; return; }
       el.dataset[SAVED] = '1';
+      // v51（32.7）P1 clockFuture：同一天的解讀在未來、往前推了的筆數；clockAmbiguous：重建後早於擷取超過 24 小時
+      if (source !== 'replay' && m.tsSource !== 'arrival') {
+        const ci = lastClock.info;
+        if (ci && ci.futureShift) { st.stats.clockFuture++; probeTs('future', lastClock.text); }
+        if (m.tsSource === 'clock-ambiguous') { st.stats.clockAmbiguous++; probeTs('ambiguous', lastClock.text); }
+        if (!ci && lastClock.text) probeTs('unparsed', lastClock.text);
+      }
       // v48（28.3）P1：時間來源分布、背景擷取筆數
       if (m.tsSource) st.stats['ts_' + m.tsSource] = (st.stats['ts_' + m.tsSource] || 0) + 1;
       if (hidden) st.stats.hiddenCaptured++;
@@ -768,11 +839,13 @@
       const pending = st.mode === 'pending';
       const limit = pending ? PENDING_MAX : C.DOM_MAX_MESSAGES;
       let over = box.children.length - limit;
+      let ceils = null; // v51（32.7）需要補擷取時才計算（依順序重建日期）
       while (over > 0) {
         const el = box.firstElementChild;
         if (!el) break;
         if (!el.dataset[SAVED] && !freeAll) {
-          captureNode(el, pending ? 'pending' : 'trim', pending);
+          if (!ceils) ceils = backlogCeils();
+          captureNode(el, pending ? 'pending' : 'trim', pending, 0, ceils.get(el));
           if (!el.dataset[SAVED]) break; // 仍無法擷取（理論上不會發生）：寧可不修剪也不遺失
         }
         if (st.mode === 'capturing') checkDeleted(el);
@@ -855,7 +928,8 @@
       if (st.items !== doc.querySelector(S.chat.items) || (st.items && !st.items.isConnected)) attach();
       if (!st.items) return;
       if ((how || 'backfill') === 'backfill') st.stats.backfillRuns++;
-      Array.from(st.items.children).forEach((el) => captureNode(el, how || 'backfill'));
+      const ceils = backlogCeils(); // v51（32.7）依順序重建日期
+      Array.from(st.items.children).forEach((el) => captureNode(el, how || 'backfill', false, 0, ceils.get(el)));
       capturePinned();
       trim();
       if ((how || 'backfill') === 'backfill') flush(); // 等待期排入佇列的訊息（pending）在收錄開始後立即送出
@@ -1015,7 +1089,10 @@
         scTotal: s.scTotal, scTextColors: s.scTextColors, // v47（26.4）SC 中取得 YouTube 文字色的筆數
         // v48（T5.7，28.3、28.4）時間來源分布（arrival＝到達時間、clock＝顯示的分鐘、capture＝讀不到時間）、
         // 背景（document.hidden）擷取筆數、背景回呼數／一批超過門檻的回呼數與訊息數／最大批次、禮物圖片延遲補送成功／放棄
-        tsSource: { arrival: s.ts_arrival, clock: s.ts_clock, capture: s.ts_capture },
+        tsSource: { arrival: s.ts_arrival, clock: s.ts_clock, capture: s.ts_capture, ambiguous: s['ts_clock-ambiguous'] || 0 },
+        // v51（T6.2，32.7）clockFuture＝顯示時間以「今天」解讀會在未來、往前推了的筆數（回溯擷取的前幾天訊息）；
+        // clockAmbiguous＝依順序重建後早於擷取超過 24 小時（日期可能不準）
+        clockFuture: s.clockFuture, clockAmbiguous: s.clockAmbiguous,
         hidden: { captured: s.hiddenCaptured, batches: s.hiddenBatches, bulk: s.hiddenBulk, bulkMsgs: s.hiddenBulkMsgs, batchMax: s.hiddenBatchMax },
         giftLate: s.giftLate, giftMissing: s.giftMissing,
         // v48（28.1）itemsSwaps：YouTube 換掉 #items 的次數（重新掛上並回溯擷取）；itemsStaleHeals：統計當下發現沒掛在目前列表、立即重新掛上的次數
@@ -1119,5 +1196,5 @@
     return api;
   }
 
-  root.YTCAS_CAPTURE = { createEngine, parseMessage, parseRaid, parseClock, parseOffset, runsOf, hash, structureOf, observers: () => liveObservers };
+  root.YTCAS_CAPTURE = { createEngine, parseMessage, parseRaid, parseClock, clockInfo, clockShape, parseOffset, runsOf, hash, structureOf, observers: () => liveObservers };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

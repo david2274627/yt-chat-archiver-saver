@@ -931,12 +931,19 @@
       mk({ id: 'ck', videoId: VC, tsSource: 'clock', timestampAbs: now - 120e3, videoOffsetSec: 3480 }),
       mk({ id: 'ar', videoId: VC, tsSource: 'arrival', timestampAbs: now - 60e3, videoOffsetSec: 3540 }),
       mk({ id: 'rp', videoId: VC, tsSource: 'clock', offsetSource: 'replay', sources: ['live', 'replay'], timestampAbs: now - 30e3, videoOffsetSec: 3570 }),
+      // v51（32.7）依順序推出日期的前幾天訊息
+      mk({ id: 'amb', videoId: VC, tsSource: 'clock-ambiguous', phase: 'pre', timestampAbs: now - 3600e3 - 2 * 86400e3, videoOffsetSec: -172800 }),
     ]);
     await DB.close();
     for (const embed of [false, true]) {
       const c = V.mount(host, { embed, videoId: VC });
       await c.ready; await frame(); await frame();
       const tc = (id) => c.els.list.querySelector('[data-id="' + id + '"] .tc');
+      if (!embed) {
+        c.els.list.scrollTop = 0; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
+        assert(tc('amb') && tc('amb').querySelector('.approx') && /日期可能不準/.test(tc('amb').title), 'clock-ambiguous：「≈」＋日期可能不準 ' + (tc('amb') && tc('amb').title));
+        c.els.list.scrollTop = c.els.list.scrollHeight; c.els.list.dispatchEvent(new Event('scroll')); await frame(); await frame();
+      }
       const ap = tc('ck').querySelector('.approx');
       assert(ap && ap.textContent === '≈' && /只精確到分鐘（YouTube 只顯示到分鐘）/.test(tc('ck').title), (embed ? '面板' : '後台') + '：clock 有「≈」 ' + tc('ck').title);
       assert(getComputedStyle(ap).color !== getComputedStyle(tc('ck')).color, '淡色（與時間碼顏色不同）');

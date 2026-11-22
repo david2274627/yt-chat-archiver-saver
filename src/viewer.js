@@ -635,10 +635,11 @@
     // 時間碼前加淡色「≈」，title 說明。面板與後台一致；VOD 排序時顯示的是影片時間、重播來源的 offset 是精確值 → 不加
     function tcNode(m) {
       const n = tcNode0(m);
-      if (m.tsSource === 'clock' && m.offsetSource !== 'replay' && !vodOrder()) {
+      // v51（T6.2，32.7）clock-ambiguous：進入頁面時載入的前幾天訊息，日期是依順序推出來的
+      if ((m.tsSource === 'clock' || m.tsSource === 'clock-ambiguous') && m.offsetSource !== 'replay' && !vodOrder()) {
         const ap = el('span', 'approx', '≈'); ap.setAttribute('aria-hidden', 'true');
         n.prepend(ap);
-        const why = '只精確到分鐘（YouTube 只顯示到分鐘）';
+        const why = '只精確到分鐘（YouTube 只顯示到分鐘）' + (m.tsSource === 'clock-ambiguous' ? '；日期可能不準（YouTube 不顯示日期，依訊息順序推算）' : '');
         n.title = n.title ? n.title + '；' + why : why;
       }
       return n;

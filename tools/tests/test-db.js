@@ -1600,6 +1600,42 @@
     assert(!JSON.stringify(pre).includes('舊資料') && !JSON.stringify(pre).includes('@me'), '預覽不含內容與作者');
   });
 
+  // ---------------------------------------------------------------- v51（T6.2，審查十一 32.7）未來時間
+  test('T6.2 fixFutureTimes（32.7）：時間晚於寫入時間的直播訊息往前推整天、phase／offset 依場次重算、標 clock-ambiguous；預覽只回傳筆數與場次（4 碼）；到達時間與重播不動；寫入時保底', async () => {
+    await resetAll();
+    const w = Date.now() - 3600e3; // 一小時前寫入
+    const DAY = 86400e3;
+    const start = w - 600e3; // 已開播 10 分鐘
+    const base = { type: 'text', authorHandle: '@x', runs: [{ text: '舊' }] };
+    // 以匯入（preserve）寫入：不經過寫入時的保底 → 模擬 v50 存下的資料
+    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, stream: { startedAt: start, startedAtSource: 'meta-actual' }, messages: [
+      Object.assign({ id: 'fut1', timestampAbs: w + 3 * 3600e3, tsSource: 'clock', phase: 'live', videoOffsetSec: 11400, firstSeenAt: w, sources: ['live'] }, base),
+      Object.assign({ id: 'fut2', timestampAbs: w + 4 * 60e3, tsSource: 'clock', phase: 'live', videoOffsetSec: 840, firstSeenAt: w, sources: ['live'] }, base),
+      Object.assign({ id: 'ok1', timestampAbs: w - 60e3, tsSource: 'clock', phase: 'live', videoOffsetSec: 540, firstSeenAt: w, sources: ['live'] }, base),
+      Object.assign({ id: 'arr1', timestampAbs: w + 30e3, tsSource: 'arrival', phase: 'live', videoOffsetSec: 630, firstSeenAt: w, sources: ['live'] }, base),
+    ] });
+    // preserve 時 stream 也要有開播時間
+    await DB.recomputeStream(V, { startedAt: start, dryRun: false });
+    const pre = await BG.fixFutureTimes();
+    eq([pre.dryRun, pre.messages, pre.phaseChanged, pre.streams], [true, 2, 2, [{ v: V.slice(0, 4), n: 2 }]]);
+    eq((await DB.queryMessages(V)).find((m) => m.id === 'fut1').timestampAbs, w + 3 * 3600e3, '預覽不寫入');
+    const ex = await BG.fixFutureTimes({ dryRun: false });
+    eq(ex.fixed, 2);
+    const by = new Map((await DB.queryMessages(V)).map((m) => [m.id, m]));
+    eq([by.get('fut1').timestampAbs, by.get('fut1').phase, by.get('fut1').tsSource], [w + 3 * 3600e3 - DAY, 'pre', 'clock-ambiguous'], '往前推一天 → 開播前');
+    eq(by.get('fut1').videoOffsetSec, Math.round((w + 3 * 3600e3 - DAY - start) / 100) / 10, 'offset 重算（負值）');
+    eq(by.get('fut2').timestampAbs, w + 4 * 60e3 - DAY);
+    eq([by.get('ok1').timestampAbs, by.get('arr1').timestampAbs], [w - 60e3, w + 30e3], '不在未來的、到達時間的不動');
+    assert((await DB.getStream(V)).lastMessageAt <= w + 60e3, 'lastMessageAt 重算');
+    eq((await BG.fixFutureTimes()).messages, 0, '重跑為 0');
+    // 寫入時保底（舊版擷取端）：未來 3 小時的顯示時間 → 往前推一天
+    const r = await DB.saveMessages({ videoId: V, source: 'live', messages: [Object.assign({ id: 'fut3', timestampAbs: Date.now() + 3 * 3600e3, tsSource: 'clock', phase: 'live', videoOffsetSec: 1 }, base)] });
+    eq(r.futureFixed, 1);
+    const f3 = (await DB.queryMessages(V)).find((m) => m.id === 'fut3');
+    assert(f3.timestampAbs <= Date.now() && f3.tsSource === 'clock-ambiguous', '寫入時往前推');
+    assert(!JSON.stringify(pre).includes('舊') && !JSON.stringify(pre).includes('@x'), '預覽不含內容');
+  });
+
   // ---------------------------------------------------------------- 舊資料庫測試資料
   function createLegacyDb() {
     return new Promise((resolve, reject) => {

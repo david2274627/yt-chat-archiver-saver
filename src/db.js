@@ -492,7 +492,12 @@
         let bytes = 0, ownRemoved = 0;
         for (const raw of p.messages || []) {
           if (!raw || typeof raw !== 'object') continue;
-          const inc = normalizeIncoming(raw, ctx);
+          let inc = normalizeIncoming(raw, ctx);
+          // v51（T6.2，32.7）保底：還沒重新注入的舊版擷取端可能送來未來的時間 → 寫入前往前推整天（新版擷取端不會發生）
+          if (!ctx.preserve && ctx.source !== 'replay') {
+            const ff = futureFix(inc, stream, now, true);
+            if (ff) { inc = ff; stats.futureFixed = (stats.futureFixed || 0) + 1; }
+          }
           // T5.1（審查十一第 10 節 2）：沒有頭像時，以同場次同作者已知的頭像補上（只在同一場次內）
           const ak = C.avatarAuthorKey(inc);
           if (ak) {
@@ -851,6 +856,69 @@
       await done(t);
       out.updated = await recomputePhasesUnlocked(videoId);
     });
+    return out;
+  }
+
+  // v51（T6.2，審查十一 32.7）直播／待機室訊息的時間晚於寫入時間（＋1 分鐘）＝顯示時間被當成「今天」而落在未來
+  // （進入頁面時載入的前幾天訊息）。往前推整天到不晚於寫入時間，phase／offset 依場次重算。
+  // 寫入時只有顯示時間的訊息（不是到達時間）才會發生；舊資料沒有保存原始文字與 DOM 順序 → 以「不晚於寫入時間的最近一天」推算，
+  // 標 tsSource 'clock-ambiguous'（面板「≈」說明日期可能不準）
+  // clockOnly：寫入時的保底只處理擷取端明確標為顯示時間（clock）的訊息；維護函式另含沒有 tsSource 的舊資料（v42 以前）
+  function futureFix(rec, s, writeAt, clockOnly) {
+    if (!rec || rec.offsetSource === 'replay' || rec.tsSource === 'arrival' || rec.tsSource === 'capture' || C.isNotice(rec)) return null;
+    if (clockOnly && rec.tsSource !== 'clock' && rec.tsSource !== 'clock-ambiguous') return null;
+    const ts = num(rec.timestampAbs), w = num(writeAt);
+    if (ts === null || w === null || ts <= w + C.CLOCK_FUTURE_TOL_MS) return null;
+    const DAY = 24 * 3600 * 1000;
+    const v = clone(rec);
+    v.timestampAbs = ts - Math.ceil((ts - (w + C.CLOCK_FUTURE_TOL_MS)) / DAY) * DAY;
+    v.tsSource = 'clock-ambiguous';
+    const st0 = s ? C.effectiveStart(s) : null;
+    if (st0 != null) {
+      v.phase = v.timestampAbs < st0 ? 'pre' : (s.endedAt != null && v.timestampAbs > s.endedAt ? 'post' : 'live');
+      if ((v.sources || []).includes('live') && v.offsetSource !== 'replay') {
+        v.videoOffsetSec = Math.round((v.timestampAbs - st0) / 100) / 10;
+        v.offsets = Object.assign({}, v.offsets, { v1: v.videoOffsetSec });
+        v.offsetSource = 'estimated';
+      }
+    } else if (s && (s.startPending || (typeof s.scheduledStartAt === 'number' && v.timestampAbs < s.scheduledStartAt) || C.isFutureScheduled(s, w))) {
+      v.phase = 'pre';
+    }
+    v.fp = makeFp(v);
+    return v;
+  }
+  async function fixFutureTimes(opts) {
+    const dryRun = !opts || opts.dryRun !== false;
+    const db = await open();
+    const [all, streams] = await Promise.all([req(db.transaction('messages').objectStore('messages').getAll()), req(db.transaction('streams').objectStore('streams').getAll())]);
+    const sMap = new Map(streams.map((s) => [s.videoId, s]));
+    const byVid = new Map();
+    let maxAhead = 0, phaseChanged = 0;
+    for (const m of all) {
+      const r = futureFix(m, sMap.get(m.videoId), m.firstSeenAt);
+      if (!r) continue;
+      maxAhead = Math.max(maxAhead, m.timestampAbs - m.firstSeenAt);
+      if (r.phase !== m.phase) phaseChanged++;
+      if (!byVid.has(m.videoId)) byVid.set(m.videoId, []);
+      byVid.get(m.videoId).push(m.id);
+    }
+    const out = { dryRun, messages: Array.from(byVid.values()).reduce((a, x) => a + x.length, 0), phaseChanged,
+      maxAheadMin: Math.round(maxAhead / 60000), streams: Array.from(byVid, ([v, ids]) => ({ v: String(v).slice(0, 4), n: ids.length })), fixed: 0 };
+    if (dryRun) return out;
+    for (const [videoId, ids] of byVid) {
+      await withLock(videoId, async () => {
+        const t = db.transaction(['messages', 'streams'], 'readwrite');
+        const ms = t.objectStore('messages');
+        const s = await req(t.objectStore('streams').get(videoId));
+        for (const id of ids) {
+          const cur = await req(ms.get(id));
+          const r = futureFix(cur, s, cur && cur.firstSeenAt);
+          if (r) { ms.put(r); out.fixed++; }
+        }
+        await done(t);
+      });
+      await recountStream(videoId); // lastMessageAt 也可能在未來
+    }
     return out;
   }
 
@@ -1954,7 +2022,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeAllPhases, systemTagStats, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,

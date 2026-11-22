@@ -134,6 +134,54 @@
     eq(CAP.parseClock('下午13:00', base), null, '12 小時制超過 12');
   });
 
+  test('T6.2（32.7）parseClock 結果不得在未來：20:22 擷取「下午8:26」→ 昨天 20:26；「下午11:13」→ 昨天 23:13；沒有上午／下午的「11:13」→ 今天 11:13；23:59 擷取「上午12:00」→ 擷取時間（不在未來）；1 分鐘內的時鐘誤差 → 擷取時間', () => {
+    const now = new Date(2026, 10, 22, 20, 22, 32).getTime();
+    const D = (d, h, m, s, ms) => new Date(2026, 10, d, h, m, s == null ? 59 : s, ms == null ? 999 : ms).getTime();
+    eq(CAP.parseClock('下午8:26', now), D(21, 20, 26), '下午8:26 → 昨天（v50 會是今天 20:26，未來）');
+    eq(CAP.parseClock('下午11:13', now), D(21, 23, 13), '下午11:13 → 昨天 23:13（v50 會是今天 23:13）');
+    eq(CAP.parseClock('11:13 PM', now), D(21, 23, 13));
+    eq(CAP.parseClock('23:13', now), D(21, 23, 13), '24 小時制');
+    eq(CAP.parseClock('11:13', now), D(22, 11, 13), '沒有上午／下午標記 → 今天 11:13');
+    eq(CAP.parseClock('下午8:17', now), D(22, 20, 17), '今天稍早');
+    const late = new Date(2026, 10, 22, 23, 59, 30).getTime();
+    eq(CAP.parseClock('上午12:00', late), late, '跨午夜：伺服器時間稍快 → 擷取時間（不在未來）');
+    eq(CAP.parseClock('下午8:23', now), now, '下一分鐘（時鐘誤差 1 分鐘內）→ 擷取時間');
+    for (const t of ['下午8:26', '下午11:13', '23:13', '上午12:00', '下午8:23']) assert(CAP.parseClock(t, now) <= now, '不在未來：' + t);
+    const ci = CAP.clockInfo('下午11:13', now);
+    eq([ci.futureShift, ci.daysBack, ci.marker], [true, 1, true]);
+    eq(CAP.clockInfo('下午8:17', now).futureShift, false);
+    // 形狀：數字 → d、上午／下午 → A／P，其他字元 → ?
+    eq([CAP.clockShape('下午11:13'), CAP.clockShape('11:13 PM'), CAP.clockShape('-0:05'), CAP.clockShape('週三 9:00')], ['Pdd:dd', 'dd:dd P', '-d:dd', '?? d:dd']);
+  });
+
+  test('T6.2（32.7）回溯擷取依 DOM 順序重建跨日日期：待機室 backlog 有前兩天的訊息 → 不在未來、依序不倒退；早於擷取超過 24 小時標 clock-ambiguous；P1 clockFuture、P7 ts-format（只有形狀、時區）', async () => {
+    const { items } = buildChat();
+    const now = new Date(2026, 10, 22, 20, 22, 32).getTime();
+    // 由舊到新：前天 21:00、前天 23:30、昨天 23:13、昨天 23:15、今天 20:17、今天 20:21
+    const texts = ['下午9:00', '下午11:30', '下午11:13', '下午11:15', '下午8:17', '下午8:21'];
+    texts.forEach((t, i) => items.append(textMsg({ id: 'BL' + i, ts: t, author: '@bl' + i })));
+    const send = mockSend();
+    const recs = [];
+    const e = engine({ send, now: () => now, onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidBklg', startDate: now + 8 * 60e3, channelHandle: '@ch' }); // 待機室：8 分鐘後開播
+    await until(() => savedIds(send).includes('BL5'), 3000, '回溯');
+    const all = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    const got = texts.map((_, i) => all.find((x) => x.id === 'BL' + i));
+    const D = (d, h, m) => new Date(2026, 10, d, h, m, 59, 999).getTime();
+    eq(got.map((m) => m.timestampAbs), [D(20, 21, 0), D(20, 23, 30), D(21, 23, 13), D(21, 23, 15), D(22, 20, 17), D(22, 20, 21)], '依順序：前天 → 昨天 → 今天');
+    assert(got.every((m) => m.timestampAbs <= now), '都不在未來');
+    for (let i = 1; i < got.length; i++) assert(got[i].timestampAbs >= got[i - 1].timestampAbs, '依序不倒退 ' + i);
+    eq(got.map((m) => m.tsSource), ['clock-ambiguous', 'clock-ambiguous', 'clock', 'clock', 'clock', 'clock'], '早於擷取超過 24 小時 → clock-ambiguous');
+    eq(got.map((m) => m.phase), ['pre', 'pre', 'pre', 'pre', 'pre', 'pre'], '都在待機室段（v50 的 23:13 會被分到直播中）');
+    e.stop();
+    const p1 = recs.filter((r) => r.p === 'P1').pop();
+    assert(p1.d.clockFuture >= 3 && p1.d.clockAmbiguous === 2 && p1.d.tsSource.ambiguous === 2, 'P1 ' + JSON.stringify([p1.d.clockFuture, p1.d.clockAmbiguous, p1.d.tsSource]));
+    const tf = recs.filter((r) => r.k === 'ts-format').map((r) => r.d);
+    assert(tf.length >= 1 && tf.every((d) => /^[dAP:\s?-]*$/.test(d.shape) && typeof d.now === 'number' && typeof d.tzOffsetMin === 'number'), 'P7 ts-format ' + JSON.stringify(tf[0]));
+    assert(!JSON.stringify(tf).includes('下午'), '不記原文');
+  });
+
   test('parseOffset：m:ss、h:mm:ss、負值、無效', () => {
     eq(CAP.parseOffset('1:23'), 83);
     eq(CAP.parseOffset('1:02:03'), 3723);
