@@ -49,7 +49,7 @@
 - **v47 調整**（`docs/review-2026-11-17.md` 第 25、26 節，T5.6）：**預定開播時間在未來＝待機室**（不論 `startedAt`）、開播訊號來源完整清單、聊天事件不是開播訊號、錯誤 `startedAt` 降級與 `fixPhases` 兩段式清除（F-14）；直播錨點的有效條件（徽章「最新」且播放中穩定 3 秒、期間沒有 seek；取樣後 5 秒內被 seek 到非最新就作廢；網址帶 `t=` 時等點「直播」或穩定 10 秒）（F-08）；頭像點擊以新分頁開作者頻道（F-05）；SC 文字色沿用 YouTube 給的文字色變數、取不到才用對比度規則（F-02、10.3）；10.1 原則 7 註明「回到播放位置」浮動按鈕的例外。
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
-- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）。
+- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）。
 
 ---
 
@@ -704,7 +704,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | 聊天室摺疊／退讓（v24；v26 補充） | `collapsed`：`iframe#chatframe` 高度 < 閾值（PoC 暫定 200px，T6 定案，寫入 `constants.js`），或 `bottomZoneHeight` ≥ iframe 高度，或**面板剩餘高度 < 80px**（v26）。**劇院模式（`ytd-watch-flexy[theater]`）一律符合**：聊天室固定為 402×152 小框，與視窗大小無關 | **移除 `clip-path`、隱藏優化面板**，完全不干擾原生聊天室；條件解除後自動回到對應狀態。開關按鈕顯示低調的停用狀態（10.4）。**訊息擷取（F-02）、DOM 修剪（F-01）、F-12 不受影響，持續運作** |
 
    - **面板最小高度**（v26）：面板剩餘高度（iframe 高度 − `bottomZoneHeight`）≥ 160px 為正常；介於 80～160px（例如矮視窗＋投票卡）時**仍完整露出原生互動區**，面板縮到剩餘空間（頂部工具區可收合以保留訊息列表）；< 80px 視同摺疊退讓。
-| 彈窗展開 | `popupOpen`（chat frame 內） | `inset(${max(0, popupTop - 8)}px 0 0 0)`（只露出彈窗以下，彈窗自然向上長出覆蓋面板，不露出上方空白） |
+| 彈窗展開 | `popupOpen`（chat frame 內） | `inset(${max(0, popupTop - 8)}px 0 0 0)`（只露出彈窗以下，彈窗自然向上長出覆蓋面板，不露出上方空白）。**v50（30.1）**：頂端取 `min(popupTop, iframe 高度 − bottomZoneHeight) − 8`，也就是彈窗與底部互動區所有元素的最上方；輸入列必須露出 |
 | top frame 付款視窗（v23 定案） | `topPopupOpen`（top frame 偵測到頁面層付款視窗，6.3） | 頁面層付款視窗本身不受 clip-path 影響。付款流程中 chat frame 內的 `yt-live-chat-message-buy-flow-renderer` 仍為開啟，clip 本已維持「解除」；**頁面層視窗開啟期間 clip 維持解除（沿用前一個彈窗狀態），chat frame 與頁面層兩邊都關閉後才回到「收起」**，避免流程中途閃回 |
 | 無輸入區 | `!hasInput`（VOD 重播、未登入、聊天室關閉、僅會員可留言而非會員…） | `inset(100% 0 0 0)`，面板佔滿全高 |
 | 優化面板關閉 | 使用者關閉面板 | 移除 `clip-path` 與所有套件樣式，完全還原 |
@@ -809,6 +809,9 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - `purchase`（`CHAT_INPUT_STATE` 新欄位）：`$` 選單或購買流程可見，或 `#input-panel` 不見了而 `#panel-pages` 還在 → `$` 流程進行中，面板剩餘高度不足時**不退讓**（`remainTooSmall` 不判斷）。
   - 轉到頁面層付款視窗（`#buyFlowDivId`）時沿用前一個狀態（v49 已有）；chat frame 這時回報什麼（量不到、無輸入區、回到一般）都不會閃回全高。
   - F-20 P7 `zone-structure`：`$` 流程或彈窗開著（以及剛關上那一次）且結構改變時記一筆，每頁最多 `PANEL.ZONE_LOG_MAX` = 40 筆：`#panel-pages` 與其直接子元素、`#input-panel`、輸入列 `#top`、`#pickers` 的子元素、表符選單、購買流程、置頂列、投票卡的**標籤、靜態 id、可見與否、高度、頂端**，以及當時的量測結果；沒有文字。
+- **表符選單（30.1）**：實機選單出現在底部，輸入列（打字的那一列與表符按鈕）不見了，看不到選了什麼、也無法再按表符按鈕關閉。推測選單長在輸入列**下方**、輸入列被往上推，v49 的 `popup` 只取 `popupTop − 8`，輸入列落在裁切範圍外。
+  - 規則：`popup` 的裁切頂端＝`min(popupTop, iframe 高度 − bottomZoneHeight) − PANEL.POPUP_GAP_PX`。`bottomZoneHeight` 本來就取底部互動區所有白名單元素的最上方，所以等於「彈窗與底部互動區所有元素的最上方 − 8」。選單在輸入列上方或下方都完整露出輸入列。
+  - 上下關係待實機確認（dom-notes 2.5c）：P7 `zone-structure` 在表符選單開關時記錄選單、輸入列 `#top`、`#input-panel`、`#panel-pages` 的頂端與高度。
 
 ### 6.6 備案：方案 B（僅在方案 A 的 T1 PoC 失敗時啟動）
 - 原生 chat frame 完全隱藏（仍保留在 DOM 以持續擷取）。

@@ -30,8 +30,11 @@
     if (!inp) return { mode: 'unknown', clip: NONE, pad: 0 };
     if (Math.abs((inp.vh || 0) - h) > P.INPUT_STALE_PX) return { mode: 'stale', clip: NONE, pad: 0 };
     const bz = Math.max(0, Math.min(h, Math.round(inp.bottomZoneHeight || 0)));
+    // v50（T6.1，審查十一 30.1）彈窗展開：裁切頂端＝彈窗與底部互動區所有元素（chat frame 已取最上方＝h − bottomZoneHeight）的最上方 − 8。
+    // 實機：表符選單長在輸入列下方（輸入列被往上推），v49 只取彈窗頂端 → 輸入列被裁掉，看不到選了什麼、也無法關閉選單
     if (inp.popupOpen && typeof inp.popupTop === 'number') {
-      const top = Math.max(0, Math.min(h, Math.round(inp.popupTop) - P.POPUP_GAP_PX));
+      const zoneTop = bz > 0 ? h - bz : h;
+      const top = Math.max(0, Math.min(h, Math.min(Math.round(inp.popupTop), zoneTop) - P.POPUP_GAP_PX));
       return { mode: 'popup', clip: 'inset(' + top + 'px 0 0 0)', pad: bz };
     }
     if (!inp.hasInput || bz <= 0) return { mode: 'none', clip: NONE, pad: 0 };

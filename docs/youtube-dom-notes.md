@@ -176,6 +176,12 @@ yt-live-chat-renderer
   - P7 `zone-structure` 記錄每一步 `#panel-pages` 的直接子元素、`#input-panel`、`#pickers` 子元素、購買流程的標籤、可見與否、高度、頂端（沒有文字）。
   - P4 `panel-clip` 記錄裁切狀態。
 
+### 2.5c 表符選單與輸入列的上下關係（**待驗證**，T6.1，審查十一 30.1）
+- 實機現象（2026-11-22，30.1 圖 2）：表符選單展開時，面板下方只看得到選單的搜尋欄，**輸入列（打字的那一列與表符按鈕）不見了**。
+- 推測：`yt-emoji-picker-renderer` 在輸入列**下方**展開，輸入列被往上推；v49 以選單頂端 − 8 裁切，輸入列落在裁切範圍外。
+- v50 不依賴哪一種：裁切頂端取選單與底部互動區（`#panel-pages`／`#input-panel` 等）的最上方 − 8（SPEC 6.8）。
+- **確認方式**：開 F-20 P7 → 點表符按鈕 → 選一個表符 → 再點表符按鈕關閉 → 匯出。`zone-structure`（`reason: popup`）記錄 `emoji`、`input-row`（`#top`）、`input-panel`、`panel-pages` 的頂端與高度：`emoji.top` 大於 `input-row.top` 就是「選單在下方」。
+
 ### 2.6 Holodex+ 干擾
 - 使用者裝有 Holodex+（Console 有 `[Holodex+] live chat overrides injected`）。
 - `ytls-widget-overlay-manager` **不是**它注入的（停用後仍存在，2026-11-15 確認）。Holodex+ 對本套件的實際影響目前未發現，回歸測試仍需有／無各測一次。

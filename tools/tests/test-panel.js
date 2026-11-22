@@ -139,6 +139,18 @@
       P.remainTooSmall(Object.assign({}, base, { bottomZoneHeight: 530, popupOpen: true, popupTop: 10 }), 600, PP)], [true, false, false]);
   });
 
+  test('T6.1（30.1）表符選單：裁切頂端＝彈窗與底部互動區的最上方 − 8；選單在輸入列下方（輸入列被往上推）、上方兩種排列都完整露出輸入列', () => {
+    const PP = C.PANEL;
+    const s = (input) => P.clipState({ input, iframeH: 600, topPopupOpen: false, prev: null }, PP);
+    // 選單在輸入列上方：選單頂端 250、底部互動區（輸入列）頂端 538 → 250 − 8
+    eq(s({ vh: 600, hasInput: true, bottomZoneHeight: 62, popupOpen: true, popupTop: 250 }).clip, 'inset(242px 0 0 0)', '選單在上方');
+    // 選單在輸入列下方：輸入列被推到 200（底部互動區 400）、選單頂端 262 → 200 − 8，輸入列完整露出
+    const below = s({ vh: 600, hasInput: true, bottomZoneHeight: 400, popupOpen: true, popupTop: 262 });
+    eq([below.mode, below.clip, below.pad], ['popup', 'inset(192px 0 0 0)', 400], '選單在下方：輸入列不被裁掉');
+    // 量不到底部互動區時只看彈窗
+    eq(s({ vh: 600, hasInput: false, bottomZoneHeight: 0, popupOpen: true, popupTop: 300 }).clip, 'inset(292px 0 0 0)');
+  });
+
   test('T6.1（30.3）$ 流程：chat frame 回報 purchase（#input-panel 不見了也 hasInput）→ 收起狀態、不退回全高；剩餘高度不足也不退讓；轉到頁面層付款視窗時沿用、不閃回全高', () => {
     const PP = C.PANEL;
     const s = (input, o) => P.clipState(Object.assign({ input, iframeH: 600, topPopupOpen: false, prev: null }, o), PP);

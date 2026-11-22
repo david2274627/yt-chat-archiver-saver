@@ -156,6 +156,15 @@
     eq([m.hasInput, m.purchase, m.bottomZoneHeight], [false, false, 1], 'VOD 仍是沒有輸入區（面板全高）');
   });
 
+  test('T6.1（30.1）表符選單在輸入列下方（輸入列被往上推）：bottomZoneHeight 涵蓋被推上去的輸入列（top 端取 min(popupTop, 底部互動區頂端) − 8）', () => {
+    reset();
+    place(q('#panel-pages'), 200, 400); // #input-panel 在 #panel-pages 頂端（200）
+    placeAbs(q('yt-emoji-picker-renderer'), 262, 338);
+    const m = M();
+    eq([m.popupOpen, m.popupTop, m.bottomZoneHeight], [true, 262, 400]);
+    assert(Math.min(m.popupTop, m.vh - m.bottomZoneHeight) === 200, '最上方是輸入列（200）');
+  });
+
   test('T6.1（30.1、30.3）F-20 P7 zone-structure：$ 流程或彈窗開著時、結構改變才記一筆，關上時再記一筆；只有標籤、靜態 id、可見、高度、頂端（沒有文字）', async () => {
     reset();
     const logs = [];
