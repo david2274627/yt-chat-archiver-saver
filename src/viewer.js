@@ -1352,6 +1352,32 @@
       }
       return added;
     }
+    // v51（T6.2，審查十一 32.10 第 2 點）可見優先：畫面上還沒有頻道名稱的作者 handle 送給 background，排到解析佇列最前面。
+    // 每 3 秒看一次（分頁在背景時不送）；同一組 handle 30 秒內不重送
+    let visKey = '', visAt = 0;
+    function visibleUnresolved() {
+      const out = new Set();
+      for (const n of list.querySelectorAll('.vrow > [data-id]')) {
+        const i = S.byId.get(n.dataset.id);
+        const m = i != null && S.items[i] ? S.items[i].m : null;
+        const h = m && m.authorHandle;
+        if (h && !(S.channels.get(h) && S.channels.get(h).displayName)) out.add(h);
+        if (out.size >= 50) break;
+      }
+      return Array.from(out);
+    }
+    function sendVisibleNames() {
+      if (!list.isConnected) { clearInterval(S.visTimer); return; } // 已被換掉（重新掛載）
+      if (document.hidden || S.loading) return;
+      const hs = visibleUnresolved();
+      if (!hs.length) return;
+      const key = hs.slice().sort().join('\u0001');
+      if (key === visKey && Date.now() - visAt < 30000) return;
+      visKey = key; visAt = Date.now();
+      S.diag.namePrio = (S.diag.namePrio || 0) + 1;
+      try { const p = chrome.runtime.sendMessage({ type: RT.RESOLVE_CHANNELS, handles: hs }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* 測試頁、擴充功能重新載入 */ }
+    }
+    S.visTimer = setInterval(sendVisibleNames, 3000);
     function onRuntime(msg) {
       if (!msg || typeof msg !== 'object') return;
       if (msg.type === RT.NEW_MESSAGES && Array.isArray(msg.messages)) {
@@ -1521,7 +1547,7 @@
     })();
 
     return {
-      ready, load, state: S, _onRuntime: onRuntime, _shiftLatency: shiftLatency, _p9Sample: p9Sample, _p9Tick: p9Tick, _p10Sample: p10Sample, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
+      ready, load, state: S, _onRuntime: onRuntime, _sendVisibleNames: sendVisibleNames, _visibleUnresolved: visibleUnresolved, _shiftLatency: shiftLatency, _p9Sample: p9Sample, _p9Tick: p9Tick, _p10Sample: p10Sample, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
       els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText, syncHint },
     };
   }

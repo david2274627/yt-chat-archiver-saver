@@ -1606,6 +1606,50 @@
     assert(!JSON.stringify(pre).includes('舊資料') && !JSON.stringify(pre).includes('@me'), '預覽不含內容與作者');
   });
 
+  test('T6.2（32.10）頻道名稱：og:title 的全形括號、emoji、HTML 實體解碼（「亞瑟Arthur【精華剪輯】」）；channelInfo 只回傳狀態；可見優先排序；網路錯誤指數退避、不計入嘗試次數；channelStats 新欄位', async () => {
+    // 解碼：原樣的全形括號與 emoji、數字實體（十進位／十六進位）、具名實體
+    const p = (c) => BG.parseChannelHtml('<meta property="og:title" content="' + c + '">').displayName;
+    eq(p('亞瑟Arthur【精華剪輯】'), '亞瑟Arthur【精華剪輯】', '原樣');
+    eq(p('亞瑟Arthur&#12304;精華剪輯&#12305;'), '亞瑟Arthur【精華剪輯】', '十進位實體');
+    eq(p('亞瑟Arthur&#x3010;精華剪輯&#x3011; &#x1F3AE;'), '亞瑟Arthur【精華剪輯】 🎮', '十六進位實體、emoji');
+    eq(p('A &amp; B &quot;C&quot; &#39;D&#39; &lt;E&gt;'), 'A & B "C" \'D\' <E>', '具名實體');
+    eq(p('魚 🐟 &amp;amp;'), '魚 🐟 &amp;', '只解一層');
+    // 可見優先：prio 新的在前，其餘依加入順序
+    eq(BG._orderQueue({ '@a': { addedAt: 1 }, '@b': { addedAt: 2, prio: 100 }, '@c': { addedAt: 3, prio: 200 }, '@d': { addedAt: 0 } }).map((x) => x[0]), ['@c', '@b', '@d', '@a']);
+    eq([0, 1, 2, 3, 4, 10].map(BG._netBackoffMs), [0, 0, 30000, 60000, 120000, 600000], '連續網路錯誤 2 次起暫停 30 秒 × 2^(n−2)，最多 10 分鐘');
+    assert(BG._isNetError(new TypeError('Failed to fetch')) && !BG._isNetError(Object.assign(new Error('HTTP 404'), { failInfo: { status: 404 } })), '網路錯誤與 HTTP 錯誤分開');
+    await resetAll();
+    BG._resetChStats();
+    eq((await BG.channelInfo('not a handle')).error, 'bad-handle');
+    eq((await BG.channelInfo('@nobody')).status, 'unknown');
+    // 網路錯誤：不計入嘗試次數、netErrors 累計
+    let calls = 0;
+    self.fetch = async () => { calls++; throw new TypeError('Failed to fetch'); };
+    try {
+      await BG.enqueueHandles(['@netfail']);
+      await until(async () => (await BG.channelStats()).netErrors >= 1, 3000, '網路錯誤計數');
+      const ci = await BG.channelInfo('@netfail');
+      eq([ci.status, ci.attempts, ci.netErrors, ci.hasName], ['retry', 0, 1, false], '網路錯誤：retry、attempts 0');
+      const cs = await BG.channelStats();
+      eq([cs.netErrors, cs.netErrorsLastHour, cs.queued, cs.consecutiveNetErrors, cs.concurrency], [1, 1, 1, 1, 3]);
+      assert(cs.oldestWaitMin === 0 && typeof cs.perMinLast10 === 'number', 'oldestWaitMin／perMinLast10 ' + JSON.stringify(cs));
+      assert(!JSON.stringify(cs).includes('@netfail') && !JSON.stringify(ci).includes('netfail'), '不含 handle');
+    } finally { self.fetch = self.__blockedFetch; }
+    // 成功：可見優先送來的 handle 排入並解析，channelInfo ok
+    self.fetch = async () => new Response('<meta property="og:title" content="亞瑟Arthur&#12304;精華剪輯&#12305;">', { status: 200 });
+    try {
+      BG._resetChStats();
+      const r = await send({ type: 'RESOLVE_CHANNELS', handles: ['@arthurW77748', 'bad', '@arthurW77748'] }, PAGE);
+      eq([r.queued, r.prioritized], [1, 1], '可見優先：排入並標優先（不合格的 handle 略過、重複合併）');
+      await until(async () => (await BG.channelInfo('@arthurW77748')).status === 'ok', 3000, '解析完成');
+      eq((await DB.getChannel('@arthurW77748')).displayName, '亞瑟Arthur【精華剪輯】');
+      const ci = await BG.channelInfo('@arthurW77748');
+      eq([ci.hasName, ci.credentialsUsed], [true, 'omit']);
+      assert(!('displayName' in ci), 'channelInfo 不回傳名稱');
+      eq((await send({ type: 'RESOLVE_CHANNELS', handles: ['@arthurW77748'] }, PAGE)).queued, 0, '已解析的不再排入');
+    } finally { self.fetch = self.__blockedFetch; }
+  });
+
   test('T6.2（32.8）streamTimes 的 firstStartSource：待機室→開播先由播放器訊號（signal）得知、之後被 meta-actual 覆蓋 → 第一次的來源仍是 signal', async () => {
     await resetAll();
     const sched = Date.now() - 30e3;

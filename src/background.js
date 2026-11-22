@@ -92,7 +92,7 @@ async function enqueueHandles(handles) {
   const added = await withQueue(async () => {
     const q = await readQueue();
     let n = 0;
-    for (const h of need) if (!q[h]) { q[h] = { attempts: 0, nextAt: 0 }; n++; }
+    for (const h of need) if (!q[h]) { q[h] = { attempts: 0, nextAt: 0, addedAt: Date.now() }; n++; }
     if (n) await writeQueue(q);
     return n;
   });
@@ -153,13 +153,39 @@ async function resolveOne(handle) {
   return Object.assign(res.info, { credentialsUsed: 'omit' });
 }
 
+// v51（T6.2，審查十一 32.10）解析統計（只有次數與時間）：網路錯誤（fetch 本身失敗，例如 Failed to fetch）累計與時間、
+// 完成時間（近 10 分鐘的處理速度）、連續網路錯誤（指數退避：暫停整個佇列）。存在 storage.session（SW 重啟後保留）
+const CH_STATS_KEY = 'channelStatsV51';
+const chStats = { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0, loaded: false };
+async function loadChStats() {
+  if (chStats.loaded) return;
+  chStats.loaded = true;
+  try { const o = (await chrome.storage.session.get(CH_STATS_KEY))[CH_STATS_KEY]; if (o) Object.assign(chStats, o, { loaded: true }); } catch (_) { /* ignore */ }
+}
+function saveChStats() {
+  const t = Date.now();
+  chStats.netErrorTimes = chStats.netErrorTimes.filter((x) => t - x < 3600e3).slice(-500);
+  chStats.doneTimes = chStats.doneTimes.filter((x) => t - x < 600e3).slice(-2000);
+  const { loaded, ...o } = chStats; // eslint-disable-line no-unused-vars
+  try { chrome.storage.session.set({ [CH_STATS_KEY]: o }); } catch (_) { /* ignore */ }
+}
+// 網路錯誤＝fetch 本身拋錯（沒有 HTTP 狀態）：可能是 SW 暫停、被限流斷線、網路或其他擴充功能攔截
+const isNetError = (e) => !!e && !e.failInfo && (e.name === 'TypeError' || /failed to fetch|network/i.test(String(e.message || '')));
+// 連續網路錯誤 → 整個佇列暫停 30 秒 × 2^(n−2)（2 次起，最多 10 分鐘），不提高併發
+function netBackoffMs(n) { return n < 2 ? 0 : Math.min(30000 * 2 ** (n - 2), 10 * 60 * 1000); }
+
+// v51（32.10）可見優先：面板畫面上的作者（prio 較新的）排最前面，其餘依加入順序（v50 以前沒有 addedAt 的視為最早）
+const orderQueue = (q) => Object.entries(q).sort((a, b) => ((b[1].prio || 0) - (a[1].prio || 0)) || ((a[1].addedAt || 0) - (b[1].addedAt || 0)));
+
 function kickQueue() {
   if (kickTimer) { clearTimeout(kickTimer); kickTimer = null; }
   withQueue(async () => {
+    await loadChStats();
     const q = await readQueue();
     const now = Date.now();
+    if (chStats.pauseUntil > now) { kickTimer = setTimeout(kickQueue, chStats.pauseUntil - now + 50); return; }
     let soonest = Infinity;
-    for (const [h, it] of Object.entries(q)) {
+    for (const [h, it] of orderQueue(q)) {
       if (inflight.has(h)) continue;
       if (it.nextAt > now) { soonest = Math.min(soonest, it.nextAt); continue; }
       if (inflight.size >= C.CHANNEL_RESOLVE_CONCURRENCY) break;
@@ -170,15 +196,53 @@ function kickQueue() {
   }).catch((e) => console.warn('[ytcas] 頻道解析佇列錯誤', e));
 }
 
+// v51（32.10）面板目前畫面上的作者 handle → 排到佇列最前面（還沒排入的、快取過期的一併排入）
+async function prioritizeHandles(handles) {
+  const uniq = Array.from(new Set((handles || []).filter((h) => typeof h === 'string' && HANDLE_RE.test(h)))).slice(0, 100);
+  if (!uniq.length) return { queued: 0, prioritized: 0 };
+  const now = Date.now();
+  const need = [];
+  for (const h of uniq) if (!isFresh(await DB.getChannel(h), now)) need.push(h);
+  const r = await withQueue(async () => {
+    const q = await readQueue();
+    let queued = 0, prioritized = 0;
+    for (const h of need) {
+      if (!q[h]) { q[h] = { attempts: 0, nextAt: 0, addedAt: now }; queued++; }
+      q[h].prio = now; prioritized++;
+    }
+    if (need.length) await writeQueue(q);
+    return { queued, prioritized };
+  });
+  if (need.length) kickQueue();
+  return r;
+}
+
 async function processHandle(h) {
   let info = null;
   let err = null;
   try { info = await resolveOne(h); } catch (e) { err = e; }
+  await loadChStats();
+  const net = isNetError(err);
+  if (net) {
+    chStats.netErrors++; chStats.netErrorTimes.push(Date.now()); chStats.consecutiveNet++;
+    const ms = netBackoffMs(chStats.consecutiveNet);
+    if (ms) chStats.pauseUntil = Date.now() + ms;
+  } else {
+    chStats.consecutiveNet = 0;
+    if (info || err) chStats.doneTimes.push(Date.now());
+  }
+  saveChStats();
   try {
     await withQueue(async () => {
       const q = await readQueue();
-      const it = q[h] || { attempts: 0, nextAt: 0 };
-      if (info) {
+      const it = q[h] || { attempts: 0, nextAt: 0, addedAt: Date.now() };
+      it.lastTriedAt = Date.now();
+      if (net && (it.netErrors || 0) < 5) {
+        // 網路錯誤不計入嘗試次數（不是這個 handle 的問題），稍後再試；同一個 handle 連 5 次網路錯誤後才照一般失敗計
+        it.nextAt = Date.now() + 30000;
+        it.netErrors = (it.netErrors || 0) + 1;
+        q[h] = it;
+      } else if (info) {
         delete q[h];
         const rec = { handleOrId: h, displayName: info.displayName, avatar: info.avatar, fetchedAt: Date.now(), credentialsUsed: info.credentialsUsed || null };
         await DB.putChannel(rec);
@@ -338,9 +402,44 @@ async function sourceStats(opts) {
 // 只有筆數與失敗原因分布（不含 handle 與名稱）。佇列中尚未解析的數量一併列出
 async function channelStats() {
   const r = await DB.channelStats();
-  r.queued = Object.keys(await readQueue()).length;
+  const q = await readQueue();
+  const items = Object.values(q);
+  r.queued = items.length;
   r.failRate = r.ok + r.failed ? Math.round((r.failed / (r.ok + r.failed)) * 1000) / 10 : 0;
+  // v51（T6.2，審查十一 32.10）網路錯誤、佇列中最舊一筆等了多久、近 10 分鐘的處理速度、優先（畫面上）的筆數、暫停
+  await loadChStats();
+  const now = Date.now();
+  const added = items.map((x) => x.addedAt).filter((x) => typeof x === 'number');
+  r.netErrors = chStats.netErrors;
+  r.netErrorsLastHour = chStats.netErrorTimes.filter((x) => now - x < 3600e3).length;
+  r.oldestWaitMin = added.length ? Math.round((now - Math.min(...added)) / 60000) : null;
+  r.oldestUnknownAge = items.length - added.length; // v50 以前排入的沒有 addedAt
+  r.perMinLast10 = Math.round(chStats.doneTimes.filter((x) => now - x < 600e3).length / 10 * 10) / 10;
+  r.prioritized = items.filter((x) => x.prio).length;
+  r.inflight = inflight.size;
+  r.concurrency = C.CHANNEL_RESOLVE_CONCURRENCY;
+  r.pausedSec = chStats.pauseUntil > now ? Math.round((chStats.pauseUntil - now) / 1000) : 0;
+  r.consecutiveNetErrors = chStats.consecutiveNet;
   return r;
+}
+// v51（T6.2，審查十一 32.10 第 1 點）單一 handle 的解析狀態：await YTCAS_BG.channelInfo('@handle')
+// 只回傳狀態（ok／pending／retry／failed／unknown）、原因代碼、嘗試次數、時間、是否有名稱；不回傳名稱以外的頁面內容
+async function channelInfo(handle) {
+  const h = String(handle || '').trim();
+  if (!HANDLE_RE.test(h)) return { ok: false, error: 'bad-handle' };
+  const [rec, q] = await Promise.all([DB.getChannel(h), readQueue()]);
+  const it = q[h];
+  const iso = (t) => (typeof t === 'number' ? new Date(t).toISOString() : null);
+  const now = Date.now();
+  let status = 'unknown';
+  if (it) status = inflight.has(h) ? 'resolving' : it.nextAt > now ? 'retry' : 'pending';
+  else if (rec && rec.failed) status = 'failed';
+  else if (rec && rec.displayName) status = isFresh(rec, now) ? 'ok' : 'stale';
+  return { ok: true, status, hasName: !!(rec && rec.displayName), attempts: it ? it.attempts : null, netErrors: it ? it.netErrors || 0 : null,
+    retryAt: it && it.nextAt > now ? iso(it.nextAt) : null, queuedAt: it ? iso(it.addedAt) : null, prioritized: !!(it && it.prio),
+    lastTriedAt: iso((it && it.lastTriedAt) || (rec && rec.fetchedAt)), fetchedAt: rec ? iso(rec.fetchedAt) : null,
+    failReason: rec && rec.failed ? rec.failReason || null : null, failStatus: rec && rec.failed && rec.failInfo ? rec.failInfo.status ?? null : null,
+    credentialsUsed: rec ? rec.credentialsUsed || null : null };
 }
 // 失敗紀錄重新排入解析佇列（失敗紀錄原本 1 天內不重試）。預設預覽（只回傳筆數），{ dryRun: false } 才執行
 async function retryFailedChannels(opts) {
@@ -352,7 +451,7 @@ async function retryFailedChannels(opts) {
   const added = await withQueue(async () => {
     const q = await readQueue();
     let n = 0;
-    for (const h of handles) if (!q[h]) { q[h] = { attempts: 0, nextAt: 0 }; n++; }
+    for (const h of handles) if (!q[h]) { q[h] = { attempts: 0, nextAt: 0, addedAt: Date.now() }; n++; }
     if (n) await writeQueue(q);
     return n;
   });
@@ -978,6 +1077,12 @@ const handlers = {
     return {};
   },
 
+  // v51（T6.2，審查十一 32.10 第 2 點）面板畫面上還沒有頻道名稱的作者 handle → 排到解析佇列最前面（可見優先）
+  async [RT.RESOLVE_CHANNELS](msg) {
+    const r = await prioritizeHandles(Array.isArray(msg.handles) ? msg.handles : []);
+    return { queued: r.queued, prioritized: r.prioritized };
+  },
+
   async [RT.DELETE_STREAM](msg) {
     return { deleted: await DB.deleteStreams([vid(msg)]) };
   },
@@ -1200,4 +1305,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

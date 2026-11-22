@@ -1507,6 +1507,32 @@
     assert(!pin.classList.contains('open'), '點提示 → 收合');
   });
 
+  test('T6.2（32.10）可見優先：畫面上還沒有頻道名稱的作者 handle 送 RESOLVE_CHANNELS（已有名稱的不送、同一組 30 秒內不重送、分頁在背景不送）', async () => {
+    await resetDb();
+    const VH = 'vidVISNAME1';
+    const now = Date.now();
+    const msgs = ['@known', '@unk1', '@unk2', '@unk1'].map((h, i) => mk({ id: 'vn' + i, videoId: VH, authorHandle: h, timestampAbs: now - (4 - i) * 1000, videoOffsetSec: i }));
+    await put({ videoId: VH, title: 'H', isLive: true, startedAt: now - 3600e3, lastMessageAt: now, messageCount: 4, versions: [], linkedVideos: [] }, msgs, [],
+      [{ handleOrId: '@known', displayName: '已知頻道', avatar: '', fetchedAt: now }]);
+    await DB.close();
+    const sent = [];
+    const real = self.chrome.runtime.sendMessage;
+    self.chrome.runtime.sendMessage = (m) => { if (m && m.type === 'RESOLVE_CHANNELS') sent.push(m); return Promise.resolve({}); };
+    try {
+      const c = V.mount(host, { embed: true, videoId: VH });
+      await c.ready; await frame(); await frame();
+      eq(c._visibleUnresolved().sort(), ['@unk1', '@unk2'], '已有名稱的不算、重複合併');
+      c._sendVisibleNames();
+      eq(sent.length, 1);
+      eq(sent[0].handles.slice().sort(), ['@unk1', '@unk2']);
+      c._sendVisibleNames();
+      eq(sent.length, 1, '同一組 30 秒內不重送');
+      c._onRuntime({ type: 'CHANNEL_RESOLVED', handleOrId: '@unk1', displayName: '名字一' });
+      await sleep(400); await frame();
+      eq(c._visibleUnresolved(), ['@unk2'], '解析完成的不再送');
+    } finally { self.chrome.runtime.sendMessage = real; }
+  });
+
   test('T6.2（32.9）直播／待機室清單也依 phase 分段：等待開播期間 pre、live、pre 交錯 → 只有一個「直播開始前」標題、段內依時間；已依序時不重新排序', async () => {
     const list = [mk({ id: 'a', phase: 'pre', timestampAbs: T0 + 1 }), mk({ id: 'b', phase: 'pre', timestampAbs: T0 + 2 }), mk({ id: 'c', phase: 'live', timestampAbs: T0 + 3 }),
       mk({ id: 'd', phase: 'pre', timestampAbs: T0 + 4 }), mk({ id: 'e', phase: 'pre', timestampAbs: T0 + 5 })].map((m) => CORE.indexMessage(m, new Map()));

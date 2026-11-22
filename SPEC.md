@@ -50,7 +50,7 @@
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
-- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）。
+- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）；頻道名稱可見優先、網路錯誤退避、`channelInfo`（F-03）。
 
 ---
 
@@ -258,7 +258,7 @@ yt-chat-archiver-saver/
 | `NEW_MESSAGES` | bg → viewers | `{ videoId, messages[] }` |
 | `QUERY_MESSAGES` | viewer → bg | `{ videoId, filter }` → 回傳 `messages[]` |
 | `LIST_STREAMS` / `DELETE_STREAM` / `EXPORT_STREAM` | viewer/popup → bg | 依名稱 |
-| `RESOLVE_CHANNELS` | bg 內部 | `handles[]` |
+| `RESOLVE_CHANNELS` | 面板／後台 → bg | `handles[]`。（v51，T6.2，32.10）畫面上還沒有頻道名稱的作者 → 排到解析佇列最前面（可見優先），回傳 `{ queued, prioritized }`（F-03） |
 | `CHANNEL_RESOLVED` | bg → viewers | `{ handleOrId, displayName, avatar }` |
 | `CAPTURE_START` / `CAPTURE_END` | chat frame → bg | `{ videoId, source }` → 回傳 `captureSessionId`（v27，F-14；`CAPTURE_END` 在 `pagehide`／導航時送出，送不到時由 bg 以最後寫入時間補 `endedAt`） |
 | `RESET_STREAM` | viewer → bg | `{ videoId }`（v27：「清空此場次後重新收錄」，需二次確認） |
@@ -367,6 +367,12 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - （v25）直播訊息沒有作者連結，`authorChannelId` 多數情況取不到：解析與快取（`channels` store 的 `handleOrId`）**以 `@handle` 為鍵**；`authorUrl` 以 `https://www.youtube.com/@handle` 組成。
 - AC：解析失敗時退回顯示 `@Handle`，不得顯示空白。
 - （v40，T4.2，`docs/review-2026-11-17.md` 9）先以 `credentials: 'omit'` 抓頻道頁；HTTP 成功但沒有 `og:title`（例如被導向同意頁或拿到精簡頁面）時，比照 watch 頁以 `include` 重試一次；HTTP 錯誤（例如 404）不重試。成功紀錄記 `credentialsUsed`；達到重試上限的失敗紀錄記 `failReason`（ASCII 短字串）與 `failInfo`（HTTP 狀態、是否導向 consent 或其他網域、有無 `og:title`／`og:image`、頁面 KB 數、重試結果，只有數字與布林值）。統計：`await YTCAS_BG.channelStats()`（只有筆數與原因分布，不含 handle 與名稱）；失敗紀錄重新排入：`YTCAS_BG.retryFailedChannels()`（預覽）／`{ dryRun: false }`。Console 的失敗記錄只有原因與上述布林值。
+- （v51，T6.2，審查十一 32.10）實測（使用者 `channelStats()`）：14,142 個中成功 14,140、最終失敗 2（404），**佇列積壓 574**；另有暫時性的網路錯誤（`Failed to fetch`）。面板「只有 @handle」的主因是積壓，不是解析失敗。
+  - **可見優先**：面板每 3 秒把畫面上還沒有頻道名稱的作者 handle（最多 50 個）送 `RESOLVE_CHANNELS`（同一組 30 秒內不重送、分頁在背景不送）；background 排入（還沒排入或快取過期的）並標 `prio`，佇列依 `prio` 新到舊、其餘依加入時間 `addedAt` 處理。
+  - **網路錯誤**（`fetch` 本身拋錯、沒有 HTTP 狀態）：不計入該 handle 的嘗試次數（同一個 handle 連 5 次後才照一般失敗計），30 秒後再試；**連續 2 次起整個佇列暫停** 30 秒 × 2^(n−2)（最多 10 分鐘），成功或 HTTP 回應後歸零。**併發維持 3**（`CHANNEL_RESOLVE_CONCURRENCY`），積壓持續偏高時再依處理速度與網路錯誤率評估調到 4～5。
+  - `channelStats()` 增加：`netErrors`（累計）、`netErrorsLastHour`、`oldestWaitMin`（佇列中最舊一筆等了幾分鐘；v50 以前排入的沒有時間，另列 `oldestUnknownAge` 筆數）、`perMinLast10`（近 10 分鐘每分鐘處理筆數）、`prioritized`、`inflight`、`concurrency`、`pausedSec`、`consecutiveNetErrors`。只有數字。
+  - 單一 handle：`await YTCAS_BG.channelInfo('@handle')` → `status`（`ok`／`stale`／`pending`／`resolving`／`retry`／`failed`／`unknown`）、`hasName`、嘗試次數、網路錯誤次數、`retryAt`、`queuedAt`、`lastTriedAt`、`fetchedAt`、失敗原因代碼與 HTTP 狀態、`credentialsUsed`；**不回傳名稱與頁面內容**。
+  - `og:title` 的解碼：全形括號、emoji 原樣保留；數字實體（十進位、十六進位）與具名實體（`&amp;`、`&lt;`、`&gt;`、`&quot;`、`&apos;`、`&#39;`）解一層（測試：「亞瑟Arthur【精華剪輯】」）。
 
 **F-11 v2.6.0 舊資料遷移與 JSON 匯入**（v22 新增）
 - **自動遷移**：v3 第一次啟動時（及後台手動「重新遷移」），若偵測到 v2.6.0 的 IndexedDB（`YTLiveChatArchiverDB_V6`，結構與欄位對照見 `docs/legacy-v2.6.0-data.md`），由 background **唯讀開啟並複製轉換**到 `ytcas-v3`。
