@@ -106,17 +106,21 @@
       const r = el.getBoundingClientRect();
       out.push({ role, t: el.tagName.toLowerCase() + (el.id && SAFE_ID.test(el.id) ? '#' + el.id : ''), v: !!visibleRect(el, win), h: Math.round(r.height), top: Math.round(r.top) });
     };
+    // v51（T6.2，審查十一 32.1）role 只用 background 消毒規則接受的字元（v50 的 'panel-pages>' 含「>」被換成 [removed]）
     const pp = rootEl.querySelector(S.chat.panelPages);
     add(pp, 'panel-pages');
-    if (pp) for (const c of pp.children) add(c, 'panel-pages>');
+    if (pp) for (const c of pp.children) add(c, 'panel-pages-child');
     add(rootEl.querySelector(S.chat.inputPanel), 'input-panel');
     add(rootEl.querySelector(Z.inputRow), 'input-row');
     const pk = rootEl.querySelector(Z.pickers);
-    if (pk) for (const c of pk.children) add(c, 'pickers>');
+    if (pk) for (const c of pk.children) add(c, 'pickers-child');
     doc.querySelectorAll(S.chat.emojiPicker).forEach((el) => add(el, 'emoji'));
     doc.querySelectorAll(S.chat.buyFlowInChat).forEach((el) => add(el, 'buy-flow'));
     add(rootEl.querySelector(S.chat.bannerContainer), 'banner');
-    add(rootEl.querySelector(Z.actionPanel), 'action-panel');
+    const ap = rootEl.querySelector(Z.actionPanel);
+    add(ap, 'action-panel');
+    // v51（32.6）投票卡：#action-panel 內的元件標籤（兩層，只有標籤與尺寸）
+    if (ap) for (const c of ap.children) { add(c, 'action-panel-child'); for (const g of c.children) add(g, 'action-panel-grandchild'); }
     return out;
   }
 
@@ -130,14 +134,16 @@
 
     // v50（30.1、30.3）`$` 流程或彈窗開著（以及剛關上的那一次）且結構改變時記一筆（每頁最多 ZONE_LOG_MAX 筆）
     function logZone(m) {
-      const active = m.purchase || m.popupOpen;
+      // v51（32.6）投票卡（#action-panel）出現也記（實際元件標籤待記錄）
+      const apVis = !!visibleRect(doc.querySelector(S.chat.zoneStructure.actionPanel), win);
+      const active = m.purchase || m.popupOpen || apVis;
       if (opts.onLog && (active || st.zoneActive) && st.zoneLogs < P.ZONE_LOG_MAX) {
         const els = zoneStructure(doc, win, S);
-        const sig = JSON.stringify([m.purchase, m.popupOpen, els.map((x) => [x.t, x.v, x.h, x.top])]);
+        const sig = JSON.stringify([m.purchase, m.popupOpen, apVis, els.map((x) => [x.t, x.v, x.h, x.top])]);
         if (sig !== st.zoneSig) {
           st.zoneSig = sig;
           st.zoneLogs++;
-          try { opts.onLog('zone-structure', { reason: m.purchase ? 'purchase' : m.popupOpen ? 'popup' : 'closed',
+          try { opts.onLog('zone-structure', { reason: m.purchase ? 'purchase' : m.popupOpen ? 'popup' : apVis ? 'action-panel' : 'closed',
             m: { vh: m.vh, hasInput: m.hasInput, bottomZoneHeight: m.bottomZoneHeight, src: m.src, popupOpen: m.popupOpen, popupTop: m.popupTop, purchase: m.purchase }, els }); } catch (_) { /* ignore */ }
         }
       }

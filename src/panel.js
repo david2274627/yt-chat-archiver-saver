@@ -526,8 +526,10 @@
         } else if (d.type === FM.SEEK_TO) seekTo(d.seconds);
         else if (d.type === FM.LIVE_ANCHOR) {
           // v50（30.4）錨點存在 top：面板 iframe 因版面切換重建時不會遺失（null＝作廢）
+          const had = !!st.liveAnchor;
           st.liveAnchor = typeof d.wallA === 'number' && Number.isFinite(d.wallA) && st.videoId ? { videoId: st.videoId, wallA: d.wallA } : null;
-          log('live-anchor', { set: !!st.liveAnchor });
+          // v51（32.1）只在設定／清除時記一筆（v50 每秒更新樣本都記，P4 被洗版）
+          if (had !== !!st.liveAnchor) log('live-anchor', { set: !!st.liveAnchor });
         }
         else if (d.type === FM.PANEL_CLOSE) close('panel-button');
         return;

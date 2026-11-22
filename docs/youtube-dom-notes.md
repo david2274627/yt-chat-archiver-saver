@@ -111,9 +111,17 @@ yt-live-chat-renderer
 - 禮物 `yt-gift-message-view-model`：確認（見 5.3）。
 - **待確認（尚未出現）**：`ytd-sponsorships-live-chat-gift-purchase-announcement-renderer`、`ytd-sponsorships-live-chat-header-renderer`、`yt-live-chat-banner-redirect-renderer`（降落）、`yt-live-chat-poll-renderer`、`yt-live-chat-action-panel-renderer`、里程碑。
 
-### 2.4b SC 的文字色 CSS 變數（**待驗證**，T5.6，審查十一 26.4）
+### 2.4b SC 的文字色 CSS 變數（**已驗證**：超級留言 2026-11-22 19:12，`EGeJ…` P7 `sc-color-vars`，審查十一 32.1；超級貼圖的名稱色仍待驗證）
 - 用途：檢視器沿用 YouTube 給各 SC 的文字色（SPEC 10.3，v47）。`selectors.js` 的 `paidMessageTextColorVars`／`paidStickerTextColorVars`。
-- 推定的變數名稱（尚未實機記錄）：
+- **實機（超級留言）**：元件 inline style 上的變數只有 5 個：
+  - `--yt-live-chat-paid-message-primary-color`（卡片底色，本套件的 `color`）
+  - `--yt-live-chat-paid-message-secondary-color`（標題列底色，未用）
+  - `--yt-live-chat-paid-message-header-color`（標題列文字：名稱與金額）→ `header`
+  - `--yt-live-chat-paid-message-timestamp-color`（時間）→ `timestamp`
+  - `--yt-live-chat-paid-message-color`（內文）→ `body`
+  - **沒有 `--yt-live-chat-paid-message-author-name-color`**：名稱在標題列內，用 `header-color`。檢視器的名稱色本來就是「`author` 取不到 → `header`」（`CORE.scColors`），結果與原生一致；`selectors.js` 保留 `author` 的變數名稱（取不到時無影響）。
+  - 使用者 2026-11-22 22:58 收集 7 色 SC（32.11）：深色底白字、淺色底深字，外觀合理。
+- 原推定（v47，供對照）：
   - `yt-live-chat-paid-message-renderer`：`--yt-live-chat-paid-message-header-color`（標題列）、`--yt-live-chat-paid-message-author-name-color`（名稱）、`--yt-live-chat-paid-message-timestamp-color`（時間）、`--yt-live-chat-paid-message-color`（內文）；底色 `--yt-live-chat-paid-message-primary-color`（本套件已用）、`--yt-live-chat-paid-message-secondary-color`（標題列底色，未用）。
   - `yt-live-chat-paid-sticker-renderer`：已確認 `--yt-live-chat-paid-sticker-background-color`、`--yt-live-chat-paid-sticker-chip-background-color`、`--yt-live-chat-paid-sticker-chip-text-color`（2.4）；名稱色 `--yt-live-chat-paid-sticker-author-name-text-color` 待確認。金額膠囊的字色配膠囊自己的底色，不套在卡片上。
 - 驗證方式：F-20 記錄 P7 → 摘要的 `sc-color-vars`（元件 inline style 上實際有的 `--yt-live-chat-paid-*` 名稱，不含值；`got`＝本套件讀到的欄位）；P1 `scTotal`／`scTextColors`。取不到的欄位由檢視器以對比度規則補，不影響顯示。
@@ -172,7 +180,20 @@ yt-live-chat-renderer
 - 購買流程 `yt-live-chat-message-buy-flow-renderer`（2026-11-14 確認存在於 chat frame；top 約 296px）
 - 高度：`#input-panel` 56px（單行、無提示列時）；有提示列、多行、`$` 選單展開時會變。
 
-### 2.5b 點 `$` 之後（**待驗證**，T6.1，審查十一 30.3）
+### 2.5b 點 `$` 之後（**已驗證**：2026-11-22 19:10、19:17，`EGeJ…` P7 `zone-structure` 共 17 筆，審查十一 32.1）
+- **實機結構**（iframe 高 594；頂端／高度為 px，相對 iframe）：
+  1. 一般：`tp-yt-iron-pages#panel-pages` 57@537 ＞ `div#input-panel` 56@538 ＞ `div#top`（輸入列）36@548。
+  2. 點 `$`：**`#input-panel` 不可見、`#panel-pages` 只剩 1px（593）**；`yt-live-chat-product-picker-panel-view-model#product-picker` 可見 326@260（`$` 選單不在 `#input-panel` 內顯示）。
+  3. 選擇項目後：`#panel-pages` 切到 `div#loading` 387@207（約 2 秒）。
+  4. 購買流程：`#panel-pages` 切到對應的頁：
+     - 超級留言：`div#buy-flow` ＞ `yt-live-chat-message-buy-flow-renderer` 394@200 → 298@296（第二步）
+     - 超級貼圖：`div#super-sticker-buy-flow` 405@189 ⇄ 228@366
+     - 贈送會員：`div#sponsorships-gift-buy-flow` 400@194
+  5. 頁面層付款視窗（`#buyFlowDivId`）開著時，chat frame 的狀態不變；關閉後回到 1（`closed`）。
+  - `#panel-pages` 的其他頁（都不可見）：`div#donation-flow`、`div#qna-start-panel`、`div#poll-editor-panel`。
+- 結論：v49 的「`$` 選單長在 `#input-panel` 內」只在 2026-11-15 成立；目前點 `$` 會隱藏 `#input-panel`，v50 的規則（`#panel-pages`、`$` 選單、購買流程任一可見就算互動區，SPEC 6.8）正確，實測 AC 4 通過（32 節）。
+- 以下為 v50 時的推測與確認方式（保留對照）：
+- 實機現象（2026-11-22，30.3 圖 4）：點 `$` 後 T6（v49）的面板變全高，底部的輸入列與 `$` 選單都看不到 → chat frame 當時量到「沒有輸入區」（`#input-panel` 不可見）或量測過期。
 - 實機現象（2026-11-22，30.3 圖 4）：點 `$` 後 T6（v49）的面板變全高，底部的輸入列與 `$` 選單都看不到 → chat frame 當時量到「沒有輸入區」（`#input-panel` 不可見）或量測過期。
 - 推測：`#panel-pages`（`tp-yt-iron-pages`）切換到另一頁顯示 `$` 選單或購買流程，`#input-panel` 那頁被隱藏。2026-11-15 的結構（2.5）是 `$` 選單長在 `#input-panel` 內的 `#pickers`，兩者不一致，需要實機確認。
 - v50 的處理不依賴哪一種：`#panel-pages`、`$` 選單、購買流程任一可見就算有互動區（SPEC 6.8）。
@@ -180,7 +201,13 @@ yt-live-chat-renderer
   - P7 `zone-structure` 記錄每一步 `#panel-pages` 的直接子元素、`#input-panel`、`#pickers` 子元素、購買流程的標籤、可見與否、高度、頂端（沒有文字）。
   - P4 `panel-clip` 記錄裁切狀態。
 
-### 2.5c 表符選單與輸入列的上下關係（**待驗證**，T6.1，審查十一 30.1）
+### 2.5c 表符選單與輸入列的上下關係（**已驗證**：2026-11-22 19:10，`EGeJ…` P7 `zone-structure` 7 筆，審查十一 32.1）
+- **實機**：表符選單 `yt-emoji-picker-renderer#emoji` 在 `#input-panel` **內**、輸入列 `div#top` **之下**：
+  - `#panel-pages` 253@341 ＞ `#input-panel` 252@342 ＞ `div#top` 36～40@348～352，`#emoji` 180@404。
+  - 展開時 `#input-panel` 從 56px 長到 252px，輸入列被往上推（548 → 352）。
+  - 第一筆的 `popupTop` 287 是選單展開途中的值，之後穩定在 404。
+- 結論：選單在輸入列下方，v49 以 `popupTop − 8` 裁切會切掉輸入列；v50 的規則（彈窗與底部互動區的最上方 − 8，SPEC 6.8）正確，實測通過（32 節）。
+- 以下為 v50 時的推測與確認方式（保留對照）：
 - 實機現象（2026-11-22，30.1 圖 2）：表符選單展開時，面板下方只看得到選單的搜尋欄，**輸入列（打字的那一列與表符按鈕）不見了**。
 - 推測：`yt-emoji-picker-renderer` 在輸入列**下方**展開，輸入列被往上推；v49 以選單頂端 − 8 裁切，輸入列落在裁切範圍外。
 - v50 不依賴哪一種：裁切頂端取選單與底部互動區（`#panel-pages`／`#input-panel` 等）的最上方 − 8（SPEC 6.8）。

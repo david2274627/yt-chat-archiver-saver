@@ -159,7 +159,8 @@
       link: { anchor: 'a[href]', redirectPath: '/redirect', redirectParam: 'q' },
       paidStickerColorVars: ['--yt-live-chat-paid-sticker-background-color'], // 確認（筆記 2.4）
       paidMessageColorVars: ['--yt-live-chat-paid-message-primary-color'],    // 待實機確認
-      // v47（T5.6，審查十一 26.4）YouTube 給各 SC 的文字色（元件本身的 CSS 變數；dom-notes 2.4b，待實機確認）。
+      // v47（T5.6，審查十一 26.4）YouTube 給各 SC 的文字色（元件本身的 CSS 變數）。
+      // v51（32.1）超級留言已驗證（dom-notes 2.4b）：header／timestamp／body 有；**沒有 author-name-color**，名稱用 header（CORE.scColors 的後備）。
       // 取不到的欄位由檢視器依對比度規則補（CORE.parseColor）
       paidMessageTextColorVars: {
         header: '--yt-live-chat-paid-message-header-color',
@@ -188,10 +189,11 @@
       emojiPickerButton: '#emoji-picker-button',
       emojiToggle: 'yt-live-chat-icon-toggle-button-renderer#emoji',
       productPickerButton: 'yt-live-chat-icon-toggle-button-renderer#product-picker',
-      // $ 選單長在 #input-panel 內（tp-yt-iron-pages#pickers）：展開時 #input-panel 高度本身會變，底部互動區量測會涵蓋
+      // $ 選單（tp-yt-iron-pages#pickers 內）。v51（32.1，dom-notes 2.5b 已驗證）點 $ 後 #input-panel 不可見、#panel-pages 只剩 1px，
+      // $ 選單本身可見（326px）；之後 #panel-pages 切到 #loading／#buy-flow／#super-sticker-buy-flow／#sponsorships-gift-buy-flow
       productPicker: 'tp-yt-iron-pages#pickers > yt-live-chat-product-picker-panel-view-model#product-picker',
       // v50（T6.1，審查十一 30.3）`$` 相關：任一可見（高度 ≥ PANEL.ZONE_MIN_PX）就視為「有互動區」，不可退回面板全高。
-      // 實機：點 `$` 後底部互動區整個消失（面板全高）。推測 YouTube 隱藏 #input-panel、改在 #panel-pages 顯示 `$` 選單或購買流程（待驗證，dom-notes 2.5b）
+      // 實機：點 `$` 後底部互動區整個消失（面板全高）：YouTube 隱藏 #input-panel、改在 #panel-pages 顯示 `$` 選單或購買流程（已驗證，dom-notes 2.5b）
       panelPages: '#panel-pages',
       buyFlowInChat: 'yt-live-chat-message-buy-flow-renderer',
       emojiPicker: 'yt-emoji-picker-renderer',

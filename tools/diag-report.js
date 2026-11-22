@@ -99,6 +99,26 @@ function report(data) {
       }
       L();
     }
+    // v51（T6.2，審查十一 32.2、32.7）自己送出的訊息（合併次數與事件次數分開）、時間解析
+    const ownG = [...groups].filter(([, list]) => list[list.length - 1].data.own);
+    if (ownG.length) {
+      L('### P1 自己送出的訊息與時間解析（v50／v51）');
+      L();
+      L('**合併**＝真的把暫時節點與正式節點合成一筆的次數（暫時 id／頁面移除 10 秒內／列表被換掉／事後配對／同一個節點原地改 id）。**事件**＝觀察到的次數，大多不會合併（YouTube 重新設定 id、重新排版）。v50 的記錄只有 `replaced`／`inPlace`／`pageRemoved`（後兩者是事件次數）。clockFuture＝顯示時間以「今天」解讀會在未來、已往前推整天的筆數；clock-ambiguous＝依順序重建後早於擷取超過 24 小時。');
+      L();
+      L('| videoId | 來源 | 暫時 id 出現 | 合併：暫時 id／頁面移除／換列表／事後／原地 | 事件：id 改變（從空白）／頁面移除 | 最近合併的 id 形狀 | clockFuture | clock-ambiguous |');
+      L('|---|---|---|---|---|---|---|---|');
+      for (const [k, list] of ownG) {
+        const [vidFull, src] = k.split('|');
+        const d = list[list.length - 1].data, o = d.own;
+        const mg = o.merged || { temp: '—', removed: '—', swap: '—', late: o.late, inPlace: '—' };
+        const ev = o.events || { idChanges: o.inPlace, idFromEmpty: '—', pageRemoved: o.pageRemoved };
+        const recent = (o.recent || []).map((x) => (x.oldId ? x.oldId.p + '|' + x.oldId.len : '?') + '→' + (x.newId ? x.newId.p + '|' + x.newId.len : '?') + (x.rule ? '（' + x.rule + '）' : '')).join('、');
+        L('| ' + [vid4(vidFull), src, o.tempSeen, o.merged ? [mg.temp, mg.removed, mg.swap, mg.late, mg.inPlace].join('／') : 'v50：replaced ' + o.replaced + '、late ' + o.late,
+          ev.idChanges + '（' + ev.idFromEmpty + '）／' + ev.pageRemoved, recent || '—', d.clockFuture ?? '—', d.clockAmbiguous ?? '—'].map(esc).join(' | ') + ' |');
+      }
+      L();
+    }
   }
 
   // ---- P2 節點分類
@@ -291,8 +311,59 @@ function report(data) {
     if (p7c.every((r) => !(r.data && r.data.got && r.data.got.length))) anomalies.push('SC 文字色：' + p7c.length + ' 筆都沒有讀到 YouTube 的文字色（selectors.js 的變數名稱可能不對，見「SC 文字色變數」）');
   }
 
+  // ---- v51（T6.2，審查十一 32.1）P7 zone-structure：底部互動區相關元素（標籤、可見、高度、頂端；沒有文字）
+  const zs = (byProbe.P7 || []).filter((r) => r.kind === 'zone-structure' && r.data);
+  if (zs.length) {
+    L('## 底部互動區結構（P7 zone-structure，' + zs.length + ' 筆）');
+    L();
+    L('`$` 流程、彈窗（表符選單等）、投票卡開著（以及剛關上那一次）且結構改變時記一筆。每筆先列量測結果，再列**可見**的元素（不可見的只計數）。role：本套件的代號（`panel-pages-child`＝`#panel-pages` 的直接子元素）。');
+    L();
+    L('| 時間 | videoId | 原因 | vh | hasInput | bottomZoneHeight | popupTop | purchase | 可見元素（role：標籤 高度@頂端） | 不可見 |');
+    L('|---|---|---|---|---|---|---|---|---|---|');
+    for (const r of zs) {
+      const d = r.data, m = d.m || {}, els = Array.isArray(d.els) ? d.els : [];
+      const vis = els.filter((x) => x && x.v).map((x) => (x.role || '?') + '：' + x.t + ' ' + x.h + '@' + x.top).join('<br>');
+      L('| ' + [hm(r.ts), vid4((r.ctx && r.ctx.videoId) || '—'), d.reason, m.vh, m.hasInput, m.bottomZoneHeight, m.popupTop ?? '—', m.purchase].map(esc).join(' | ') + ' | ' + (vis ? esc(vis).replace(/&lt;br&gt;/g, '<br>') : '—') + ' | ' + els.filter((x) => x && !x.v).length + ' |');
+    }
+    L();
+    if (zs.some((r) => (r.data.els || []).some((x) => x && x.role === '[removed]'))) notes.push('zone-structure：有 role 被消毒成 [removed]（v50 的記錄；v51 起 role 只用允許的字元）');
+  }
+  // ---- v51（T6.2，審查十一 32.2）P7 own-replace：自己送出的訊息配對（id 形狀＝前 4 碼｜長度，不含內容）
+  const ow = (byProbe.P7 || []).filter((r) => r.kind === 'own-replace' && r.data);
+  if (ow.length) {
+    L('## 自己送出的訊息配對（P7 own-replace，' + ow.length + ' 筆）');
+    L();
+    L('kind：`new-node`＝正式節點出現時配對、`late`＝暫時節點晚移除時事後配對、`in-place`＝同一個節點原地改 id、`temp-seen`＝看到暫時 id。rule：`temp`（暫時 id 格式）／`removed`（頁面移除 10 秒內）／`swap`（列表被換掉）／`same-node`。');
+    L();
+    L('| 時間 | videoId | kind | rule | 舊 id | 新 id | 相隔（秒） | 舊節點被移除 | 舊 id 是暫時格式 | 同一個節點 |');
+    L('|---|---|---|---|---|---|---|---|---|---|');
+    const sh = (x) => (x ? x.p + '|' + x.len : '—');
+    for (const r of ow) {
+      const d = r.data;
+      L('| ' + [hm(r.ts), vid4((r.ctx && r.ctx.videoId) || '—'), d.kind, d.rule || '—', sh(d.oldId), sh(d.newId), d.dtMs == null ? '—' : (d.dtMs / 1000).toFixed(1),
+        d.oldRemoved ? '是' : '否', d.oldTempId ? '是' : '否', d.sameEl ? '是' : '否'].map(esc).join(' | ') + ' |');
+    }
+    L();
+  }
+  // ---- v51（T6.2，審查十一 32.7）P7 ts-format：#timestamp 的形狀（不記原文）
+  const tf = (byProbe.P7 || []).filter((r) => r.kind === 'ts-format' && r.data);
+  if (tf.length) {
+    L('## 聊天室時間格式（P7 ts-format，' + tf.length + ' 筆）');
+    L();
+    L('原因：`future`＝以「今天」解讀會在未來（已往前推整天，通常是進入頁面時載入的前幾天訊息）、`ambiguous`＝依順序重建後早於擷取超過 24 小時、`unparsed`＝解析失敗。形狀：數字 → `d`、上午／下午 → `A`／`P`、其他字元 → `?`。');
+    L();
+    L('| 時間 | videoId | 原因 | 形狀 | 長度 | Date.now() | 時區（UTC 差，分） |');
+    L('|---|---|---|---|---|---|---|');
+    for (const r of tf) {
+      const d = r.data;
+      L('| ' + [hm(r.ts), vid4((r.ctx && r.ctx.videoId) || '—'), d.reason, '`' + d.shape + '`', d.len, dt(d.now), (d.tz || '—') + '（' + d.tzOffsetMin + '）'].map(esc).join(' | ') + ' |');
+    }
+    L();
+    if (tf.some((r) => r.data.reason === 'unparsed')) anomalies.push('ts-format：有 #timestamp 無法解析（見「聊天室時間格式」）');
+  }
+
   // ---- P7 結構
-  const p7 = (byProbe.P7 || []).filter((r) => r.kind !== 'sc-color-vars');
+  const p7 = (byProbe.P7 || []).filter((r) => !['sc-color-vars', 'zone-structure', 'own-replace', 'ts-format'].includes(r.kind));
   if (p7.length) {
     L('## P7 結構紀錄（' + p7.length + ' 筆）');
     L();

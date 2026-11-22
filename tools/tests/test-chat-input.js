@@ -203,7 +203,7 @@
     eq([k, d.reason, d.m.purchase, d.m.hasInput], ['zone-structure', 'purchase', true, true]);
     const role = (r) => d.els.find((x) => x.role === r);
     eq([role('panel-pages').v, role('panel-pages').h, role('input-panel').v], [true, 300, false]);
-    assert(d.els.some((x) => x.role === 'panel-pages>' && x.t === 'div#purchase-page' && x.v), '#panel-pages 的子元素');
+    assert(d.els.some((x) => x.role === 'panel-pages-child' && x.t === 'div#purchase-page' && x.v), '#panel-pages 的子元素');
     ci.send(false);
     eq(logs.length, 1, '結構沒變不重記');
     reset();
@@ -216,7 +216,24 @@
     ci.send(false);
     eq(logs[2][1].reason, 'popup');
     assert(logs[2][1].els.some((x) => x.role === 'emoji' && x.top === 250 && x.v), '表符選單位置');
+    // v51（32.6）投票卡出現 → reason action-panel，記錄內部元件標籤
+    q('yt-emoji-picker-renderer').hidden = true;
+    const ap = q('#action-panel');
+    ap.textContent = '';
+    const poll = D().createElement('yt-live-chat-poll-renderer'); poll.style.display = 'block'; poll.style.height = '120px';
+    poll.appendChild(D().createElement('div')).id = 'choices';
+    ap.appendChild(poll);
+    place(ap, 355, 130);
+    ci.send(false);
+    const apLog = logs[logs.length - 1][1];
+    eq(apLog.reason, 'action-panel');
+    assert(apLog.els.some((x) => x.role === 'action-panel-child' && x.t === 'yt-live-chat-poll-renderer' && x.v), '投票卡元件標籤 ' + JSON.stringify(apLog.els.filter((x) => /action/.test(x.role))));
+    assert(apLog.els.some((x) => x.role === 'action-panel-grandchild' && x.t === 'div#choices'), '第二層');
+    ap.hidden = true;
     ci.stop();
+    // v51（32.1）role 全部通過 background 的消毒規則（v50 的 'panel-pages>' 被換成 [removed]）
+    const SAFE = /^[A-Za-z0-9_\-#.:/ ,=+()[\]|]{0,160}$/;
+    for (const [, d] of logs) for (const x of d.els) assert(SAFE.test(x.role) && SAFE.test(x.t), 'role／標籤可通過消毒：' + x.role + ' ' + x.t);
     const s = JSON.stringify(logs);
     assert(!s.includes('聊天室') && !s.includes('"$"'), '沒有文字');
   });

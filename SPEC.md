@@ -831,9 +831,10 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - `purchase`（`CHAT_INPUT_STATE` 新欄位）：`$` 選單或購買流程可見，或 `#input-panel` 不見了而 `#panel-pages` 還在 → `$` 流程進行中，面板剩餘高度不足時**不退讓**（`remainTooSmall` 不判斷）。
   - 轉到頁面層付款視窗（`#buyFlowDivId`）時沿用前一個狀態（v49 已有）；chat frame 這時回報什麼（量不到、無輸入區、回到一般）都不會閃回全高。
   - F-20 P7 `zone-structure`：`$` 流程或彈窗開著（以及剛關上那一次）且結構改變時記一筆，每頁最多 `PANEL.ZONE_LOG_MAX` = 40 筆：`#panel-pages` 與其直接子元素、`#input-panel`、輸入列 `#top`、`#pickers` 的子元素、表符選單、購買流程、置頂列、投票卡的**標籤、靜態 id、可見與否、高度、頂端**，以及當時的量測結果；沒有文字。
+  - （v51，T6.2，審查十一 32.1）**實機結構已驗證**（dom-notes 2.5b）：點 `$` 後 `#input-panel` 不可見、`#panel-pages` 1px、`$` 選單本身可見；之後 `#panel-pages` 切到 `#loading`、`#buy-flow`（超級留言）、`#super-sticker-buy-flow`、`#sponsorships-gift-buy-flow`。`zone-structure` 的 role 改為 `panel-pages-child`／`pickers-child`（v50 的 `panel-pages>` 含「>」，被 background 的消毒規則換成 `[removed]`）；投票卡出現也記一筆（`reason: action-panel`，含 `#action-panel` 內兩層的元件標籤，32.6）。`tools/diag-report.js` 為 `zone-structure`、`own-replace`、`ts-format` 加專用表格。
 - **表符選單（30.1）**：實機選單出現在底部，輸入列（打字的那一列與表符按鈕）不見了，看不到選了什麼、也無法再按表符按鈕關閉。推測選單長在輸入列**下方**、輸入列被往上推，v49 的 `popup` 只取 `popupTop − 8`，輸入列落在裁切範圍外。
   - 規則：`popup` 的裁切頂端＝`min(popupTop, iframe 高度 − bottomZoneHeight) − PANEL.POPUP_GAP_PX`。`bottomZoneHeight` 本來就取底部互動區所有白名單元素的最上方，所以等於「彈窗與底部互動區所有元素的最上方 − 8」。選單在輸入列上方或下方都完整露出輸入列。
-  - 上下關係待實機確認（dom-notes 2.5c）：P7 `zone-structure` 在表符選單開關時記錄選單、輸入列 `#top`、`#input-panel`、`#panel-pages` 的頂端與高度。
+  - 上下關係待實機確認（dom-notes 2.5c）：P7 `zone-structure` 在表符選單開關時記錄選單、輸入列 `#top`、`#input-panel`、`#panel-pages` 的頂端與高度。（v51：**已驗證**，選單在 `#input-panel` 內、輸入列之下，`#input-panel` 56 → 252px。）
 - **置頂（30.2，使用者 2026-11-22 12:37 選 A）**：實機面板頂部有置頂卡、底部又露出原生置頂列，同一則出現兩次。
   - chat frame 的隱藏樣式加上 `chat.bannerContainer`（6.2 第 2 點），面板開啟且未退讓時原生置頂列不可見，`bottomZoneHeight` 不含它（隱藏後重新量測回報）。
   - 面板置頂卡（F-07）：展開時完整內容換行、長網址折行（`overflow-wrap: anywhere`），很長時卡片內捲動（最高 40vh）；**卡內的連結與頭像連結照常開啟，不切換展開／收合**（滑鼠與 Enter）。
