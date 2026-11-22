@@ -139,6 +139,22 @@
       P.remainTooSmall(Object.assign({}, base, { bottomZoneHeight: 530, popupOpen: true, popupTop: 10 }), 600, PP)], [true, false, false]);
   });
 
+  test('T6.1（30.3）$ 流程：chat frame 回報 purchase（#input-panel 不見了也 hasInput）→ 收起狀態、不退回全高；剩餘高度不足也不退讓；轉到頁面層付款視窗時沿用、不閃回全高', () => {
+    const PP = C.PANEL;
+    const s = (input, o) => P.clipState(Object.assign({ input, iframeH: 600, topPopupOpen: false, prev: null }, o), PP);
+    const pur = { vh: 600, hasInput: true, bottomZoneHeight: 300, inputH: 0, popupOpen: false, popupTop: null, purchase: true };
+    const a = s(pur);
+    eq([a.mode, a.clip], ['input', 'inset(calc(100% - 300px) 0 0 0)'], '$ 頁面：只露出 $ 頁面以下');
+    eq(P.remainTooSmall(Object.assign({}, pur, { bottomZoneHeight: 560 }), 600, PP), false, '$ 流程中不因剩餘高度不足退讓');
+    // chat frame 內的購買流程（彈窗）→ 頁面層付款視窗開啟，chat frame 回到一般狀態或暫時量不到 → 沿用購買流程的裁切
+    const flow = s(Object.assign({}, pur, { popupOpen: true, popupTop: 200 }));
+    eq(flow.mode, 'popup');
+    for (const next of [null, { vh: 600, hasInput: false, bottomZoneHeight: 0, popupOpen: false, popupTop: null }, Object.assign({}, pur, { purchase: false, bottomZoneHeight: 62, inputH: 56 })]) {
+      const r = s(next, { topPopupOpen: true, prev: flow });
+      eq([r.mode, r.clip, r.held], ['popup', flow.clip, true], '頁面層付款視窗開啟中沿用：' + JSON.stringify(next && next.bottomZoneHeight));
+    }
+  });
+
   test('T6 CHAT_INPUT_STATE → iframe 的 --ytcas-clip、面板底部留白（PANEL_INSET）；面板開啟時通知 chat frame 隱藏原生列表；頁面層付款視窗（#buyFlowDivId）；面板剩餘高度不足 → 退讓', async () => {
     const w = viewerWin();
     const h = chat().offsetHeight;

@@ -152,6 +152,8 @@
       TOP_POPUP_POLL_MS: 500,    // top frame 頁面層付款視窗的保底輪詢
       OVERLAY_MAX_RATIO: 0.6,    // 覆蓋層子元素（非白名單）量出的高度 > iframe 高度 × 0.6 → 不採計
       INPUT_STALE_PX: 2,         // 量測時的 iframe 高度與目前相差超過此值 → 視為過期（等重新量測，不套用舊值）
+      ZONE_MIN_PX: 8,            // v50（30.3）#panel-pages／`$` 選單／購買流程高度 ≥ 此值才算「有互動區」（VOD 的 #panel-pages 高 1px）
+      ZONE_LOG_MAX: 40,          // v50（30.1、30.3）F-20 P7 zone-structure 每頁最多筆數
       VOD_TIME_MS: 250,        // VOD_TIME 送出間隔（4.3）
       LIVE_EDGE_SEC: 15,       // 直播中距離直播邊緣幾秒內視為「在最新」：一般跟隨到底；超過則依時間軸同步
       ANCHOR_GRACE_MS: 8000,   // 頁面載入後多久仍找不到任何開關錨點才 warnOnce

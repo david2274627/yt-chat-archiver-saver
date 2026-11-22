@@ -22,7 +22,8 @@
     q('#input-panel').style.height = '62px';
     q('#action-panel').hidden = true;
     q('#ov-child').hidden = true;
-    for (const s of ['yt-emoji-picker-renderer', 'yt-live-chat-message-buy-flow-renderer', '#hdr-dd', '#product-picker']) q(s).hidden = true;
+    for (const s of ['yt-emoji-picker-renderer', 'yt-live-chat-message-buy-flow-renderer', '#hdr-dd', '#product-picker', '#purchase-page']) q(s).hidden = true;
+    q('#input-panel').hidden = false;
   }
 
   test('白名單量測（6.3 v25／v26）：置頂列＋輸入列 → iframe 底邊 − 置頂列頂端；投票卡（#chat > #action-panel）完整露出', async () => {
@@ -121,7 +122,73 @@
     await sleep(700);
     eq(sent.length, n, 'stop 後不再回報');
     // 隱私：只有數字、布林與來源代碼
-    for (const [, d] of sent) assert(Object.values(d).every((v) => v === null || ['number', 'boolean'].includes(typeof v) || ['whitelist', 'overlay', 'fallback', 'none'].includes(v)), JSON.stringify(d));
+    for (const [, d] of sent) assert(Object.values(d).every((v) => v === null || ['number', 'boolean'].includes(typeof v) || ['whitelist', 'overlay', 'fallback', 'zone', 'none'].includes(v)), JSON.stringify(d));
+  });
+
+  test('T6.1（30.3）點 $ 後 #input-panel 不見了：#panel-pages 改顯示 $ 頁面、或只剩購買流程 → 仍有互動區（hasInput、purchase）、不退回全高；VOD 的 #panel-pages 1px 不算', () => {
+    reset();
+    // #panel-pages 改顯示 $ 頁面（推測結構）
+    q('#input-panel').hidden = true;
+    q('#purchase-page').hidden = false;
+    place(q('#panel-pages'), 300, 300);
+    let m = M();
+    eq([m.hasInput, m.purchase, m.bottomZoneHeight, m.inputH], [true, true, 300, 0], '#panel-pages 顯示 $ 頁面');
+    // 只剩聊天室內的購買流程（#panel-pages 高度 0）
+    q('#purchase-page').hidden = true;
+    q('#panel-pages').style.height = '0px';
+    q('yt-live-chat-banner-manager').style.height = '0px';
+    placeAbs(q('yt-live-chat-message-buy-flow-renderer'), 200, 400);
+    m = M();
+    eq([m.hasInput, m.purchase, m.bottomZoneHeight, m.popupOpen, m.popupTop, m.src], [true, true, 400, true, 200, 'zone'], '購買流程');
+    // 一般狀態：輸入區可見、沒有 $ → purchase false
+    reset();
+    m = M();
+    eq([m.hasInput, m.purchase, m.bottomZoneHeight], [true, false, 115]);
+    // $ 選單在 #input-panel 內展開 → purchase（剩餘高度不足時不退讓）
+    q('#product-picker').hidden = false;
+    eq(M().purchase, true, '$ 選單展開');
+    // VOD：#panel-pages 高 1px、#input-panel 高 0
+    reset();
+    q('yt-live-chat-banner-manager').style.height = '0px';
+    place(q('#panel-pages'), 599, 1); // 實機 VOD：底邊 1px（dom-notes 第 3 節）
+    q('#input-panel').style.height = '0px';
+    m = M();
+    eq([m.hasInput, m.purchase, m.bottomZoneHeight], [false, false, 1], 'VOD 仍是沒有輸入區（面板全高）');
+  });
+
+  test('T6.1（30.1、30.3）F-20 P7 zone-structure：$ 流程或彈窗開著時、結構改變才記一筆，關上時再記一筆；只有標籤、靜態 id、可見、高度、頂端（沒有文字）', async () => {
+    reset();
+    const logs = [];
+    const CI = W().YTCAS_CHAT_INPUT;
+    const ci = CI.create({ doc: D(), win: W(), S: W().YTCAS_SEL, C: W().YTCAS_CONST, post: () => {}, onLog: (k, d) => logs.push([k, d]),
+      accept: () => false });
+    ci.start();
+    eq(logs.length, 0, '一般狀態不記');
+    q('#input-panel').hidden = true;
+    q('#purchase-page').hidden = false;
+    place(q('#panel-pages'), 300, 300);
+    ci.send(false);
+    eq(logs.length, 1);
+    const [k, d] = logs[0];
+    eq([k, d.reason, d.m.purchase, d.m.hasInput], ['zone-structure', 'purchase', true, true]);
+    const role = (r) => d.els.find((x) => x.role === r);
+    eq([role('panel-pages').v, role('panel-pages').h, role('input-panel').v], [true, 300, false]);
+    assert(d.els.some((x) => x.role === 'panel-pages>' && x.t === 'div#purchase-page' && x.v), '#panel-pages 的子元素');
+    ci.send(false);
+    eq(logs.length, 1, '結構沒變不重記');
+    reset();
+    ci.send(false);
+    eq([logs.length, logs[1][1].reason], [2, 'closed'], '關上時記一筆');
+    ci.send(false);
+    eq(logs.length, 2, '一般狀態不再記');
+    // 表符選單 → popup；輸入列的位置也在記錄內（上下關係）
+    placeAbs(q('yt-emoji-picker-renderer'), 250, 290);
+    ci.send(false);
+    eq(logs[2][1].reason, 'popup');
+    assert(logs[2][1].els.some((x) => x.role === 'emoji' && x.top === 250 && x.v), '表符選單位置');
+    ci.stop();
+    const s = JSON.stringify(logs);
+    assert(!s.includes('聊天室') && !s.includes('"$"'), '沒有文字');
   });
 
   // ---------------------------------------------------------------- 執行

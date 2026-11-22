@@ -168,6 +168,14 @@ yt-live-chat-renderer
 - 購買流程 `yt-live-chat-message-buy-flow-renderer`（2026-11-14 確認存在於 chat frame；top 約 296px）
 - 高度：`#input-panel` 56px（單行、無提示列時）；有提示列、多行、`$` 選單展開時會變。
 
+### 2.5b 點 `$` 之後（**待驗證**，T6.1，審查十一 30.3）
+- 實機現象（2026-11-22，30.3 圖 4）：點 `$` 後 T6（v49）的面板變全高，底部的輸入列與 `$` 選單都看不到 → chat frame 當時量到「沒有輸入區」（`#input-panel` 不可見）或量測過期。
+- 推測：`#panel-pages`（`tp-yt-iron-pages`）切換到另一頁顯示 `$` 選單或購買流程，`#input-panel` 那頁被隱藏。2026-11-15 的結構（2.5）是 `$` 選單長在 `#input-panel` 內的 `#pickers`，兩者不一致，需要實機確認。
+- v50 的處理不依賴哪一種：`#panel-pages`、`$` 選單、購買流程任一可見就算有互動區（SPEC 6.8）。
+- **確認方式**：開 F-20（P4、P7）→ 點 `$` → 選超級留言 → 走到付款確認頁 → 關閉 → 匯出。
+  - P7 `zone-structure` 記錄每一步 `#panel-pages` 的直接子元素、`#input-panel`、`#pickers` 子元素、購買流程的標籤、可見與否、高度、頂端（沒有文字）。
+  - P4 `panel-clip` 記錄裁切狀態。
+
 ### 2.6 Holodex+ 干擾
 - 使用者裝有 Holodex+（Console 有 `[Holodex+] live chat overrides injected`）。
 - `ytls-widget-overlay-manager` **不是**它注入的（停用後仍存在，2026-11-15 確認）。Holodex+ 對本套件的實際影響目前未發現，回歸測試仍需有／無各測一次。

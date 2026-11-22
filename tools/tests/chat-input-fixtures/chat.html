@@ -27,6 +27,8 @@
       <div id="action-panel" hidden></div>
       <yt-live-chat-banner-manager></yt-live-chat-banner-manager>
       <div id="panel-pages">
+        <!-- v50（30.3）推測：點 $ 後 #panel-pages 改顯示另一頁（#input-panel 不可見）。實際結構待實機確認（dom-notes 2.5b） -->
+        <div id="purchase-page" hidden style="height:100%">$</div>
         <div id="input-panel">
           <tp-yt-iron-pages id="pickers"><yt-live-chat-product-picker-panel-view-model id="product-picker" hidden style="display:block;height:80px"></yt-live-chat-product-picker-panel-view-model></tp-yt-iron-pages>
         </div>

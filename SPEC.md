@@ -49,7 +49,7 @@
 - **v47 調整**（`docs/review-2026-11-17.md` 第 25、26 節，T5.6）：**預定開播時間在未來＝待機室**（不論 `startedAt`）、開播訊號來源完整清單、聊天事件不是開播訊號、錯誤 `startedAt` 降級與 `fixPhases` 兩段式清除（F-14）；直播錨點的有效條件（徽章「最新」且播放中穩定 3 秒、期間沒有 seek；取樣後 5 秒內被 seek 到非最新就作廢；網址帶 `t=` 時等點「直播」或穩定 10 秒）（F-08）；頭像點擊以新分頁開作者頻道（F-05）；SC 文字色沿用 YouTube 給的文字色變數、取不到才用對比度規則（F-02、10.3）；10.1 原則 7 註明「回到播放位置」浮動按鈕的例外。
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
-- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）。
+- **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）。
 
 ---
 
@@ -295,7 +295,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 
 | type | 方向 | payload |
 |---|---|---|
-| `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, bottomZoneHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗；v24 起 `inputHeight` 改名 `bottomZoneHeight`，定義見 6.3）。（v49，T6）另帶 `vh`（量測時的視窗高度，top 據此判斷是否過期）、`inputH`（`#input-panel` 高度）、`src`（`whitelist`／`overlay`／`fallback`／`none`）、`overlayIgnored`；只有數字、布林與來源代碼 |
+| `CHAT_INPUT_STATE` | chat frame → top | `{ hasInput: boolean, bottomZoneHeight: number, popupOpen: boolean, popupTop: number }`（px，相對 chat frame 視窗；v24 起 `inputHeight` 改名 `bottomZoneHeight`，定義見 6.3）。（v49，T6）另帶 `vh`（量測時的視窗高度，top 據此判斷是否過期）、`inputH`（`#input-panel` 高度）、`src`（`whitelist`／`overlay`／`fallback`／`none`；v50 加 `zone`）、`overlayIgnored`；（v50，T6.1）`purchase`（`$` 流程進行中，6.8）；只有數字、布林與來源代碼 |
 | `CHAT_INPUT_REQUEST` | top → chat frame | （v49，T6）要求立即重新量測並回報（面板開啟、iframe 重新載入後） |
 | `PANEL_INSET` | top → 面板 iframe | （v49，T6，6.2 第 5 點）`{ bottom: px }`：面板底部被原生互動區蓋住的高度；面板整體 `padding-bottom`，清單與「↓ 恢復自動捲動」都在其上 |
 | `TOGGLE_PANEL` | chat frame → top | `{}`（v24：使用者點了聊天室頂部列的 F-09 按鈕；top 端只接受 `event.source === iframe#chatframe.contentWindow` 且 origin 為 youtube.com） |
@@ -802,6 +802,13 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - `PANEL_INSET { bottom }` 告訴面板底部留白（退讓時 0）；面板以 `padding-bottom` 讓清單與「↓ 恢復自動捲動」在原生互動區之上。
   - clip 狀態改變記一筆 `clip`（`onLog`；mode、是否沿用、原因）。
 - **未實機驗證**：表符選單、購買流程、投票卡的實際位置與「可見」判定；`$` 選單關閉後的狀態；clip 切換時的閃爍。依 6.5 AC 1～8、12～14 實測。
+
+### 6.8 T6.1 修正（v50，2026-11-22，審查十一第 30 節實測）
+- **`$` 流程（30.3）**：實機點 `$` 後面板變全高、`$` 選單與輸入列都看不到（AC 4 失敗）。v49 的 `hasInput` 要求 `#input-panel` 可見；推測 YouTube 點 `$` 後隱藏 `#input-panel`、改在 `#panel-pages` 顯示 `$` 頁面（待實機確認，dom-notes 2.5b）。
+  - 規則：`chat.interactiveZone`（`#panel-pages`、`$` 選單、聊天室內的購買流程）**任一可見且高度 ≥ `PANEL.ZONE_MIN_PX` = 8**，就算底部互動區（取頂端）並視為 `hasInput`，**不可退回全高**。VOD 的 `#panel-pages` 只有 1px，仍是「無輸入區」。
+  - `purchase`（`CHAT_INPUT_STATE` 新欄位）：`$` 選單或購買流程可見，或 `#input-panel` 不見了而 `#panel-pages` 還在 → `$` 流程進行中，面板剩餘高度不足時**不退讓**（`remainTooSmall` 不判斷）。
+  - 轉到頁面層付款視窗（`#buyFlowDivId`）時沿用前一個狀態（v49 已有）；chat frame 這時回報什麼（量不到、無輸入區、回到一般）都不會閃回全高。
+  - F-20 P7 `zone-structure`：`$` 流程或彈窗開著（以及剛關上那一次）且結構改變時記一筆，每頁最多 `PANEL.ZONE_LOG_MAX` = 40 筆：`#panel-pages` 與其直接子元素、`#input-panel`、輸入列 `#top`、`#pickers` 的子元素、表符選單、購買流程、置頂列、投票卡的**標籤、靜態 id、可見與否、高度、頂端**，以及當時的量測結果；沒有文字。
 
 ### 6.6 備案：方案 B（僅在方案 A 的 T1 PoC 失敗時啟動）
 - 原生 chat frame 完全隱藏（仍保留在 DOM 以持續擷取）。

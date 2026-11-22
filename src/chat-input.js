@@ -36,7 +36,7 @@
     const P = C.PANEL;
     const vh = win.innerHeight;
     const rootEl = doc.querySelector(S.chat.renderer) || doc.body;
-    const out = { vh, hasInput: false, bottomZoneHeight: 0, src: 'none', inputH: 0, popupOpen: false, popupTop: null, overlayIgnored: false };
+    const out = { vh, hasInput: false, bottomZoneHeight: 0, src: 'none', inputH: 0, popupOpen: false, popupTop: null, overlayIgnored: false, purchase: false };
     if (!rootEl) return out;
     const input = doc.querySelector(S.chat.inputPanel);
     const ir = visibleRect(input, win);
@@ -59,9 +59,23 @@
     let zone = null;
     if (wl != null || ov != null) { zone = Math.max(wl || 0, ov || 0); out.src = ov != null && ov > (wl || 0) ? 'overlay' : 'whitelist'; }
     else if (ir) { zone = vh - ir.top; out.src = 'fallback'; }
+    // v50（T6.1，審查十一 30.3）`$` 相關（#panel-pages、`$` 選單、購買流程）任一可見 → 也算底部互動區，且一定「有互動區」：
+    // 實機點 `$` 後 #input-panel 不可見 → v49 判成沒有輸入區、面板全高，`$` 流程整個被蓋住
+    let iz = false;
+    for (const sel of S.chat.interactiveZone) {
+      rootEl.querySelectorAll(sel).forEach((el) => {
+        const r = visibleRect(el, win);
+        if (!r || r.height < P.ZONE_MIN_PX || r.top >= vh) return;
+        iz = true;
+        zone = Math.max(zone || 0, vh - r.top);
+        if (out.src === 'none') out.src = 'zone';
+      });
+    }
     out.bottomZoneHeight = Math.round(Math.max(0, Math.min(vh, zone || 0)));
-    // 輸入區存在且有高度（VOD 重播：#input-panel 高度 0 → 沒有輸入區，面板全高）
-    out.hasInput = !!ir && out.bottomZoneHeight > 0;
+    // `$` 流程進行中（`$` 選單或購買流程可見，或 #input-panel 不見了而 #panel-pages 還在）：剩餘高度不足時也不退讓（panel.js）
+    out.purchase = iz && (!ir || [S.chat.productPicker, S.chat.buyFlowInChat].some((sel) => Array.from(rootEl.querySelectorAll(sel)).some((el) => { const r = visibleRect(el, win); return !!r && r.height >= P.ZONE_MIN_PX; })));
+    // 輸入區存在且有高度（VOD 重播：#input-panel 高度 0、#panel-pages 1px → 沒有輸入區，面板全高）
+    out.hasInput = (!!ir || iz) && out.bottomZoneHeight > 0;
     // 3. 彈窗（S.chat.popups）：表符選單、購買流程、下拉選單、對話框。
     //    $ 選單（productPicker）長在 #input-panel 內，展開時 #input-panel 本身變高、已涵蓋在 bottomZoneHeight → 不列為彈窗
     //    （關閉時元素可能仍「可見」，SPEC 6.3）。頂部列內的下拉選單（F-12 自動切換時會短暫展開）不算
@@ -79,15 +93,60 @@
     return out;
   }
 
+  // v50（T6.1，審查十一 30.1、30.3）F-20 P7 zone-structure：底部互動區相關元素（只有標籤、靜態 id、可見與否、高度、頂端；不含文字）。
+  // 用來實機確認：點 `$` 後 #input-panel／#panel-pages 的變化、表符選單與輸入列的上下關係
+  const SAFE_ID = /^[a-z][\w-]{0,40}$/i;
+  function zoneStructure(doc, win, S) {
+    const rootEl = doc.querySelector(S.chat.renderer) || doc.body;
+    const out = [];
+    if (!rootEl) return out;
+    const Z = S.chat.zoneStructure;
+    const add = (el, role) => {
+      if (!el || out.length >= 30) return;
+      const r = el.getBoundingClientRect();
+      out.push({ role, t: el.tagName.toLowerCase() + (el.id && SAFE_ID.test(el.id) ? '#' + el.id : ''), v: !!visibleRect(el, win), h: Math.round(r.height), top: Math.round(r.top) });
+    };
+    const pp = rootEl.querySelector(S.chat.panelPages);
+    add(pp, 'panel-pages');
+    if (pp) for (const c of pp.children) add(c, 'panel-pages>');
+    add(rootEl.querySelector(S.chat.inputPanel), 'input-panel');
+    add(rootEl.querySelector(Z.inputRow), 'input-row');
+    const pk = rootEl.querySelector(Z.pickers);
+    if (pk) for (const c of pk.children) add(c, 'pickers>');
+    doc.querySelectorAll(S.chat.emojiPicker).forEach((el) => add(el, 'emoji'));
+    doc.querySelectorAll(S.chat.buyFlowInChat).forEach((el) => add(el, 'buy-flow'));
+    add(rootEl.querySelector(S.chat.bannerContainer), 'banner');
+    add(rootEl.querySelector(Z.actionPanel), 'action-panel');
+    return out;
+  }
+
   // opts: { doc, win, S, C, post(type, payload), onLog?(reason, data) }
   function create(opts) {
     const doc = opts.doc || document;
     const win = opts.win || window;
     const S = opts.S, C = opts.C, P = C.PANEL, FM = C.FM;
-    const st = { started: false, last: '', timer: 0, poll: 0, ro: null, observed: [], hide: false, sent: 0, warnedOverlay: false };
+    const st = { started: false, last: '', timer: 0, poll: 0, ro: null, observed: [], hide: false, sent: 0, warnedOverlay: false,
+      zoneActive: false, zoneSig: '', zoneLogs: 0 };
+
+    // v50（30.1、30.3）`$` 流程或彈窗開著（以及剛關上的那一次）且結構改變時記一筆（每頁最多 ZONE_LOG_MAX 筆）
+    function logZone(m) {
+      const active = m.purchase || m.popupOpen;
+      if (opts.onLog && (active || st.zoneActive) && st.zoneLogs < P.ZONE_LOG_MAX) {
+        const els = zoneStructure(doc, win, S);
+        const sig = JSON.stringify([m.purchase, m.popupOpen, els.map((x) => [x.t, x.v, x.h, x.top])]);
+        if (sig !== st.zoneSig) {
+          st.zoneSig = sig;
+          st.zoneLogs++;
+          try { opts.onLog('zone-structure', { reason: m.purchase ? 'purchase' : m.popupOpen ? 'popup' : 'closed',
+            m: { vh: m.vh, hasInput: m.hasInput, bottomZoneHeight: m.bottomZoneHeight, src: m.src, popupOpen: m.popupOpen, popupTop: m.popupTop, purchase: m.purchase }, els }); } catch (_) { /* ignore */ }
+        }
+      }
+      st.zoneActive = active;
+    }
 
     function send(force) {
       const m = measure(doc, win, S, C);
+      logZone(m);
       if (m.overlayIgnored && !st.warnedOverlay) {
         st.warnedOverlay = true;
         try { console.info('[ytcas] 底部互動區：覆蓋層子元素量出的高度超過 iframe 的 60%，不採計（只記一次）'); } catch (_) { /* ignore */ }
@@ -162,5 +221,5 @@
     return api;
   }
 
-  root.YTCAS_CHAT_INPUT = { create, measure, HIDE_STYLE_ID };
+  root.YTCAS_CHAT_INPUT = { create, measure, zoneStructure, HIDE_STYLE_ID };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

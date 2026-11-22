@@ -197,6 +197,8 @@
     // v49（T6，SPEC 6.3）F-10：底部互動區量測與彈窗偵測 → CHAT_INPUT_STATE；面板開啟時隱藏原生訊息列表與頂部列（嵌入式才有面板）
     if (env === 'chatframe' && globalThis.YTCAS_CHAT_INPUT) {
       const ci = globalThis.YTCAS_CHAT_INPUT.create({ doc: document, win: window, S, C, post,
+        // v50（T6.1，30.1、30.3）F-20 P7：`$`／彈窗狀態改變時的底部互動區結構（記錄中才轉送）
+        onLog: (kind, data) => { if (diagOn('P7')) dlog('P7', kind, data, { source, videoId: engine.state().videoId }); },
         accept: (e) => !retired && e.origin === YT && e.source === window.parent && !!e.data && e.data.__ytcas === true });
       ci.start();
       retireHooks.push(() => ci.stop());

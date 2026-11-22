@@ -188,6 +188,22 @@
       productPickerButton: 'yt-live-chat-icon-toggle-button-renderer#product-picker',
       // $ 選單長在 #input-panel 內（tp-yt-iron-pages#pickers）：展開時 #input-panel 高度本身會變，底部互動區量測會涵蓋
       productPicker: 'tp-yt-iron-pages#pickers > yt-live-chat-product-picker-panel-view-model#product-picker',
+      // v50（T6.1，審查十一 30.3）`$` 相關：任一可見（高度 ≥ PANEL.ZONE_MIN_PX）就視為「有互動區」，不可退回面板全高。
+      // 實機：點 `$` 後底部互動區整個消失（面板全高）。推測 YouTube 隱藏 #input-panel、改在 #panel-pages 顯示 `$` 選單或購買流程（待驗證，dom-notes 2.5b）
+      panelPages: '#panel-pages',
+      buyFlowInChat: 'yt-live-chat-message-buy-flow-renderer',
+      emojiPicker: 'yt-emoji-picker-renderer',
+      interactiveZone: [
+        '#panel-pages',
+        'tp-yt-iron-pages#pickers > yt-live-chat-product-picker-panel-view-model#product-picker',
+        'yt-live-chat-message-buy-flow-renderer',
+      ],
+      // F-20 P7 zone-structure：`$`／彈窗狀態改變時記錄這些元素的標籤、可見與否、高度、頂端（不含文字）。輸入列本身＝#top（dom-notes 2.5）
+      zoneStructure: {
+        inputRow: '#input-panel yt-live-chat-message-input-renderer > #container > #top',
+        pickers: 'tp-yt-iron-pages#pickers',
+        actionPanel: '#chat > #action-panel',
+      },
       popups: [
         'yt-emoji-picker-renderer',
         'tp-yt-iron-pages#pickers > yt-live-chat-product-picker-panel-view-model#product-picker', // 關閉時是否仍「可見」待實機確認

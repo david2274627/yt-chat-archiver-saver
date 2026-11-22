@@ -38,9 +38,9 @@
     return { mode: 'input', clip: 'inset(calc(100% - ' + bz + 'px) 0 0 0)', pad: bz };
   }
   // 面板剩餘高度不足（6.2「聊天室摺疊／退讓」v26）：iframe 高度 − bottomZoneHeight < PANEL_MIN_REMAIN_PX（含 ≥ iframe 高度）。
-  // 彈窗展開中不判斷（表符選單等會暫時變高）；量測過期也不判斷
+  // 彈窗展開中不判斷（表符選單等會暫時變高）；量測過期也不判斷。v50（30.3）`$` 流程進行中（purchase）也不判斷
   function remainTooSmall(input, iframeH, P) {
-    if (!input || !input.hasInput || input.popupOpen) return false;
+    if (!input || !input.hasInput || input.popupOpen || input.purchase) return false;
     if (Math.abs((input.vh || 0) - iframeH) > P.INPUT_STALE_PX) return false;
     return iframeH - (input.bottomZoneHeight || 0) < P.PANEL_MIN_REMAIN_PX;
   }
