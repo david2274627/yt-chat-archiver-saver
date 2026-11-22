@@ -1606,6 +1606,17 @@
     assert(!JSON.stringify(pre).includes('舊資料') && !JSON.stringify(pre).includes('@me'), '預覽不含內容與作者');
   });
 
+  test('T6.2（32.8）streamTimes 的 firstStartSource：待機室→開播先由播放器訊號（signal）得知、之後被 meta-actual 覆蓋 → 第一次的來源仍是 signal', async () => {
+    await resetAll();
+    const sched = Date.now() - 30e3;
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: sched, startPending: true }, messages: [] });
+    eq((await BG.streamTimes(V)).firstStartSource, null, '還沒開播');
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: sched + 5e3, startedAtSource: 'signal' }, messages: [] });
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: sched + 2e3, startedAtSource: 'meta-actual' }, messages: [] });
+    const tm = await BG.streamTimes(V);
+    eq([tm.startedAtSource, tm.firstStartSource, typeof tm.firstStartKnown], ['meta-actual', 'signal', 'string']);
+  });
+
   // ---------------------------------------------------------------- v51（T6.2，審查十一 32.7）未來時間
   test('T6.2 fixFutureTimes（32.7）：時間晚於寫入時間的直播訊息往前推整天、phase／offset 依場次重算、標 clock-ambiguous；預覽只回傳筆數與場次（4 碼）；到達時間與重播不動；寫入時保底', async () => {
     await resetAll();

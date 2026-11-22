@@ -276,7 +276,9 @@ async function streamTimes(videoId) {
     startedAtSuspect: !!s.startedAtSuspect, scheduledStartAt: iso(s.scheduledStartAt), scheduledFuture: !!s.scheduledFuture,
     startPending: !!s.startPending, endedAt: iso(s.endedAt), endedAtSource: s.endedAtSource || null, isLive: !!s.isLive,
     effectiveStart: iso(C.effectiveStart(s)), createdAt: iso(s.createdAt),
-    liveConfirmed: iso(s.liveConfirmedAt) }; // v48（27 第 1 點）重新抓取確認正在直播（isLiveNow）的時間
+    liveConfirmed: iso(s.liveConfirmedAt), // v48（27 第 1 點）重新抓取確認正在直播（isLiveNow）的時間
+    // v51（T6.2，32.8）第一次得知開播的來源（signal＝播放器長度出現、meta-actual＝頁面或重新抓取的 meta）與得知的時間
+    firstStartSource: s.startFirstSource || null, firstStartKnown: iso(s.startFirstAt) };
 }
 // v45（T5.4，審查十一 20.4 第 5 點）既有禮物的作者與 @handle 連結。用法：await YTCAS_BG.fixGiftAuthors()（預覽）→ { dryRun: false }
 async function fixGiftAuthors(opts) {

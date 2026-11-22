@@ -50,7 +50,7 @@
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
-- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）。
+- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）。
 
 ---
 
@@ -469,6 +469,8 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - （v48，T5.7，審查十一 27.1）**`meta-actual` 的判定必須同時確認 `scheduledFuture` 為 false**（實機：待機室的 `startDate` 可能是過去、帶秒數的時間，dom-notes 5.1）。background 重新抓取時另讀播放器資料的 `isLiveNow`：`false` 且沒有 `endDate` → 不採用 `startDate`（改為等待開播確認）；讀不到時維持原判斷。
     - （v48，審查十一 27 第 1 點）**待機室 → 開播，分頁不重新整理**：
       1. **準時或延後開播**：預定時間一到變成 `startPending`，background 每 60 秒重新抓取（`chrome.alarms` 每 1 分鐘檢查有分頁開著的場次）；開播後下一次抓取取得實際開播時間（`meta-actual`）。**延遲：開播後約 1～2 分鐘**轉為「直播中」。
+         - （v51，T6.2，審查十一 32.8）**實測：準時開播約 10 秒內**轉為「直播中」（2026-11-22 20:30，海克莉獅的待機室，不重新整理）。比上面的估計快，推測是較快的另一條路徑：**播放器訊號**（top frame 每 30 秒重讀場次資訊，播放器長度由無變有且頁面已開超過 60 秒 → `liveSignalAt`；擷取端在 `startPending` 期間採用為 `signal`，隨下一批訊息送給 background）。延遲 0～30 秒。之後 background 重新抓取的 `meta-actual` 以實際時間覆蓋、`pre→live` 重算。
+         - 判讀方式：`await YTCAS_BG.streamTimes('videoId')` 的 `firstStartSource`（v51 起記錄**第一次**得知開播的來源與時間 `firstStartKnown`；之後被覆蓋也保留）。`signal` → 播放器訊號；`meta-actual` → 重新抓取或頁面 meta。v50 以前的場次沒有這兩個欄位，`startedAtSource` 已被 `meta-actual` 覆蓋，無法事後分辨。
       2. **提早開播**（頁面上的 meta 仍說預定時間在未來）：v47 在預定時間到之前完全不重新抓取，最多延遲到預定時間。v48 起**待機室也重新抓取**：預定時間前 `META_POLL_SOON_WINDOW_MS` = 30 分鐘內每 `META_POLL_SOON_MS` = 2 分鐘、更早每 `META_POLL_FUTURE_MS` = 15 分鐘（只限有分頁開著的場次，`credentials: 'omit'`）。**延遲：預定前 30 分鐘內提早開播約 2～3 分鐘；更早開播最多約 15～16 分鐘**。重新抓到 `isLiveNow: true` 且有實際開播時間 → 採用並記 `liveConfirmedAt`；之後分頁上沒重新整理的舊 meta 仍說「在未來」時，擷取端與 background 都**不再**當成待機室（`C.isFutureScheduled` 在有 `liveConfirmedAt` 時為 false）。
       3. **期間收到的訊息**：擷取端在得知開播時間前存成 `pre`、offset 空。`startedAt` 確定時依時間重算（`pre→live`，本套件直播收錄的推算 offset 一併算出）；之後擷取端還不知道、但 background 已知開播時間時送來的 `pre`／offset 空的訊息，寫入時直接依已知的開播時間重算（`SAVE_MESSAGES` 回應的 `phaseFixed`）。
       4. 擷取端從 `SAVE_MESSAGES`／`CAPTURE_START` 的回應得知（`liveConfirmedAt`、`startedAt`）。待機室裡沒有人留言時，第一則訊息送出後才會得知；在那之前不影響資料（沒有訊息要算）。

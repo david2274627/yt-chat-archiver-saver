@@ -217,7 +217,11 @@
       if (C.startRank(inc) > curRank && (s[k] !== v || suspect)) {
         s[k] = v;
         s[srcKey] = inc;
-        if (k === 'startedAt') { s.startedAtSuspect = false; s.scheduledFuture = false; }
+        if (k === 'startedAt') {
+          s.startedAtSuspect = false; s.scheduledFuture = false;
+          // v51（T6.2，審查十一 32.8）第一次得知開播的來源與時間（之後被較高等級的來源覆蓋也保留）：判讀「待機室→開播」是哪條路徑觸發
+          if (!s.startFirstSource) { s.startFirstSource = inc; s.startFirstAt = Date.now(); }
+        }
         timesChanged = true;
       } else if (s[k] === v && inc && C.startRank(inc) > C.startRank(s[srcKey])) {
         s[srcKey] = inc;
