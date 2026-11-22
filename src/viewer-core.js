@@ -271,6 +271,16 @@
     keyed.sort((a, b) => (a.r - b.r) || (a.k - b.k) || (a.i - b.i));
     return keyed.map((x) => x.it);
   }
+  // v51（T6.2，審查十一 32.9）直播／待機室清單也依 phase 分段（頁面狀態提示 → pre → live → post），段內維持原本的時間順序。
+  // 實機「等待開播」期間一則被暫定為 live、之後又是 pre，分段標題來回出現。已經依序時直接回傳（10 萬則不重新排序）
+  function sortByPhase(list) {
+    let prev = -1, sorted = true;
+    for (const it of list) { const r = PHASE_RANK[phaseOf(it.m)] ?? 2; if (r < prev) { sorted = false; break; } prev = r; }
+    if (sorted) return list;
+    const buckets = [[], [], [], []];
+    for (const it of list) buckets[PHASE_RANK[phaseOf(it.m)] ?? 2].push(it);
+    return buckets[0].concat(buckets[1], buckets[2], buckets[3]);
+  }
   // v46（T5.5，審查十一 24.6）會員訊息（yt-live-chat-membership-item-renderer）的 runs＝標題（#header-primary-text＋#header-subtext）
   //＋{ text: '\n' }＋使用者留言（#message；capture.js）。有留言＝里程碑（「已加入會員 N 個月」＋留言），沒有＝新會員等公告
   function memberParts(m) {
@@ -598,6 +608,6 @@
     channelUrl, scColors,
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, sortByPhase, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

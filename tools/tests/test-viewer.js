@@ -1484,6 +1484,26 @@
     assert(!pin.classList.contains('open'), '點提示 → 收合');
   });
 
+  test('T6.2（32.9）直播／待機室清單也依 phase 分段：等待開播期間 pre、live、pre 交錯 → 只有一個「直播開始前」標題、段內依時間；已依序時不重新排序', async () => {
+    const list = [mk({ id: 'a', phase: 'pre', timestampAbs: T0 + 1 }), mk({ id: 'b', phase: 'pre', timestampAbs: T0 + 2 }), mk({ id: 'c', phase: 'live', timestampAbs: T0 + 3 }),
+      mk({ id: 'd', phase: 'pre', timestampAbs: T0 + 4 }), mk({ id: 'e', phase: 'pre', timestampAbs: T0 + 5 })].map((m) => CORE.indexMessage(m, new Map()));
+    eq(CORE.sortByPhase(list).map((x) => x.m.id), ['a', 'b', 'd', 'e', 'c']);
+    const ok = [list[0], list[1], list[2]];
+    assert(CORE.sortByPhase(ok) === ok, '已依序：原陣列');
+    await resetDb();
+    const VW = 'vidWAITPH01';
+    const now = Date.now();
+    await put({ videoId: VW, title: '等待開播', isLive: true, startPending: true, scheduledStartAt: now - 120e3, lastMessageAt: now, messageCount: 5, versions: [], linkedVideos: [] },
+      ['pre', 'pre', 'live', 'pre', 'pre'].map((p, i) => mk({ id: 'w' + i, videoId: VW, phase: p, timestampAbs: now - (5 - i) * 20e3, videoOffsetSec: null })));
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VW });
+    await c.ready; await frame(); await frame();
+    const heads = Array.from(c.els.list.querySelectorAll('.phase')).map((n) => n.textContent);
+    eq(heads.filter((t) => /開始前/.test(t)).length, 1, '「直播開始前」只出現一次：' + heads.join('／'));
+    const ids = Array.from(c.els.list.querySelectorAll('.vrow > [data-id]')).map((n) => n.dataset.id);
+    eq(ids, ['w0', 'w1', 'w3', 'w4', 'w2'], '段內依時間');
+  });
+
   test('T6.1（30.4）atLiveEdge：讀不到徽章時以本頁錨點判斷（差 < 15 秒＝最新）；徽章說非最新但與錨點差 < 15 秒也算；沒有錨點、連延遲都量不到 → 當成在最新（不當成倒轉）', () => {
     const at = T0 + 3600e3;
     const A = at - 50000e3; // 在最新時 currentTime 50000

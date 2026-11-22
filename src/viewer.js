@@ -844,9 +844,9 @@
       if (vodOrder()) {
         if (!S.cal || Math.abs(S.calN - S.items.length) > Math.max(50, S.calN * 0.05)) { S.cal = CORE.vodCalibration(S.items.map((x) => x.m), S.stream); S.calN = S.items.length; }
         list = CORE.sortForVod(list, S.ver, S.cal);
-      } else if (list.some((it) => C.isNotice(it.m))) {
-        // v45（21.3）頁面狀態提示一律在最上方（不混在時間軸裡），其餘順序不變
-        list = list.filter((it) => C.isNotice(it.m)).concat(list.filter((it) => !C.isNotice(it.m)));
+      } else {
+        // v45（21.3）頁面狀態提示一律在最上方（不混在時間軸裡）；v51（T6.2，32.9）直播／待機室也依 phase 分段、段內順序不變
+        list = CORE.sortByPhase(list);
       }
       S.sortedVod = vodOrder();
       // 列的 key：訊息用 id；分隔線用 phase 名稱＋出現序號（量測高度快取以 key 為準）

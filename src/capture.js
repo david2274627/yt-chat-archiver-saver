@@ -337,9 +337,12 @@
   }
 
   // 直播收錄的 phase（F-14）：有開播時間 → 依時間；沒有 → 預定時間未到或等待開播確認 = pre，否則 live
+  // v51（T6.2，審查十一 32.9）有預定時間、還沒確認開播 → 一律暫定 pre（不以預定時間推算 live）。
+  // 實機：預定時間剛過、頁面 meta 下一次重讀（startPending）之前到的一則被判成 live，之後的又是 pre，分段來回跳。
+  // 確認開播後由 background 依實際時間重算（pre → live）
   function livePhase(ts, ctx) {
     if (ctx.startedAt != null) return ts < ctx.startedAt ? 'pre' : (ctx.endedAt != null && ts > ctx.endedAt ? 'post' : 'live');
-    return ctx.startPending || (ctx.scheduledStartAt != null && ts < ctx.scheduledStartAt) ? 'pre' : 'live';
+    return ctx.startPending || ctx.scheduledStartAt != null ? 'pre' : 'live';
   }
   // 降落橫幅（取不到 id）：同一場同一段文字視為同一則，id 以內容雜湊產生（SPEC 4.3 補救 id）
   // v47（T5.6，審查十一 26.1）phase 與其他訊息同一規則（v46 以前一律 live：待機室的降落被放進「直播中」段）

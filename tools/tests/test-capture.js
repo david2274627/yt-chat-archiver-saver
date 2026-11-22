@@ -154,6 +154,16 @@
     eq([CAP.clockShape('下午11:13'), CAP.clockShape('11:13 PM'), CAP.clockShape('-0:05'), CAP.clockShape('週三 9:00')], ['Pdd:dd', 'dd:dd P', '-d:dd', '?? d:dd']);
   });
 
+  test('T6.2（32.9）有預定時間、還沒確認開播 → 新訊息一律暫定 pre（預定時間已過、startPending 還沒設也一樣）；有開播時間才依時間分 pre／live', () => {
+    const el = () => textMsg({ ts: '下午10:23' });
+    const sched = NOW - 60e3; // 預定時間 1 分鐘前已過
+    eq(CAP.parseMessage(el(), { source: 'live', now: NOW, startedAt: null, scheduledStartAt: sched, startPending: false, arrival: true }).phase, 'pre', '預定時間已過、meta 還沒重讀（v50 會是 live）');
+    eq(CAP.parseMessage(el(), { source: 'live', now: NOW, startedAt: null, scheduledStartAt: sched, startPending: true, arrival: true }).phase, 'pre', 'startPending');
+    eq(CAP.parseMessage(el(), { source: 'live', now: NOW, startedAt: null, scheduledStartAt: NOW + 600e3, arrival: true }).phase, 'pre', '預定時間未到');
+    eq(CAP.parseMessage(el(), { source: 'live', now: NOW, startedAt: NOW - 30e3, scheduledStartAt: sched, arrival: true }).phase, 'live', '確認開播後');
+    eq(CAP.parseMessage(el(), { source: 'live', now: NOW, startedAt: null, scheduledStartAt: null, arrival: true }).phase, 'live', '沒有任何開播資訊（一般直播）');
+  });
+
   test('T6.2（32.7）回溯擷取依 DOM 順序重建跨日日期：待機室 backlog 有前兩天的訊息 → 不在未來、依序不倒退；早於擷取超過 24 小時標 clock-ambiguous；P1 clockFuture、P7 ts-format（只有形狀、時區）', async () => {
     const { items } = buildChat();
     const now = new Date(2026, 10, 22, 20, 22, 32).getTime();

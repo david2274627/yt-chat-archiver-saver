@@ -50,7 +50,7 @@
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
-- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）。
+- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）。
 
 ---
 
@@ -428,6 +428,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - 檢視器收到合併後的紀錄時，清單中以 id 或別名對到的其他筆一併移除，依新的時間重新排列。
   - 既有資料：`YTCAS_BG.fixOwnDuplicates()` 預覽（筆數、各場筆數，videoId 4 碼；暫時 id 總數；「兩筆都是正式 id、同作者同內容 90 秒內」的 id 形狀＝前 4 碼＋長度，用來核對暫時 id 格式，不合併）→ `{ dryRun: false }` 執行並重算筆數。
   - F-20：P1 `own`（`tempSeen`／`replaced`／`inPlace`／`late`／`pageRemoved`）；P7 `own-replace`（種類、新舊 id 的前 4 碼與長度、時間差、是否被移除／是否列表開頭／是否同一個節點、兩個元素的屬性名稱），不含內容與作者。
+- （v51，T6.2，審查十一 32.9）**等待開播期間一律暫定 `pre`**：有預定時間、還沒有開播時間（`startedAt`）→ 新訊息一律 `pre`，不以預定時間推算 `live`（`capture.js` `livePhase`）。實機：預定時間剛過、頁面 meta 下一次重讀（`startPending`）之前到的一則被判成 `live`，之後的又是 `pre`，面板分段標題來回出現。確認開播後由 background 依實際時間重算 `pre → live`（v48 起的機制）。面板與後台的直播／待機室清單也依 phase 分段（頁面狀態提示 → `pre` → `live` → `post`，`CORE.sortByPhase`），段內維持時間順序，每段標題只出現一次（與 VOD 的 v45 規則一致）。
 - **收錄紀錄 `capture_sessions`**（4.1）：每次開始收錄（chat frame 開始擷取）記一筆，結束時補 `endedAt`、`lastOffset`、`added`、`merged`、`phases`。
   - 後台場次清單顯示「直播收錄 2 次・重播 1 次」，以及**時間軸覆蓋範圍**（只會收錄實際有開著的時段，中途離開的空檔一目了然；含 `pre`／`post`）。
   - 不提供「另存新檔」；提供「清空此場次後重新收錄」（`RESET_STREAM`，需二次確認：刪除該 `videoId` 的 messages、pinned_messages、capture_sessions，保留 streams 基本資料）。（v28：`versions` 隨之清空（由收錄產生），`linkedVideos` 為使用者輸入，保留；收錄次數、訊息數、估計大小歸零。）
