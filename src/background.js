@@ -422,6 +422,48 @@ async function channelStats() {
   r.consecutiveNetErrors = chStats.consecutiveNet;
   return r;
 }
+// v51（T6.2，審查十一 32.11）SC 的金額分級：await YTCAS_BG.scTiers()（或 { videoId }）
+// 依「幣別前綴＋顏色」統計 SC／超級貼圖的筆數與金額最小／最大值（不含名稱、內容、videoId）。
+// overlaps：同一幣別裡，兩種顏色的金額範圍重疊（同幣別但金額與顏色分級不一致的線索，例如 $170 卻是 $75～149 的顏色）
+function parseAmount(text) {
+  const s = String(text || '').trim();
+  const prefix = s.replace(/[\d.,\s  ']/g, '') || '?';
+  const m = /\d[\d.,\s  ']*/.exec(s);
+  if (!m) return { prefix, value: null };
+  let n = m[0].replace(/[\s  ']/g, '');
+  const dec = /[.,](\d{1,2})$/.exec(n);
+  n = dec ? n.slice(0, dec.index).replace(/[.,]/g, '') + '.' + dec[1] : n.replace(/[.,]/g, '');
+  const value = Number(n);
+  return { prefix, value: Number.isFinite(value) ? value : null };
+}
+async function scTiers(opts) {
+  const want = opts && typeof opts.videoId === 'string' ? opts.videoId : null;
+  const db = await DB.open();
+  const all = await new Promise((res, rej) => { const q = db.transaction('messages').objectStore('messages').getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  const groups = new Map();
+  let total = 0, noAmount = 0;
+  for (const m of all) {
+    if (m.type !== 'superchat' && m.type !== 'supersticker') continue;
+    if (want && m.videoId !== want) continue;
+    total++;
+    const a = parseAmount(m.amount);
+    if (a.value == null) { noAmount++; continue; }
+    const color = typeof m.color === 'string' && m.color ? m.color.replace(/\s+/g, '').slice(0, 40) : '(無)';
+    const k = m.type + '\u0001' + a.prefix + '\u0001' + color;
+    const g = groups.get(k) || { type: m.type, currency: a.prefix, color, n: 0, min: Infinity, max: -Infinity };
+    g.n++; g.min = Math.min(g.min, a.value); g.max = Math.max(g.max, a.value);
+    groups.set(k, g);
+  }
+  const tiers = Array.from(groups.values()).sort((a, b) => (a.type < b.type ? -1 : a.type > b.type ? 1 : 0) || (a.currency < b.currency ? -1 : a.currency > b.currency ? 1 : 0) || a.min - b.min);
+  const overlaps = [];
+  for (let i = 0; i < tiers.length; i++) for (let j = i + 1; j < tiers.length; j++) {
+    const a = tiers[i], b = tiers[j];
+    if (a.type === b.type && a.currency === b.currency && a.color !== b.color && a.min <= b.max && b.min <= a.max) overlaps.push({ type: a.type, currency: a.currency, a: a.color + ' ' + a.min + '～' + a.max, b: b.color + ' ' + b.min + '～' + b.max });
+  }
+  const out = { total, noAmount, tiers, overlaps };
+  console.info('[ytcas] SC 金額分級', out);
+  return out;
+}
 // v51（T6.2，審查十一 32.10 第 1 點）單一 handle 的解析狀態：await YTCAS_BG.channelInfo('@handle')
 // 只回傳狀態（ok／pending／retry／failed／unknown）、原因代碼、嘗試次數、時間、是否有名稱；不回傳名稱以外的頁面內容
 async function channelInfo(handle) {
@@ -1305,4 +1347,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

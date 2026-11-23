@@ -50,7 +50,7 @@
 - **v48 調整**（`docs/review-2026-11-17.md` 第 27、28 節，T5.7）：DOM 給的 `@handle` 長度下限 1、與內文推斷的嚴格規則分開（F-05）；直播時間只精確到分鐘的「≈」標記、背景分頁的時間精度限制、P1 `tsSource` 分布與背景擷取筆數（F-02、F-08、F-20）；待機室→開播不重新整理時的轉換與提早開播（F-14）；`meta-actual` 必須同時確認 `scheduledFuture` 為 false（F-14）。
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
-- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）；頻道名稱可見優先、網路錯誤退避、`channelInfo`（F-03）。
+- **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）；頻道名稱可見優先、網路錯誤退避、`channelInfo`（F-03）；SC 金額原樣顯示、`scTiers`（10.3）。
 
 ---
 
@@ -977,6 +977,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 ```
 - Super Chat 底色**使用訊息本身的 SC 等級顏色**（`message.color`），文字色依底色自動選黑/白以符合對比。（v38，T4）以 WCAG 相對亮度計算，選與底色對比度較高者；顏色只接受 `#rgb`／`#rrggbb`／`#aarrggbb`／`rgb()`／`rgba()`，其他字串不套用（改用 `--ytcas-surface-2`）。訊息區的淡底以文字色調出（`color-mix`），不寫死色碼。（v39，**已決**，`docs/review-2026-11-17.md` 2.3、第 4 節）使用者選 (a)：維持依對比度選黑或白（可讀性優先，符合本節 AA 要求），**不**改為 YouTube 原生的一律白字；例如藍色 SC（`#1e88e5`）白字對比 3.8、黑字 5.5 → 黑字。疊層加深（審查的選項 (c)）不採用。
   - （v47，T5.6，審查十一 26.4，**取代 v39 的決定**；使用者 2026-11-21 決定，不需先給對照圖）**文字色沿用 YouTube 給各 SC 的值**：擷取時保存元件上的文字色 CSS 變數（`selectors.js` 的 `paidMessageTextColorVars`：標題列 `header`、名稱 `author`、時間 `timestamp`、內文 `body`；超級貼圖只取名稱色 `author`，金額膠囊的字色是配膠囊自己的底色），存為 `textColors`（只接受色碼，顯示時再驗證一次）；檢視器優先使用，**取不到的欄位（含 v46 以前的舊資料）才用上面的對比度規則**。例：藍色 SC 由黑字改為與 YouTube 相同的白字。
+  - （v51，T6.2，審查十一 32.11）**金額與顏色的取得**：`amount` 存原生 `#purchase-amount` 的完整文字（含 `US$`、`HK$`、`¥`、`€`、`NT$` 等幣別前綴，只收斂空白），面板原樣顯示、不縮不換行（名稱較長時由名稱讓位）。底色 `color` 與 `textColors` 都在**擷取當下**以 `getComputedStyle` 讀元件上的 CSS 變數並存入紀錄；面板與後台繪製時**不重讀** DOM。統計：`await YTCAS_BG.scTiers()`（或 `{ videoId }`）依「幣別前綴＋顏色」列出筆數與金額最小／最大值，`overlaps` 列出同幣別兩種顏色範圍重疊的（只有幣別、顏色與金額，不含名稱、內容、videoId）。
   - **例外的依據**：藍底白字約 3.7:1，低於一般文字的 4.5:1。SC 標題列（名稱、金額）為粗體，依 WCAG 1.4.3 大字（粗體 14pt≈18.7px 以上、或一般 18pt≈24px 以上）的 3:1 標準，以及「與 YouTube 原生一致」的需求，接受此例外；內文同樣沿用 YouTube 的值（使用者決定）。本套件自己的 tokens 仍適用下一條。
   - 變數名稱待實機確認（dom-notes 2.4b）：F-20 P7 `sc-color-vars` 記錄元件上實際有的 `--yt-live-chat-paid-*` 變數名稱（不含值）與讀到的欄位；P1 統計 `scTotal`／`scTextColors`。
 - 對比度：本文文字 ≥ 4.5:1，次要文字 ≥ 3:1（WCAG AA）。

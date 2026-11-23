@@ -154,6 +154,16 @@
     eq([CAP.clockShape('下午11:13'), CAP.clockShape('11:13 PM'), CAP.clockShape('-0:05'), CAP.clockShape('週三 9:00')], ['Pdd:dd', 'dd:dd P', '-d:dd', '?? d:dd']);
   });
 
+  test('T6.2（32.11）SC／超級貼圖的金額存原生完整文字（含幣別前綴）：HK$170.00、US$5.00、¥500、€5,00、NT$1,500.00', () => {
+    for (const amt of ['HK$170.00', 'US$5.00', '¥500', '€5,00', 'NT$1,500.00', '$75.00']) {
+      const el = h('yt-live-chat-paid-message-renderer', { id: 'sc-' + amt.length }, [
+        h('div', { id: 'card' }, [h('div', { id: 'header' }, [h('span', { id: 'author-name', text: '@fan' }), h('div', { id: 'purchase-amount' }, [document.createTextNode('  ' + amt + ' ')])]),
+          h('div', { id: 'content' }, [h('div', { id: 'message', text: '加油' })])]),
+      ]);
+      eq(CAP.parseMessage(el, { source: 'live', now: NOW, startedAt: NOW - 60e3 }).amount, amt, '原樣保存 ' + amt);
+    }
+  });
+
   test('T6.2（32.9）有預定時間、還沒確認開播 → 新訊息一律暫定 pre（預定時間已過、startPending 還沒設也一樣）；有開播時間才依時間分 pre／live', () => {
     const el = () => textMsg({ ts: '下午10:23' });
     const sched = NOW - 60e3; // 預定時間 1 分鐘前已過

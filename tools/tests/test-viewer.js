@@ -1507,6 +1507,28 @@
     assert(!pin.classList.contains('open'), '點提示 → 收合');
   });
 
+  test('T6.2（32.11）SC 金額原樣顯示（HK$170.00、US$5.00、¥500）：不裁切、不換行；名稱很長時由名稱讓位', async () => {
+    await resetDb();
+    const VS = 'vidSCAMT001';
+    const now = Date.now();
+    const amts = ['HK$170.00', 'US$5.00', '¥500'];
+    const msgs = amts.map((a, i) => mk({ id: 'sa' + i, videoId: VS, type: 'superchat', amount: a, color: '#1de9b6', authorHandle: '@' + 'very_long_name_'.repeat(4) + i,
+      timestampAbs: now - (3 - i) * 1000, videoOffsetSec: i, runs: [{ text: '加油' }] }));
+    await put({ videoId: VS, title: 'S', isLive: true, startedAt: now - 3600e3, lastMessageAt: now, messageCount: 3, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VS });
+    await c.ready; await frame(); await frame();
+    for (let i = 0; i < amts.length; i++) {
+      const a = c.els.list.querySelector('[data-id="sa' + i + '"] .amt');
+      assert(a, '金額元素 ' + i);
+      eq(a.textContent, amts[i], '原樣顯示');
+      assert(a.scrollWidth <= a.clientWidth + 1, '不裁切：' + amts[i]);
+      eq(getComputedStyle(a).whiteSpace, 'nowrap');
+      const card = a.closest('.card').getBoundingClientRect(), r = a.getBoundingClientRect();
+      assert(r.right <= card.right + 1 && r.height < 30, '在卡片內、單行 ' + JSON.stringify([r.right, card.right, r.height]));
+    }
+  });
+
   test('T6.2（32.10）可見優先：畫面上還沒有頻道名稱的作者 handle 送 RESOLVE_CHANNELS（已有名稱的不送、同一組 30 秒內不重送、分頁在背景不送）', async () => {
     await resetDb();
     const VH = 'vidVISNAME1';

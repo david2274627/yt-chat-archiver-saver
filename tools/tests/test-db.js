@@ -1650,6 +1650,24 @@
     } finally { self.fetch = self.__blockedFetch; }
   });
 
+  test('T6.2（32.11）scTiers：依幣別前綴＋顏色統計 SC 筆數與金額範圍；同幣別兩種顏色範圍重疊列為 overlaps；不含名稱與內容', async () => {
+    eq(['HK$170.00', 'US$5.00', '¥500', '€5,00', 'NT$1,500.00', '$1,500', '1.500,00 €', ''].map((t) => { const a = BG._parseAmount(t); return [a.prefix, a.value]; }),
+      [['HK$', 170], ['US$', 5], ['¥', 500], ['€', 5], ['NT$', 1500], ['$', 1500], ['€', 1500], ['?', null]]);
+    await resetAll();
+    const sc = (id, amount, color) => ({ id, type: 'superchat', authorHandle: '@秘密', runs: [{ text: '內容' }], amount, color, timestampAbs: 1_700_000_000_000, videoOffsetSec: 1 });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [
+      sc('s1', '$150.00', '#ffca28'), sc('s2', '$300.00', '#ffca28'), sc('s3', '$170.00', '#1de9b6'), sc('s4', '$75.00', '#1de9b6'),
+      sc('s5', 'HK$170.00', '#1de9b6'), sc('s6', '$15.00', '#1e88e5'), sc('s7', '', '#1e88e5'),
+    ] });
+    const r = await BG.scTiers();
+    eq([r.total, r.noAmount], [7, 1]);
+    const t = (cur, color) => r.tiers.find((x) => x.currency === cur && x.color === color);
+    eq([t('$', '#1de9b6').n, t('$', '#1de9b6').min, t('$', '#1de9b6').max], [2, 75, 170]);
+    eq([t('HK$', '#1de9b6').n, t('$', '#ffca28').min, t('$', '#ffca28').max], [1, 150, 300]);
+    eq(r.overlaps.map((o) => [o.currency, o.a, o.b]), [['$', '#1de9b6 75～170', '#ffca28 150～300']], '同幣別 $170 綠松與 $150 黃色重疊');
+    assert(!JSON.stringify(r).includes('秘密') && !JSON.stringify(r).includes('內容') && !JSON.stringify(r).includes(V), '不含名稱、內容、videoId');
+  });
+
   test('T6.2（32.8）streamTimes 的 firstStartSource：待機室→開播先由播放器訊號（signal）得知、之後被 meta-actual 覆蓋 → 第一次的來源仍是 signal', async () => {
     await resetAll();
     const sched = Date.now() - 30e3;

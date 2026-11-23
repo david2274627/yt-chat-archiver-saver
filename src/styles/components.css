@@ -126,7 +126,9 @@ mark { background: var(--ytcas-highlight); color: inherit; border-radius: 2px; p
 /* Super Chat／超級貼圖卡：底色來自訊息資料 */
 .card { margin: 4px 10px; border-radius: var(--ytcas-radius-md); overflow: hidden; box-shadow: var(--ytcas-shadow-1); }
 .card .hd-row { display: flex; gap: 8px; align-items: center; padding: 6px 10px; }
-.card .hd-row .amt { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* v51（T6.2，32.11）金額是原生的完整文字（含 US$、HK$、¥、€ 等幣別），不縮、不換行、不裁切；名稱較長時由名稱讓位 */
+.card .hd-row .amt { margin-left: auto; flex: none; white-space: nowrap; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card .hd-row .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .tx { padding: 6px 10px; }
 .card .stk { width: 72px; height: 72px; margin: 6px 10px 8px; border-radius: 12px; display: grid; place-items: center; font-size: 40px; background: var(--ytcas-surface-2); }
 .card .av { background: var(--ytcas-overlay); }
