@@ -200,6 +200,26 @@
   - 窄視窗讀不到徽章時不直接判為倒轉、錨點存在 top frame（30.4，commit `ddc654e`）。
   - dom-notes 5.1 `isLiveNow` 已驗證、AC 9～11 的去處、測試留言提醒、T8 記憶體確認、CHANGELOG、測試清單、報告（30.6、第 29 節；本段落所在的 commit）。
 
+- v51／T6.2（`docs/review-2026-11-17.md` 第 31、32 節；報告為 `docs/reports/2026-11-22-t6-f10.md` 的「T6.2」一節）：
+  - 審查十一第 29～32 節、診斷摘要 19:10／19:17、審查串交接摘要（commit `8075fa1`）。
+  - 直播／待機室訊息的時間不再落在未來、回溯擷取依順序重建跨日日期、`fixFutureTimes`（32.7，commit `52cc83d`）。
+  - 等待開播期間一律暫定 `pre`、直播／待機室清單依 phase 分段（32.9，commit `d607343`）。
+  - 暫時 id 改為實測形狀、原地改 id 只在同作者同內容時合併、頁面移除規則收緊、P1 `own` 分開合併與事件次數（32.2，commit `05c1e63`）。
+  - diag-report 專用表格、`role` 被消毒成 `[removed]`、dom-notes 2.4b／2.5b／2.5c 已驗證、投票卡元件標籤（32.1、32.6，commit `ef477c2`）。
+  - VOD 校正後在影片開頭之前顯示「影片開頭之前」（32.3，commit `f186350`）。
+  - `streamTimes` 的 `firstStartSource`、SPEC 延遲表補實測（32.8，commit `3ce5a4d`）。
+  - 頻道名稱可見優先、網路錯誤退避、`channelInfo`、`channelStats` 新欄位（32.10，commit `b3d8890`）。
+  - SC 金額原樣顯示、`scTiers`（32.11，commit `af250f6`）。
+  - 配對快取建索引（commit `7ed32a9`）。
+  - CHANGELOG、測試清單、報告（本段落所在的 commit）。
+
+### 規格 v51（2026-11-22～23，T6.2）
+- F-02：直播／待機室訊息的時間不得在未來、回溯擷取依 DOM 順序重建日期、`clock-ambiguous`、`fixFutureTimes`、P1 `clockFuture`、P7 `ts-format`。
+- F-14：等待開播期間一律暫定 `pre`、清單依 phase 分段；自己送出的訊息的暫時 id 格式、原地改 id 比對作者與內容、頁面移除 10 秒、P1 `own` 的新結構、P7 `own-replace` 一定記錄；`firstStartSource`、延遲表實測。
+- F-08：VOD 校正後 < 0 顯示「影片開頭之前」。
+- F-03、4.3：可見優先 `RESOLVE_CHANNELS`、網路錯誤退避、`channelInfo`、`channelStats` 新欄位。
+- 6.8：`$` 之後與表符選單的實機結構已驗證、`zone-structure` 的 role、投票卡標籤；10.3：SC 金額與顏色的取得、`scTiers`。
+
 ### 規格 v50（2026-11-22，T6.1）
 - F-14：自己送出的訊息（暫時 id／替換證據、`replacesId`、合併規則、`fixOwnDuplicates`、P1 `own`、P7 `own-replace`）。
 - 6.2、6.5 AC 12、F-07：置頂選 A（不露出原生置頂列、置頂卡可展開看完整內容、連結可點）。
