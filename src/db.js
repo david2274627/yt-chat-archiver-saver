@@ -348,30 +348,39 @@
   }
   // 寫入中的同場次最近文字訊息（只在 background 記憶體；Service Worker 重啟後由 fixOwnDuplicates 處理遺漏）
   const twinCaches = new Map();
+  // v51（T6.2）依 key／id 建索引（v50 每則訊息線性掃描最多 3,000 筆兩次，壓力測試 P95 49 → 68ms）
   function twinCacheFor(videoId) {
     let c = twinCaches.get(videoId);
     if (!c) {
       if (twinCaches.size > 20) twinCaches.delete(twinCaches.keys().next().value);
-      c = [];
+      c = { order: [], byId: new Map(), byKey: new Map() };
       twinCaches.set(videoId, c);
     }
     return c;
+  }
+  function dropTwin(c, e) {
+    c.byId.delete(e.id);
+    const arr = c.byKey.get(e.key);
+    if (arr) { const i = arr.indexOf(e); if (i >= 0) arr.splice(i, 1); if (!arr.length) c.byKey.delete(e.key); }
+    e.gone = true;
   }
   function rememberTwin(videoId, rec, now) {
     const key = C.ownKey(rec);
     if (!key) return;
     const c = twinCacheFor(videoId);
     const t = now - 10 * 60 * 1000;
-    while (c.length && (c[0].at < t || c.length > 3000)) c.shift();
-    const e = c.find((x) => x.id === rec.id);
+    while (c.order.length && (c.order[0].at < t || c.order.length > 3000)) { const e = c.order.shift(); if (!e.gone) dropTwin(c, e); }
+    const e = c.byId.get(rec.id);
     if (e) { e.ts = rec.timestampAbs; return; }
-    c.push({ id: rec.id, key, ts: rec.timestampAbs, temp: isTempId(rec.id), at: now });
+    const ne = { id: rec.id, key, ts: rec.timestampAbs, temp: isTempId(rec.id), at: now };
+    c.order.push(ne); c.byId.set(rec.id, ne);
+    if (!c.byKey.has(key)) c.byKey.set(key, []);
+    c.byKey.get(key).push(ne);
   }
   function forgetTwin(videoId, id) {
     const c = twinCaches.get(videoId);
-    if (!c) return;
-    const i = c.findIndex((x) => x.id === id);
-    if (i >= 0) c.splice(i, 1);
+    const e = c && c.byId.get(id);
+    if (e) dropTwin(c, e);
   }
   // 回傳 { other, realIsRec } 或 null
   async function findTwin(store, rec, hint) {
@@ -387,8 +396,8 @@
     const recTemp = isTempId(rec.id);
     if (!recTemp && hasTempAlias(rec)) return null; // 已經合併過
     const W = C.OWN_REPLACE_WINDOW_MS;
-    const cands = twinCacheFor(rec.videoId)
-      .filter((e) => e.key === key && e.id !== rec.id && e.temp !== recTemp && Math.abs(e.ts - rec.timestampAbs) <= W)
+    const cands = (twinCacheFor(rec.videoId).byKey.get(key) || [])
+      .filter((e) => e.id !== rec.id && e.temp !== recTemp && Math.abs(e.ts - rec.timestampAbs) <= W)
       .sort((a, b) => Math.abs(a.ts - rec.timestampAbs) - Math.abs(b.ts - rec.timestampAbs));
     for (const c of cands) {
       const o = await req(store.get(c.id));
