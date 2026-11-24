@@ -205,6 +205,12 @@
       ci.start();
       retireHooks.push(() => ci.stop());
     }
+    // v52（T6.3，審查十一 33.8.4）投票卡結構（嵌入式與彈出視窗都記；只在 P7 記錄中運作）
+    if (globalThis.YTCAS_CHAT_INPUT && globalThis.YTCAS_CHAT_INPUT.watchPolls) {
+      const pw = globalThis.YTCAS_CHAT_INPUT.watchPolls({ doc: document, win: window, S, active: () => diagOn('P7'),
+        onLog: (kind, data) => dlog('P7', kind, data, { source, videoId: engine.state().videoId }) });
+      retireHooks.push(() => pw.stop());
+    }
     if (env === 'popout') dlog('P6', 'popout-open', { urlHasV: !!urlVid }, { source, videoId: isVideoId(urlVid) ? urlVid : null });
     setTimeout(() => diag(null), 10000);
     engine.start();

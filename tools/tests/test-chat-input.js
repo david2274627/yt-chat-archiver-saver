@@ -177,6 +177,37 @@
     ci.stop();
   });
 
+  test('T6.3（33.8.4）P7 poll-structure：找到標籤或 id 含 poll／action-panel 的元素 → 記祖先鏈、位置、visibility、是否在面板隱藏範圍內；大小改變再記；只在記錄中運作；沒有文字', async () => {
+    reset();
+    const logs = [];
+    let active = false;
+    const CI = W().YTCAS_CHAT_INPUT;
+    const poll = D().createElement('yt-live-chat-poll-renderer');
+    poll.style.display = 'block'; poll.style.height = '40px'; poll.textContent = '投票題目';
+    q('#item-list').appendChild(poll); // 模擬：投票卡在訊息列表範圍內（實際位置待實機）
+    const pw = CI.watchPolls({ doc: D(), win: W(), S: W().YTCAS_SEL, active: () => active, onLog: (k, d) => logs.push([k, d]) });
+    pw.scan();
+    eq(logs.length, 0, '沒有在記錄：不記');
+    active = true;
+    pw.scan();
+    await until(() => logs.length >= 1, 2000, '找到投票卡');
+    const d = logs[0][1];
+    eq([logs[0][0], d.why, d.t, d.h, d.underHidden, d.inItems], ['poll-structure', 'found', 'yt-live-chat-poll-renderer', 40, true, false]);
+    assert(d.chain.some((c) => c.t === 'div#item-list') && d.chain[d.chain.length - 1].t === 'yt-live-chat-app', '祖先鏈到 yt-live-chat-app ' + JSON.stringify(d.chain.map((c) => c.t)));
+    poll.style.height = '160px';
+    await until(() => logs.some(([, x]) => x.why === 'resize' && x.h === 160), 2000, '展開後再記');
+    // #action-panel 也算（id 含 action-panel）
+    q('#action-panel').hidden = false;
+    q('#action-panel').style.height = '30px';
+    pw.scan();
+    await until(() => logs.some(([, x]) => x.t === 'div#action-panel'), 2000, '#action-panel');
+    pw.stop();
+    poll.remove();
+    assert(!JSON.stringify(logs).includes('投票題目'), '沒有文字');
+    const SAFE = /^[A-Za-z0-9_\-#.:/ ,=+()[\]|]{0,160}$/;
+    for (const [, x] of logs) for (const c of [x, ...x.chain]) for (const k of ['t', 'vis', 'ov', 'mh']) if (c[k] != null) assert(SAFE.test(String(c[k])), '可通過消毒：' + k + '=' + c[k]);
+  });
+
   test('T6.1（30.1）表符選單在輸入列下方（輸入列被往上推）：bottomZoneHeight 涵蓋被推上去的輸入列（top 端取 min(popupTop, 底部互動區頂端) − 8）', () => {
     reset();
     place(q('#panel-pages'), 200, 400); // #input-panel 在 #panel-pages 頂端（200）

@@ -231,5 +231,54 @@
     return api;
   }
 
-  root.YTCAS_CHAT_INPUT = { create, measure, zoneStructure, HIDE_STYLE_ID };
+  // v52（T6.3，審查十一 33.8.4）F-20 P7 poll-structure：投票卡在本套件環境下被裁切（無痕視窗正常），P7 沒有 #action-panel 的記錄
+  // → 投票卡不在 #chat > #action-panel。記錄聊天室文件中**任何**標籤或 id 含 poll／action-panel 的元素：
+  // 祖先鏈（標籤＋靜態 id，到 yt-live-chat-app）、位置高度、computed visibility／overflow／max-height／clip-path、
+  // 祖先是否有本套件的屬性或被本套件的隱藏樣式涵蓋（#item-list、頂部列、置頂列）。不記文字。
+  // 只在診斷記錄 P7 時運作（opts.active()）：每 3 秒找一次，找到的以 ResizeObserver 監看大小；每頁最多 20 筆
+  const POLL_RE = /poll|action-panel/i;
+  function pollStructure(el, win, S) {
+    const r = el.getBoundingClientRect();
+    const cs = win.getComputedStyle(el);
+    const hidSel = [S.chat.itemList, S.chat.header, S.chat.bannerContainer].join(', ');
+    const chain = [];
+    for (let p = el; p && chain.length < 16; p = p.parentElement) {
+      const c = win.getComputedStyle(p);
+      chain.push({ t: p.tagName.toLowerCase() + (p.id && SAFE_ID.test(p.id) ? '#' + p.id : ''), vis: c.visibility, ov: c.overflow, mh: c.maxHeight, cp: c.clipPath !== 'none',
+        h: Math.round(p.getBoundingClientRect().height), ytcas: p.getAttributeNames().some((a) => a.startsWith('data-ytcas')) });
+      if (p.tagName.toLowerCase() === S.chat.app) break;
+    }
+    return { t: el.tagName.toLowerCase() + (el.id && SAFE_ID.test(el.id) ? '#' + el.id : ''), top: Math.round(r.top), h: Math.round(r.height), w: Math.round(r.width),
+      vis: cs.visibility, ov: cs.overflow, mh: cs.maxHeight, cp: cs.clipPath !== 'none', kids: el.children.length,
+      underHidden: !!el.closest(hidSel), inItems: !!el.closest(S.chat.items), chain };
+  }
+  function watchPolls(opts) {
+    const doc = opts.doc || document, win = opts.win || window, S = opts.S;
+    const seen = new WeakMap();
+    let logs = 0, timer = 0, ro = null;
+    const log = (el, why) => {
+      if (logs >= 20 || !opts.active()) return;
+      const d = pollStructure(el, win, S);
+      const sig = JSON.stringify([d.top, d.h, d.vis, d.underHidden]);
+      if (seen.get(el) === sig) return;
+      seen.set(el, sig);
+      logs++;
+      try { opts.onLog('poll-structure', Object.assign({ why }, d)); } catch (_) { /* ignore */ }
+    };
+    const scan = () => {
+      if (!opts.active() || logs >= 20) return;
+      for (const el of doc.querySelectorAll('*')) {
+        if (!POLL_RE.test(el.tagName) && !(el.id && POLL_RE.test(el.id))) continue;
+        if (!seen.has(el)) {
+          log(el, 'found');
+          if (win.ResizeObserver) { if (!ro) ro = new win.ResizeObserver((ents) => ents.forEach((e) => log(e.target, 'resize'))); ro.observe(el); }
+        }
+      }
+    };
+    timer = win.setInterval(scan, 3000);
+    scan();
+    return { stop() { win.clearInterval(timer); if (ro) ro.disconnect(); }, scan, pollStructure: (el) => pollStructure(el, win, S) };
+  }
+
+  root.YTCAS_CHAT_INPUT = { create, measure, zoneStructure, watchPolls, HIDE_STYLE_ID };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

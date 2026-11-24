@@ -855,6 +855,10 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - 轉到頁面層付款視窗（`#buyFlowDivId`）時沿用前一個狀態（v49 已有）；chat frame 這時回報什麼（量不到、無輸入區、回到一般）都不會閃回全高。
   - F-20 P7 `zone-structure`：`$` 流程或彈窗開著（以及剛關上那一次）且結構改變時記一筆，每頁最多 `PANEL.ZONE_LOG_MAX` = 40 筆：`#panel-pages` 與其直接子元素、`#input-panel`、輸入列 `#top`、`#pickers` 的子元素、表符選單、購買流程、置頂列、投票卡的**標籤、靜態 id、可見與否、高度、頂端**，以及當時的量測結果；沒有文字。
   - （v51，T6.2，審查十一 32.1）**實機結構已驗證**（dom-notes 2.5b）：點 `$` 後 `#input-panel` 不可見、`#panel-pages` 1px、`$` 選單本身可見；之後 `#panel-pages` 切到 `#loading`、`#buy-flow`（超級留言）、`#super-sticker-buy-flow`、`#sponsorships-gift-buy-flow`。`zone-structure` 的 role 改為 `panel-pages-child`／`pickers-child`（v50 的 `panel-pages>` 含「>」，被 background 的消毒規則換成 `[removed]`）；投票卡出現也記一筆（`reason: action-panel`，含 `#action-panel` 內兩層的元件標籤，32.6）。`tools/diag-report.js` 為 `zone-structure`、`own-replace`、`ts-format` 加專用表格。
+- **投票卡（v52，T6.3，審查十一 33.2、33.8.4）**：另一種投票卡在本套件環境下被裁切（面板開啟時看不到；面板關閉與彈出視窗只剩第一個選項），無痕視窗完整顯示；P7 沒有 `#action-panel` 的記錄。**結構未取得前不猜選擇器**，只補記錄：
+  - F-20 P7 `poll-structure`（`chat-input.js` `watchPolls`，嵌入式與彈出視窗都記，只在 P7 記錄中運作）：聊天室文件中標籤或 id 含 `poll`／`action-panel` 的元素出現、大小改變時記一筆——祖先鏈（標籤＋靜態 id，到 `yt-live-chat-app`）、位置高度、computed `visibility`／`overflow`／`max-height`／`clip-path`、祖先是否有本套件的屬性、是否在面板隱藏範圍內（`underHidden`）、是否在 `#items` 內（`inItems`）；不記文字；每頁最多 20 筆。
+  - 結構確認後的修正方向：在列表範圍內 → 隱藏樣式改為「列表 `visibility: hidden`、投票卡 `visibility: visible`」並算進露出區域；面板關閉與彈出視窗時本套件樣式不得影響它。另一個可能是 F-12 切到「即時聊天室」後 YouTube 本身以收合狀態顯示（dom-notes 2.11）。
+  - 確認：`chat-input.js` 只在嵌入式聊天室啟動（彈出視窗不啟動），隱藏樣式只在面板開啟且未退讓時存在；擷取引擎只處理 `#items` 的直接子節點。
 - **表符選單（30.1）**：實機選單出現在底部，輸入列（打字的那一列與表符按鈕）不見了，看不到選了什麼、也無法再按表符按鈕關閉。推測選單長在輸入列**下方**、輸入列被往上推，v49 的 `popup` 只取 `popupTop − 8`，輸入列落在裁切範圍外。
   - 規則：`popup` 的裁切頂端＝`min(popupTop, iframe 高度 − bottomZoneHeight) − PANEL.POPUP_GAP_PX`。`bottomZoneHeight` 本來就取底部互動區所有白名單元素的最上方，所以等於「彈窗與底部互動區所有元素的最上方 − 8」。選單在輸入列上方或下方都完整露出輸入列。
   - 上下關係待實機確認（dom-notes 2.5c）：P7 `zone-structure` 在表符選單開關時記錄選單、輸入列 `#top`、`#input-panel`、`#panel-pages` 的頂端與高度。（v51：**已驗證**，選單在 `#input-panel` 內、輸入列之下，`#input-panel` 56 → 252px。）

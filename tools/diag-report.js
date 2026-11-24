@@ -328,6 +328,22 @@ function report(data) {
     L();
     if (zs.some((r) => (r.data.els || []).some((x) => x && x.role === '[removed]'))) notes.push('zone-structure：有 role 被消毒成 [removed]（v50 的記錄；v51 起 role 只用允許的字元）');
   }
+  // ---- v52（T6.3，審查十一 33.8.4）P7 poll-structure：投票卡的實際位置（不記文字）
+  const ps = (byProbe.P7 || []).filter((r) => r.kind === 'poll-structure' && r.data);
+  if (ps.length) {
+    L('## 投票卡結構（P7 poll-structure，' + ps.length + ' 筆）');
+    L();
+    L('標籤或 id 含 poll／action-panel 的元素。underHidden＝在本套件面板開啟時隱藏的範圍內（#item-list、頂部列、置頂列）；inItems＝在訊息列表 #items 內（會被擷取與修剪碰到）。祖先鏈由內而外：標籤 高度 visibility／overflow／max-height（cp＝有 clip-path、★＝有本套件的屬性）。');
+    L();
+    L('| 時間 | 環境 | 原因 | 元素 | 頂端／高度 | visibility | underHidden | inItems | 祖先鏈 |');
+    L('|---|---|---|---|---|---|---|---|---|');
+    for (const r of ps) {
+      const d = r.data;
+      const chain = (d.chain || []).slice(1).map((c) => c.t + ' ' + c.h + ' ' + c.vis + '／' + c.ov + '／' + c.mh + (c.cp ? ' cp' : '') + (c.ytcas ? ' ★' : '')).join(' ＜ ');
+      L('| ' + [hm(r.ts), (r.ctx && r.ctx.env) || '—', d.why, d.t, d.top + '／' + d.h, d.vis, d.underHidden, d.inItems, chain].map(esc).join(' | ') + ' |');
+    }
+    L();
+  }
   // ---- v51（T6.2，審查十一 32.2）P7 own-replace：自己送出的訊息配對（id 形狀＝前 4 碼｜長度，不含內容）
   const ow = (byProbe.P7 || []).filter((r) => r.kind === 'own-replace' && r.data);
   if (ow.length) {
@@ -363,7 +379,7 @@ function report(data) {
   }
 
   // ---- P7 結構
-  const p7 = (byProbe.P7 || []).filter((r) => !['sc-color-vars', 'zone-structure', 'own-replace', 'ts-format'].includes(r.kind));
+  const p7 = (byProbe.P7 || []).filter((r) => !['sc-color-vars', 'zone-structure', 'own-replace', 'ts-format', 'poll-structure', 'video-switch'].includes(r.kind));
   if (p7.length) {
     L('## P7 結構紀錄（' + p7.length + ' 筆）');
     L();
