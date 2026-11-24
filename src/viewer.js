@@ -17,7 +17,7 @@
     more: '<svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/></svg>',
   };
   const BADGE = { owner: ['owner', '主播'], moderator: ['mod', '管理員'], member: ['member', '會員'] };
-  const PILL_LABEL = { all: ['', '全部 '], sc: ['💰 ', 'SC／禮物 '], mem: ['👑 ', '會員 '], raid: ['✨ ', '降落 '] };
+  const PILL_LABEL = { all: ['', '全部 '], sc: ['💰 ', 'SC／禮物 '], mem: ['👑 ', '會員 '], raid: ['✨ ', '降落 '], pin: ['📌 ', '置頂 '] }; // v52（33.3）置頂
   const fmtN = (n) => n.toLocaleString('en-US');
 
   function el(tag, cls, text) {
@@ -311,6 +311,7 @@
       if (ico) b.appendChild(el('span', 'pi', ico));
       b.appendChild(el('span', p === 'all' ? 'lbl-all' : 'lbl', lbl));
       b.appendChild(el('span', 'num', '0'));
+      if (p === 'pin') b.title = '置頂過的訊息';
       b.addEventListener('click', () => { S.f.pill = p; apply({ toBottom: S.vl && S.vl.follow, reset: true }); });
       pills.appendChild(b); pillBtn[p] = b;
     }
@@ -510,10 +511,13 @@
     const inLink = (e) => !!(e.target && e.target.closest && e.target.closest('a[href]'));
     pin.addEventListener('click', (e) => { if (inLink(e)) return; S.pinOpen = !S.pinOpen; renderPin(); });
     pin.addEventListener('keydown', (e) => { if (inLink(e)) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); S.pinOpen = !S.pinOpen; renderPin(); } });
+    // v52（T6.3，審查十一 33.3）卡片只顯示「目前置頂中」（沒有 unpinnedAt）的最新一則；✕ 關掉只影響這次顯示：
+    // 同一則（id＋最後置頂時間）不再出現，新的置頂出現時再顯示；不寫入資料、不影響收錄
+    const pinKey = (p) => p.id + '|' + C.pinnedTime(p);
     function renderPin() {
-      const p = S.pinned[0];
-      pin.hidden = !p;
-      if (!p) return;
+      const p = (S.pinned || []).find((q) => !q.unpinnedAt);
+      pin.hidden = !p || S.pinDismissed === pinKey(p);
+      if (pin.hidden) return;
       pin.textContent = '';
       pin.classList.toggle('open', S.pinOpen);
       pin.setAttribute('aria-expanded', String(S.pinOpen));
@@ -521,13 +525,18 @@
       pin.appendChild(el('span', 'tag', '置頂'));
       const txt = el('span', 'txt');
       renderRuns(txt, p.runs, '');
-      if (S.pinOpen && S.pinned.length > 1) {
-        const more = el('span', 'pin-more', `較早的置頂 ${S.pinned.length - 1} 則`);
+      const older = S.pinned.filter((q) => q !== p);
+      if (S.pinOpen && older.length) {
+        const more = el('span', 'pin-more', `較早的置頂 ${older.length} 則（完整清單在「📌 置頂」）`);
         txt.appendChild(more);
-        for (const q of S.pinned.slice(1)) { const d = el('span', 'pin-old'); renderRuns(d, q.runs, ''); txt.appendChild(d); }
+        for (const q of older) { const d = el('span', 'pin-old'); renderRuns(d, q.runs, ''); txt.appendChild(d); }
       }
       pin.appendChild(txt);
       pin.appendChild(el('span', 'hint', S.pinOpen ? '收合 ▲' : '▼'));
+      const x = el('button', 'pin-x', '×'); x.type = 'button'; x.setAttribute('aria-label', '關閉置頂卡（新的置頂出現時再顯示）');
+      x.addEventListener('click', (e) => { e.stopPropagation(); S.pinDismissed = pinKey(p); renderPin(); });
+      x.addEventListener('keydown', (e) => e.stopPropagation());
+      pin.appendChild(x);
     }
 
     // ---------------- 列渲染
@@ -823,6 +832,11 @@
         row.classList.add('cut');
         row.appendChild(el('span', 'bdg cut', '剪輯版中不存在'));
       }
+      // v52（T6.3，33.3）「📌 置頂」膠囊：每則標示置頂時間與「已取消」
+      if (S.f.pill === 'pin') {
+        const meta = el('div', 'pin-meta', '置頂 ' + CORE.fmtClock(C.pinnedTime(m) || m.pinnedAt || m.timestampAbs, S.refMs) + (m.unpinnedAt ? '・已取消' : ''));
+        row.insertBefore(meta, row.firstChild);
+      }
       return row;
     }
 
@@ -843,9 +857,14 @@
       const t0 = performance.now();
       const r = CORE.filter(S.items, S.f);
       S.counts = r.counts;
+      // v52（T6.3，審查十一 33.3）「📌 置頂」：這場所有置頂過的訊息（依第一次置頂時間），套用同樣的使用者／關鍵字篩選；不分段、不同步
+      const pinR = CORE.filter(pinItems(), Object.assign({}, S.f, { pill: 'all' }));
+      S.counts.pin = pinR.counts.all;
       // v44（T5.3 (K)）VOD 模式（v1）：清單依同步用的時間排序（live 來源的訊息以校正值換算），同步點才涵蓋所有訊息
       let list = r.list;
-      if (vodOrder()) {
+      const pinMode = S.f.pill === 'pin';
+      if (pinMode) list = pinR.list.slice().sort((a, b) => (a.m.pinnedAt || 0) - (b.m.pinnedAt || 0));
+      else if (vodOrder()) {
         if (!S.cal || Math.abs(S.calN - S.items.length) > Math.max(50, S.calN * 0.05)) { S.cal = CORE.vodCalibration(S.items.map((x) => x.m), S.stream); S.calN = S.items.length; }
         list = CORE.sortForVod(list, S.ver, S.cal);
       } else {
@@ -854,10 +873,10 @@
       }
       S.sortedVod = vodOrder();
       // 列的 key：訊息用 id；分隔線用 phase 名稱＋出現序號（量測高度快取以 key 為準）
-      const entries = CORE.withPhaseDividers(list);
+      const entries = pinMode ? list.map((it) => ({ kind: 'msg', it })) : CORE.withPhaseDividers(list);
       let seq = 0;
       // v46（24.7）跨日分隔線：'day:' 日期＋序號（同一天可能在不同段各出現一次）
-      for (const e of entries) e.key = e.kind === 'phase' ? 'ph:' + e.phase + ':' + (seq++) : e.kind === 'day' ? 'day:' + e.day + ':' + (seq++) : e.it.m.id;
+      for (const e of entries) e.key = e.kind === 'phase' ? 'ph:' + e.phase + ':' + (seq++) : e.kind === 'day' ? 'day:' + e.day + ':' + (seq++) : (pinMode ? 'pin:' : '') + e.it.m.id;
       S.timings.filterMs = performance.now() - t0;
       for (const p of CORE.PILLS) {
         const b = pillBtn[p];
@@ -871,7 +890,12 @@
       showEmpty(entries.length ? null : (S.items.length ? 'nomatch' : 'none'));
       setResume(S.mode === 'sync' ? S.syncPaused : !(S.vl.follow || !entries.length));
       renderMeta();
-      if (S.mode === 'sync') doSync(false);
+      if (S.mode === 'sync' && !pinMode) doSync(false);
+    }
+    // v52（33.3）置頂的索引（S.pinned 改變時重建）
+    function pinItems() {
+      if (S.pinSrc !== S.pinned || !S.pinCache) { S.pinSrc = S.pinned; S.pinCache = (S.pinned || []).map((m) => CORE.indexMessage(m, S.channels)); }
+      return S.pinCache;
     }
 
     // ---------------- T5：時間軸同步（F-08）
@@ -1391,6 +1415,9 @@
         if (upsert(msg.messages)) setCurrentCount();
         scheduleApply(changed);
         maybeRefreshStream();
+      } else if (msg.type === RT.PINNED_CHANGED && msg.videoId === S.videoId) {
+        // v52（33.3）置頂新增或取消：立即重讀（不等 15 秒的場次檢查）
+        DB.queryPinned(S.videoId).then((pinned) => { S.pinned = CORE.dedupePinned(pinned); renderPin(); scheduleApply(false); }).catch(() => {}); // 膠囊的置頂數也要更新
       } else if (msg.type === RT.CHANNEL_RESOLVED && msg.handleOrId && msg.displayName) {
         S.channels.set(msg.handleOrId, { handleOrId: msg.handleOrId, displayName: msg.displayName, avatar: msg.avatar });
         let hit = false;

@@ -408,7 +408,9 @@
       mode: 'pending', // pending（等場次資訊）／capturing／paused／disconnected／no-video-id／stopped
       items: null, banner: null,
       queue: [], unflushed: new Set(), sending: null, batchTimer: 0, trimTimer: 0, pollTimer: 0, statsTimer: 0,
-      pinnedSent: new Set(), deletedReported: new Set(), pendingDeleted: [], waiters: [],
+      pinnedSent: new Set(), deletedReported: new Set(),
+      pendingDeleted: [], waiters: [],
+      pinShown: new Set(), pinMissing: new Map(), unpinned: new Set(), // v52（33.3）取消置頂偵測
       stats: { captured: 0, added: 0, merged: 0, unchanged: 0, fpMerged: 0, dropped: 0, rejected: 0, trimmed: 0, deleted: 0, deletedMissing: 0, pinned: 0,
         observedAdded: 0, backfillRuns: 0, backfillCaptured: 0, lateCaptured: 0, dupCaptured: 0, avatarLate: 0, avatarMissing: 0, stickerLate: 0, stickerMissing: 0, giftLate: 0, giftMissing: 0, scTotal: 0, scTextColors: 0,
         // v48（T5.7，28.3）時間來源、背景擷取
@@ -419,7 +421,7 @@
         // v51（T6.2，32.7）時間解析在未來而往前推、重建後早於擷取超過 24 小時
         clockFuture: 0, clockAmbiguous: 0,
         // v52（T6.3，33.1）videoId 不一致（不換場次、暫停）的次數；降落當成結束訊號的次數
-        videoMismatch: 0, raidEnd: 0 },
+        videoMismatch: 0, raidEnd: 0, unpinned: 0 },
       seenIds: new Set(),
       // v50（30.5）最近 90 秒擷取的文字訊息（配對暫時節點 → 正式節點）：{ id, key, el, list, at, m, removedAt, head, trimmed, matched, reborn }
       recent: [], trimmedEls: new WeakSet(), ownRecent: [], // v51（32.2）最近 5 次合併的 id 形狀（P1 own.recent）
@@ -849,8 +851,30 @@
       check();
     }
 
+    // v52（T6.3，審查十一 33.3 第 1 點）取消置頂：之前在置頂列的那則消失（或換成別則）超過 UNPIN_GRACE_MS → UNPIN。
+    // YouTube 重新渲染置頂列時會短暫移除再加回（可能換 id）：3 秒內又出現就不算。原生置頂列被隱藏（30.2 選 A）不影響（只看 DOM）
+    const UNPIN_GRACE_MS = 3000;
+    function checkUnpinned(cur) {
+      const t = now();
+      for (const id of cur) { st.pinMissing.delete(id); st.pinShown.add(id); }
+      for (const id of Array.from(st.pinShown)) {
+        if (cur.has(id)) continue;
+        if (!st.pinMissing.has(id)) { st.pinMissing.set(id, t); continue; }
+        if (t - st.pinMissing.get(id) < UNPIN_GRACE_MS) continue;
+        st.pinShown.delete(id); st.pinMissing.delete(id);
+        st.unpinned.add(id);
+        st.stats.unpinned++;
+        sendWithRetry({ type: RT.UNPIN, videoId: st.videoId, id, unpinnedAt: t - UNPIN_GRACE_MS, source }).catch((e) => { if (e && e.disconnected) disconnect(); });
+      }
+    }
     function capturePinned() {
-      if (st.mode !== 'capturing' || !st.banner) return;
+      if (st.mode !== 'capturing') return;
+      const cur = new Set();
+      if (st.banner) st.banner.querySelectorAll(S.chat.bannerPinnedMessage).forEach((el) => { if (el.id) cur.add(el.id); });
+      // 取消後又置頂（同一個 id 再出現）→ 重新送 SAVE_PINNED（background 清掉 unpinnedAt）
+      for (const id of cur) if (st.unpinned.has(id)) { st.unpinned.delete(id); st.pinnedSent.delete(id); }
+      checkUnpinned(cur);
+      if (!st.banner) return;
       st.banner.querySelectorAll(S.chat.bannerPinnedMessage).forEach((el) => {
         if (!el.id || st.pinnedSent.has(el.id)) return;
         let m;
@@ -1260,7 +1284,7 @@
         if (changed) {
           if (st.videoId) { flush(); endSession(); logStats(true); }
           st.videoId = vid;
-          st.pinnedSent.clear(); st.deletedReported.clear(); st.pendingDeleted.length = 0; st.seenIds.clear(); st.p7.clear();
+          st.pinnedSent.clear(); st.pinShown.clear(); st.pinMissing.clear(); st.unpinned.clear(); st.deletedReported.clear(); st.pendingDeleted.length = 0; st.seenIds.clear(); st.p7.clear();
           for (const k of Object.keys(st.stats)) st.stats[k] = 0;
           // 新影片：先前標記過的節點屬於舊影片，不再擷取（iframe 通常會重新載入，這裡只是保險）
           setStatus('pending');

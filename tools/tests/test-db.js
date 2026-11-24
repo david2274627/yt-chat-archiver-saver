@@ -1710,6 +1710,30 @@
     } finally { self.fetch = self.__blockedFetch; }
   });
 
+  test('T6.3（33.3）取消置頂：UNPIN 記 unpinnedAt（以 id 或別名）並推播 PINNED_CHANGED；同一則再置頂（pinnedAt 較晚）→ 清掉 unpinnedAt', async () => {
+    await resetAll();
+    const t0 = 1_700_500_000_000;
+    const pm = (o) => Object.assign({ id: 'pinA', type: 'text', authorHandle: '@host', runs: [{ text: '公告' }], timestampAbs: t0, pinnedAt: t0 }, o);
+    await send({ type: 'SAVE_PINNED', videoId: V, message: pm() });
+    assert(M.broadcasts.some((b) => b.type === 'PINNED_CHANGED' && b.videoId === V), '新增置頂 → PINNED_CHANGED');
+    M.broadcasts.length = 0;
+    // 同一則以別的 id 再擷取（重新渲染）→ 合併、記入別名
+    await send({ type: 'SAVE_PINNED', videoId: V, message: pm({ id: 'pinA2', pinnedAt: t0 + 1000 }) });
+    let r = await send({ type: 'UNPIN', videoId: V, id: 'pinA2', unpinnedAt: t0 + 60e3 });
+    eq([r.found, r.changed], [true, true], '以別名找到');
+    let p = (await DB.queryPinned(V))[0];
+    eq(p.unpinnedAt, t0 + 60e3);
+    assert(M.broadcasts.some((b) => b.type === 'PINNED_CHANGED'), '取消 → PINNED_CHANGED');
+    eq((await send({ type: 'UNPIN', videoId: V, id: 'pinA', unpinnedAt: t0 + 70e3 })).changed, false, '已取消的不再改');
+    eq((await send({ type: 'UNPIN', videoId: V, id: 'nope', unpinnedAt: t0 })).found, false);
+    // 再置頂
+    M.broadcasts.length = 0;
+    await send({ type: 'SAVE_PINNED', videoId: V, message: pm({ pinnedAt: t0 + 120e3 }) });
+    p = (await DB.queryPinned(V))[0];
+    assert(!('unpinnedAt' in p), '再置頂 → 清掉 unpinnedAt');
+    assert(M.broadcasts.some((b) => b.type === 'PINNED_CHANGED'), '再置頂 → PINNED_CHANGED');
+  });
+
   test('T6.3（33.1 第 6 點）降落自動開彈出視窗：降落橫幅後同一分頁導航到別的影片 → 開一次（popup、不搶焦點、www）並通知分頁；重複導航不重開；設定關閉、已有彈出視窗、超過 3 分鐘都不開', async () => {
     await resetAll();
     const W = self.chrome.windows._created;

@@ -76,7 +76,7 @@
     eq(f({ userChip: '@bob', pill: 'sc' })[0], 'b');
     eq(f({ keyword: 'ａｂｃ' })[0], 'ad', '全形關鍵字（NFKC）');
     eq(f({ keyword: 'tea' })[0], 'c', '表符 alt／shortcut');
-    eq(f({ keyword: 'abc' })[1], { all: 2, sc: 0, mem: 0, raid: 0 }, '筆數反映關鍵字');
+    eq(f({ keyword: 'abc' })[1], { all: 2, sc: 0, mem: 0, raid: 0, pin: 0 }, '筆數反映關鍵字（pin 由檢視器另算）');
   });
 
   test('高亮範圍與表符命中', () => {
@@ -1505,6 +1505,40 @@
     assert(pin.classList.contains('open'), 'Enter 在連結上不收合');
     pin.querySelector('.hint').click(); await frame();
     assert(!pin.classList.contains('open'), '點提示 → 收合');
+  });
+
+  test('T6.3（33.3）置頂：取消的不顯示在置頂卡；✕ 只影響這次顯示（同一則不再出現、新的置頂出現時再顯示）；「📌 置頂」膠囊列出所有置頂過的（依置頂時間、已取消標記、計數）', async () => {
+    await resetDb();
+    const VP = 'vidPINPILL1';
+    const t0 = Date.now() - 3600e3;
+    const pins = [mk({ id: 'pA', videoId: VP, authorHandle: '@host', runs: [{ text: '第一則' }], pinnedAt: t0, pinnedLastAt: t0, unpinnedAt: t0 + 60e3 }),
+      mk({ id: 'pB', videoId: VP, authorHandle: '@host', runs: [{ text: '第二則' }], pinnedAt: t0 + 120e3, pinnedLastAt: t0 + 120e3 })];
+    await put({ videoId: VP, title: 'P', isLive: true, startedAt: t0, lastMessageAt: Date.now(), messageCount: 2, versions: [], linkedVideos: [] },
+      [mk({ id: 'm1', videoId: VP, timestampAbs: t0 + 10e3 }), mk({ id: 'm2', videoId: VP, timestampAbs: t0 + 20e3 })], pins);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VP });
+    await c.ready; await frame();
+    const pin = c.els.pin;
+    assert(!pin.hidden && /第二則/.test(pin.textContent) && !/第一則/.test(pin.querySelector('.txt').firstChild.textContent), '顯示目前置頂中的那則');
+    pin.querySelector('.pin-x').click(); await frame();
+    assert(pin.hidden, '✕ 關掉');
+    eq(c.state.pinOpen, false, '✕ 不會切換展開');
+    // 膠囊
+    const pillPin = c.els.pills.pin;
+    assert(pillPin && pillPin.querySelector('.num').textContent === '2', '置頂膠囊計數 ' + (pillPin && pillPin.querySelector('.num').textContent));
+    pillPin.click(); await frame(); await frame();
+    const rows = Array.from(c.els.list.querySelectorAll('.vrow > [data-id]'));
+    eq(rows.map((r) => r.dataset.id), ['pA', 'pB'], '依置頂時間');
+    assert(/已取消/.test(rows[0].querySelector('.pin-meta').textContent) && !/已取消/.test(rows[1].querySelector('.pin-meta').textContent), '已取消標記');
+    eq(c.els.list.querySelectorAll('.phase').length, 0, '不分段');
+    c.els.pills.all.click(); await frame();
+    // 新的置頂出現 → 再顯示
+    await DB.close();
+    const db = await DB.open();
+    await new Promise((res) => { const t = db.transaction('pinned_messages', 'readwrite'); t.objectStore('pinned_messages').put(mk({ id: 'pC', videoId: VP, authorHandle: '@host', runs: [{ text: '第三則' }], pinnedAt: t0 + 300e3, pinnedLastAt: t0 + 300e3 })); t.oncomplete = res; });
+    await DB.close();
+    c._onRuntime({ type: 'PINNED_CHANGED', videoId: VP });
+    await until(() => !pin.hidden && /第三則/.test(pin.textContent), 2000, '新的置頂 → 再顯示');
   });
 
   test('T6.3（33.1 第 6 點）降落自動開彈出視窗後，面板顯示一行提示（固定文字）；按 × 關閉後回到收錄狀態的說明', async () => {

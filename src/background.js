@@ -1226,7 +1226,16 @@ const handlers = {
 
   async [RT.SAVE_PINNED](msg) {
     const videoId = vid(msg);
-    return DB.savePinned({ videoId, message: msg.message, source: msg.source || 'live' });
+    const r = await DB.savePinned({ videoId, message: msg.message, source: msg.source || 'live' });
+    if (r.added || r.merged || r.repinned) broadcast({ type: RT.PINNED_CHANGED, videoId }); // v52（33.3）面板立即更新
+    return r;
+  },
+  // v52（T6.3，審查十一 33.3 第 1 點）取消置頂
+  async [RT.UNPIN](msg) {
+    const videoId = vid(msg);
+    const r = await DB.unpinPinned({ videoId, id: String(msg.id || ''), unpinnedAt: msg.unpinnedAt });
+    if (r.changed) broadcast({ type: RT.PINNED_CHANGED, videoId });
+    return r;
   },
 
   async [RT.MESSAGE_DELETED](msg) {

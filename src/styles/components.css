@@ -69,8 +69,11 @@ button { font: inherit; color: inherit; }
   .pills { gap: 4px; }
   .pill { padding: 3px 8px; }
   .pill .pi { display: none; }
+  /* v52（T6.3，33.3）第 5 個膠囊「📌 置頂」在窄面板只留圖示＋數字（aria-label 保留完整名稱），5 個仍單列 */
+  .pill[data-pill="pin"] .pi { display: inline; }
+  .pill[data-pill="pin"] .lbl { display: none; }
 }
-@container (max-width: 300px) { .pill { padding: 3px 6px; } }
+@container (max-width: 300px) { .pills { gap: 3px; } .pill { padding: 3px 4px; } } /* v52：5 個膠囊（含「📌」） */
 .search { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 @container (max-width: 340px) { .search { grid-template-columns: 1fr; } }
 .field { display: flex; align-items: center; gap: 6px; min-width: 0; height: 28px; padding: 0 8px; background: var(--ytcas-surface-2);
@@ -87,6 +90,10 @@ button { font: inherit; color: inherit; }
 /* v50（T6.1，30.2）展開＝看完整內容：長網址換行；很長時卡片內捲動，不把清單擠掉 */
 .pin.open .txt { white-space: normal; overflow-wrap: anywhere; color: var(--ytcas-text); max-height: 40vh; overflow-y: auto; }
 .pin .hint { flex: none; color: var(--ytcas-text-3); }
+/* v52（T6.3，33.3）置頂卡的 ✕（只影響這次顯示）；「📌 置頂」清單每則的置頂時間與「已取消」 */
+.pin .pin-x { flex: none; border: 0; background: transparent; color: var(--ytcas-text-3); cursor: pointer; padding: 0 2px; font-size: var(--ytcas-fs-sm); line-height: 1; }
+.pin .pin-x:hover { color: var(--ytcas-text); }
+.pin-meta { font-size: var(--ytcas-fs-xs); color: var(--ytcas-text-3); margin: 0 0 2px; }
 
 /* ---------- 訊息列 ---------- */
 .list { flex: 1; min-height: 0; overflow: hidden; position: relative; padding: 4px 0; }

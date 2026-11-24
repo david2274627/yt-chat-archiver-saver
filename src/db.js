@@ -609,6 +609,29 @@
     });
   }
 
+  // v52（T6.3，審查十一 33.3 第 1 點）取消置頂：擷取端看到原生置頂橫幅消失（或換成別則）超過 3 秒 → unpinnedAt。
+  // 以 id 或別名找；之後同一則再被置頂（savePinned 的 pinnedAt 晚於 unpinnedAt）就清掉。回傳 { found, changed }
+  function unpinPinned(p) {
+    const videoId = p.videoId;
+    return withLock(videoId, async () => {
+      const db = await open();
+      const t = db.transaction('pinned_messages', 'readwrite');
+      const store = t.objectStore('pinned_messages');
+      let found = false, changed = false;
+      const work = (async () => {
+        let rec = await req(store.get(p.id));
+        if (!rec || rec.videoId !== videoId) rec = (await req(store.index('videoId').getAll(videoId))).find((q) => (q.aliasIds || []).includes(p.id)) || null;
+        if (!rec) return;
+        found = true;
+        const at = num(p.unpinnedAt) ?? Date.now();
+        if (at >= C.pinnedTime(rec) && rec.unpinnedAt !== at && num(rec.unpinnedAt) === null) { rec.unpinnedAt = at; store.put(rec); changed = true; }
+      })();
+      work.catch(() => { try { t.abort(); } catch (_) { /* */ } });
+      await Promise.all([work, done(t)]);
+      return { found, changed };
+    });
+  }
+
   // 置頂訊息（不做 fp 後備去重）
   function savePinned(p) {
     const videoId = p.videoId;
@@ -638,8 +661,10 @@
             const rec = m.rec;
             const first = Math.min(num(ex.pinnedAt) ?? Infinity, inc.pinnedAt);
             const last = Math.max(C.pinnedTime(ex), inc.pinnedAt);
-            const timesChanged = rec.pinnedAt !== first || rec.pinnedLastAt !== last;
+            let timesChanged = rec.pinnedAt !== first || rec.pinnedLastAt !== last;
             rec.pinnedAt = first; rec.pinnedLastAt = last;
+            // v52（T6.3，33.3）取消後又置頂 → 清掉 unpinnedAt
+            if (num(rec.unpinnedAt) !== null && inc.pinnedAt > rec.unpinnedAt) { delete rec.unpinnedAt; timesChanged = true; stats.repinned = (stats.repinned || 0) + 1; }
             if (m.changed || timesChanged) store.put(rec);
             if (same) { const i = same.findIndex((q) => q.id === rec.id); if (i >= 0) same[i] = rec; }
             if (m.significant) stats.merged++; else stats.unchanged++;
@@ -2099,7 +2124,7 @@
 
   root.YTCAS_DB = {
     configure, open, close,
-    saveMessages, savePinned, markDeleted,
+    saveMessages, savePinned, unpinPinned, markDeleted,
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeAllPhases, systemTagStats, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,

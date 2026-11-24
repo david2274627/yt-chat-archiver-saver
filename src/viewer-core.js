@@ -43,7 +43,8 @@
 
   // ---------------------------------------------------------------- F-05 分類膠囊
   // all／sc（SC、超級貼圖、禮物）／mem（新會員、里程碑、贈送與收到會員）／raid（降落橫幅＋認證實況主發言，排除機器人與本台主播／管理員）
-  const PILLS = Object.freeze(['all', 'sc', 'mem', 'raid']);
+  // v52（T6.3，審查十一 33.3）pin：「📌 置頂」（來源是置頂資料表，不是訊息分類；計數由檢視器另算）
+  const PILLS = Object.freeze(['all', 'sc', 'mem', 'raid', 'pin']);
   function categories(m, name) {
     const out = ['all'];
     if (m.type === T.SUPERCHAT || m.type === T.SUPERSTICKER || m.type === T.GIFT) out.push('sc');
@@ -69,7 +70,7 @@
   function filter(items, state) {
     const uq = norm(state.userQuery);
     const kw = norm(state.keyword);
-    const counts = { all: 0, sc: 0, mem: 0, raid: 0 };
+    const counts = { all: 0, sc: 0, mem: 0, raid: 0, pin: 0 };
     const list = [];
     const pill = PILLS.includes(state.pill) ? state.pill : 'all';
     for (const it of items) {

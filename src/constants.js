@@ -92,6 +92,9 @@
       RESOLVE_CHANNELS: 'RESOLVE_CHANNELS',
       // v52（T6.3，33.1 第 6 點）chat frame → bg：這個分頁的聊天室出現降落橫幅；bg → 分頁（tabs.sendMessage）：已開彈出視窗繼續收錄原直播
       RAID_SEEN: 'RAID_SEEN',
+      // v52（T6.3，33.3）chat frame → bg：置頂被取消 { videoId, id, unpinnedAt }；bg → 頁面：置頂資料變了 { videoId }
+      UNPIN: 'UNPIN',
+      PINNED_CHANGED: 'PINNED_CHANGED',
       RAID_POPOUT: 'RAID_POPOUT',
       CHANNEL_RESOLVED: 'CHANNEL_RESOLVED',
       // v27

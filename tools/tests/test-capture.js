@@ -192,6 +192,36 @@
     assert(recs.filter((r) => r.k === 'video-switch').every((r) => Object.values(r.d).every((v) => v === null || ['number', 'boolean'].includes(typeof v) || ['mismatch', 'swap-same-chat', 'rebind', 'back'].includes(v))), '只有數字、布林與代碼');
   });
 
+  test('T6.3（33.3）取消置頂：置頂列的那則消失超過 3 秒 → UNPIN（3 秒內又出現不算）；之後同一則再置頂 → 重新送 SAVE_PINNED', async () => {
+    const { banner } = buildChat();
+    const send = mockSend();
+    let T = NOW;
+    const e = engine({ send, now: () => T });
+    e.start();
+    e.setInfo({ videoId: 'testVidUnpin', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    const mkBanner = () => h('yt-live-chat-banner-renderer', {}, [h('div', { id: 'contents' }, [textMsg({ id: 'PIN1', author: '@ch', ts: '下午10:20', runs: [{ text: '置頂公告' }] })])]);
+    let b = mkBanner();
+    banner.append(b);
+    await until(() => send.of(RT.SAVE_PINNED).length === 1, 3000, 'SAVE_PINNED');
+    // 重新渲染：移除後 1 秒內加回 → 不算取消
+    b.remove(); await sleep(30); T = NOW + 1000; e._tick();
+    b = mkBanner(); banner.append(b); await sleep(30); T = NOW + 5000; e._tick();
+    eq(send.of(RT.UNPIN).length, 0, '短暫重新渲染不算取消');
+    // 主播取消置頂
+    b.remove(); await sleep(30); T = NOW + 6000; e._tick();
+    T = NOW + 10000; e._tick();
+    await until(() => send.of(RT.UNPIN).length === 1, 2000, 'UNPIN');
+    const u = send.of(RT.UNPIN)[0].msg;
+    eq([u.id, u.videoId, u.unpinnedAt], ['PIN1', 'testVidUnpin', NOW + 7000]);
+    // 再置頂同一則
+    T = NOW + 20000;
+    banner.append(mkBanner());
+    await until(() => send.of(RT.SAVE_PINNED).length === 2, 3000, '再置頂 → 重新送');
+    eq(e.state().stats.unpinned, 1);
+    e.stop();
+  });
+
   test('T6.3（33.1 第 4 點）降落橫幅＝原直播結束：暫定 endedAt（raid），之後的訊息標 post；SAVE_MESSAGES 帶 endedAtSource raid；待機室與重播不適用', async () => {
     const { items, banner } = buildChat();
     const send = mockSend();
