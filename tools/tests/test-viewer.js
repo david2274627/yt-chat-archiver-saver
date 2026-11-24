@@ -544,6 +544,34 @@
     }
   });
 
+  test('T6.3（33.8.1）VOD：「影片開頭之前」只用於 live 且校正後 < 0；開播前（pre）顯示「開播前 …」並說明 VOD 不含這段；有「直播開始前」段標題；live 0:13 照常可點（面板與後台）', async () => {
+    await resetDb();
+    const VQ = 'vidPREVOD01';
+    const msgs = [];
+    // 校正值 −78 秒：20 則 live＋replay 合併的訊息（replay offset ＝ 到達時間 − 開播 − 78）
+    for (let i = 0; i < 20; i++) { const ts = 600 + i * 10; msgs.push(mk({ id: 'mq' + i, videoId: VQ, videoOffsetSec: ts - 78, offsets: { v1: ts - 78 }, offsetSource: 'replay', sources: ['live', 'replay'], timestampAbs: T0 + ts * 1000 })); }
+    msgs.push(mk({ id: 'qPre', videoId: VQ, phase: 'pre', videoOffsetSec: -3360, offsets: { v1: -3360 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 - 3360e3 }));
+    msgs.push(mk({ id: 'qCut', videoId: VQ, videoOffsetSec: 30, offsets: { v1: 30 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 + 30e3 }));
+    msgs.push(mk({ id: 'q13', videoId: VQ, videoOffsetSec: 91, offsets: { v1: 91 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 + 91e3 }));
+    await put({ videoId: VQ, title: 'Q', isLive: true, startedAt: T0, endedAt: T0 + 4000e3, lastMessageAt: T0 + 800e3, messageCount: msgs.length, versions: [{ id: 'v1', duration: 4000 }], linkedVideos: [] }, msgs);
+    await DB.close();
+    for (const embed of [true, false]) {
+      const c = V.mount(host, { embed, videoId: VQ });
+      await c.ready; await frame();
+      if (embed) c._onClock({ currentTime: 5, paused: false, duration: 4000, live: false, at: Date.now() });
+      await frame(); await frame();
+      eq(c.state.cal.delta, -78);
+      c.state.vl.reveal(0, false); await frame(); await frame();
+      const tc = (id) => c.els.list.querySelector('[data-id="' + id + '"] .tc');
+      const who = embed ? '面板' : '後台';
+      assert(/^開播前/.test(tc('qPre').textContent) && /VOD 不含這段/.test(tc('qPre').title) && tc('qPre').tagName === 'SPAN', who + '：開播前 ' + tc('qPre').textContent + '／' + tc('qPre').title);
+      assert(!/影片開頭之前/.test(tc('qPre').textContent), who + '：開播前不是「影片開頭之前」');
+      assert(tc('qCut').textContent === '影片開頭之前' && /被剪掉/.test(tc('qCut').title), who + '：live 校正後 < 0 ' + tc('qCut').textContent);
+      assert(tc('q13').textContent === '0:13' && tc('q13').tagName === 'BUTTON', who + '：live 0:13 可點 ' + tc('q13').textContent);
+      assert(Array.from(c.els.list.querySelectorAll('.phase')).some((n) => /開始前/.test(n.textContent)), who + '：有「直播開始前」段標題');
+    }
+  });
+
   test('T5.3 (K) VOD 校正：已合併訊息的 replay offset − live 估計值的中位數；只有 live 的以此換算；沒有合併時以同作者同內容配對；排序', () => {
     const msgs = kFixture('vidKCAL0001');
     const stream = { startedAt: T0 };

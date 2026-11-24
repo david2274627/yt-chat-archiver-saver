@@ -700,7 +700,13 @@
       if (embed && S.clock) {
         if (waiting()) return stat(tc.text, '待機室（還沒開播），不能跳轉');
         const vt = CORE.videoTimeOf(m, S.clock, syncOpts());
-        if (vt == null) return stat(tc.text, S.clock.live && S.wallA == null && CORE.phaseOf(m) === 'live' ? '先點播放器的「直播」回到最新一次，才能跳轉' : '');
+        if (vt == null) {
+          const ph = CORE.phaseOf(m);
+          // v52（33.8.1）VOD：開播前／結束後的訊息不在影片裡
+          if (!S.clock.live && ph === 'pre') return stat(tc.text, '開播前（待機室）的訊息，VOD 不含這段');
+          if (!S.clock.live && ph === 'post') return stat(tc.text, '直播結束後的訊息，VOD 不含這段');
+          return stat(tc.text, S.clock.live && S.wallA == null && ph === 'live' ? '先點播放器的「直播」回到最新一次，才能跳轉' : '');
+        }
         if (!CORE.inRange(vt, S.clock)) {
           if (S.clock.live) return stat(tc.text, '不在直播可倒轉的範圍內');
           if (vt < 0) return beforeStart(vt);
@@ -711,6 +717,10 @@
         b.addEventListener('click', (e) => { e.stopPropagation(); if (!S.clock.live) pinAt(m, vt); seek(vt); });
         return b;
       }
+      // v52（T6.3，審查十一 33.8.1）開播前（待機室）／結束後的訊息：VOD 不含這段 → 照直播的規則顯示「開播前 …」等、不可點。
+      // v51 一律以 offset < 0 判斷，開播前 56 分鐘的待機室訊息也被標成「影片開頭之前（被剪掉）」
+      const ph = CORE.phaseOf(m);
+      if (vodOrder() && ph !== 'live') return stat(tc.text, ph === 'pre' ? '開播前（待機室）的訊息，VOD 不含這段' : ph === 'post' ? '直播結束後的訊息，VOD 不含這段' : '');
       if (tc.seconds == null) return stat(tc.text, '');
       // 後台看已結束場次：與面板相同，用校正後的影片時間、超出影片長度不可點
       let sec = tc.seconds, text = tc.text;
