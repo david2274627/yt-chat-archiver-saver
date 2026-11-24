@@ -1620,7 +1620,9 @@
     eq(p('A &amp; B &quot;C&quot; &#39;D&#39; &lt;E&gt;'), 'A & B "C" \'D\' <E>', '具名實體');
     eq(p('魚 🐟 &amp;amp;'), '魚 🐟 &amp;', '只解一層');
     // 可見優先：prio 新的在前，其餘依加入順序
-    eq(BG._orderQueue({ '@a': { addedAt: 1 }, '@b': { addedAt: 2, prio: 100 }, '@c': { addedAt: 3, prio: 200 }, '@d': { addedAt: 0 } }).map((x) => x[0]), ['@c', '@b', '@d', '@a']);
+    // v52：加入順序＝鍵的插入順序（項目不再存 addedAt，舊資料殘留的 addedAt 不影響順序）
+    eq(BG._orderQueue({ '@a': {}, '@b': { prio: 100 }, '@c': { prio: 200 }, '@d': { addedAt: 0 } }).map((x) => x[0]), ['@c', '@b', '@a', '@d']);
+    eq(BG._orderQueue(JSON.parse(JSON.stringify({ '@z': {}, '@y': {}, '@x': {} }))).map((x) => x[0]), ['@z', '@y', '@x'], 'JSON 來回保留插入順序');
     eq([0, 1, 2, 3, 4, 10].map(BG._netBackoffMs), [0, 0, 30000, 60000, 120000, 600000], '連續網路錯誤 2 次起暫停 30 秒 × 2^(n−2)，最多 10 分鐘');
     assert(BG._isNetError(new TypeError('Failed to fetch')) && !BG._isNetError(Object.assign(new Error('HTTP 404'), { failInfo: { status: 404 } })), '網路錯誤與 HTTP 錯誤分開');
     await resetAll();
@@ -1639,6 +1641,9 @@
       eq([cs.netErrors, cs.netErrorsLastHour, cs.queued, cs.consecutiveNetErrors, cs.concurrency], [1, 1, 1, 1, 3]);
       assert(cs.oldestWaitMin === 0 && typeof cs.perMinLast10 === 'number', 'oldestWaitMin／perMinLast10 ' + JSON.stringify(cs));
       assert(!JSON.stringify(cs).includes('@netfail') && !JSON.stringify(ci).includes('netfail'), '不含 handle');
+      // v52（T6.3 第 6 項）：佇列項目不存 addedAt（整份佇列每次寫入都要序列化），排入時間只在記憶體
+      const qi = (await BG.readQueue())['@netfail'];
+      assert(qi && !('addedAt' in qi) && typeof ci.queuedAt === 'string', '佇列項目不含 addedAt、channelInfo 仍有 queuedAt ' + JSON.stringify(Object.keys(qi || {})));
     } finally { self.fetch = self.__blockedFetch; }
     // 成功：可見優先送來的 handle 排入並解析，channelInfo ok
     self.fetch = async () => new Response('<meta property="og:title" content="亞瑟Arthur&#12304;精華剪輯&#12305;">', { status: 200 });

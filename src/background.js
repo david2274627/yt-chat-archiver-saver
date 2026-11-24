@@ -92,13 +92,19 @@ async function enqueueHandles(handles) {
   const added = await withQueue(async () => {
     const q = await readQueue();
     let n = 0;
-    for (const h of need) if (!q[h]) { q[h] = { attempts: 0, nextAt: 0, addedAt: Date.now() }; n++; }
+    for (const h of need) if (!q[h]) { q[h] = newQueueItem(h); n++; }
     if (n) await writeQueue(q);
     return n;
   });
   kickQueue();
   return added;
 }
+// v52（T6.3 第 6 項）佇列項目不再存 addedAt：整份佇列每次寫入都要序列化（壓力測試 2,000 個 handle 時，
+// 每筆多 24 bytes 讓直播 30 分鐘 P95 從約 48ms 升到約 62ms）。排入時間只記在記憶體（SW 重啟後未知），
+// 排入順序＝物件鍵的插入順序（JSON 來回保留順序）
+const queuedAt = new Map();
+function newQueueItem(h) { queuedAt.set(h, Date.now()); return { attempts: 0, nextAt: 0 }; }
+const queuedTime = (h, it) => queuedAt.get(h) ?? (it && typeof it.addedAt === 'number' ? it.addedAt : null);
 
 function decodeEntities(s) {
   return s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|#39);/gi, (m, e) => {
@@ -174,8 +180,9 @@ const isNetError = (e) => !!e && !e.failInfo && (e.name === 'TypeError' || /fail
 // 連續網路錯誤 → 整個佇列暫停 30 秒 × 2^(n−2)（2 次起，最多 10 分鐘），不提高併發
 function netBackoffMs(n) { return n < 2 ? 0 : Math.min(30000 * 2 ** (n - 2), 10 * 60 * 1000); }
 
-// v51（32.10）可見優先：面板畫面上的作者（prio 較新的）排最前面，其餘依加入順序（v50 以前沒有 addedAt 的視為最早）
-const orderQueue = (q) => Object.entries(q).sort((a, b) => ((b[1].prio || 0) - (a[1].prio || 0)) || ((a[1].addedAt || 0) - (b[1].addedAt || 0)));
+// v51（32.10）可見優先：面板畫面上的作者（prio 較新的）排最前面，其餘依加入順序
+// （v52：加入順序＝物件鍵的插入順序，Array.prototype.sort 是穩定排序）
+const orderQueue = (q) => Object.entries(q).sort((a, b) => (b[1].prio || 0) - (a[1].prio || 0));
 
 function kickQueue() {
   if (kickTimer) { clearTimeout(kickTimer); kickTimer = null; }
@@ -207,7 +214,7 @@ async function prioritizeHandles(handles) {
     const q = await readQueue();
     let queued = 0, prioritized = 0;
     for (const h of need) {
-      if (!q[h]) { q[h] = { attempts: 0, nextAt: 0, addedAt: now }; queued++; }
+      if (!q[h]) { q[h] = newQueueItem(h); queued++; }
       q[h].prio = now; prioritized++;
     }
     if (need.length) await writeQueue(q);
@@ -235,7 +242,7 @@ async function processHandle(h) {
   try {
     await withQueue(async () => {
       const q = await readQueue();
-      const it = q[h] || { attempts: 0, nextAt: 0, addedAt: Date.now() };
+      const it = q[h] || newQueueItem(h);
       it.lastTriedAt = Date.now();
       if (net && (it.netErrors || 0) < 5) {
         // 網路錯誤不計入嘗試次數（不是這個 handle 的問題），稍後再試；同一個 handle 連 5 次網路錯誤後才照一般失敗計
@@ -243,14 +250,14 @@ async function processHandle(h) {
         it.netErrors = (it.netErrors || 0) + 1;
         q[h] = it;
       } else if (info) {
-        delete q[h];
+        delete q[h]; queuedAt.delete(h);
         const rec = { handleOrId: h, displayName: info.displayName, avatar: info.avatar, fetchedAt: Date.now(), credentialsUsed: info.credentialsUsed || null };
         await DB.putChannel(rec);
         broadcast({ type: RT.CHANNEL_RESOLVED, handleOrId: h, displayName: rec.displayName, avatar: rec.avatar });
       } else {
         it.attempts++;
         if (it.attempts >= C.CHANNEL_MAX_ATTEMPTS) {
-          delete q[h];
+          delete q[h]; queuedAt.delete(h);
           // 失敗紀錄（1 天內不再重試）；檢視器退回顯示 @Handle
           await DB.putChannel({ handleOrId: h, displayName: '', avatar: '', fetchedAt: Date.now(), failed: true,
             failReason: C.asciiOnly(String((err && err.message) || 'error')).slice(0, 40), failInfo: (err && err.failInfo) || null });
@@ -404,16 +411,16 @@ async function channelStats() {
   const r = await DB.channelStats();
   const q = await readQueue();
   const items = Object.values(q);
+  const added = Object.entries(q).map(([h, it]) => queuedTime(h, it)).filter((x) => typeof x === 'number');
   r.queued = items.length;
   r.failRate = r.ok + r.failed ? Math.round((r.failed / (r.ok + r.failed)) * 1000) / 10 : 0;
   // v51（T6.2，審查十一 32.10）網路錯誤、佇列中最舊一筆等了多久、近 10 分鐘的處理速度、優先（畫面上）的筆數、暫停
   await loadChStats();
   const now = Date.now();
-  const added = items.map((x) => x.addedAt).filter((x) => typeof x === 'number');
   r.netErrors = chStats.netErrors;
   r.netErrorsLastHour = chStats.netErrorTimes.filter((x) => now - x < 3600e3).length;
   r.oldestWaitMin = added.length ? Math.round((now - Math.min(...added)) / 60000) : null;
-  r.oldestUnknownAge = items.length - added.length; // v50 以前排入的沒有 addedAt
+  r.oldestUnknownAge = items.length - added.length; // 排入時間只在記憶體：SW 重啟前排入的不知道
   r.perMinLast10 = Math.round(chStats.doneTimes.filter((x) => now - x < 600e3).length / 10 * 10) / 10;
   r.prioritized = items.filter((x) => x.prio).length;
   r.inflight = inflight.size;
@@ -624,7 +631,7 @@ async function channelInfo(handle) {
   else if (rec && rec.failed) status = 'failed';
   else if (rec && rec.displayName) status = isFresh(rec, now) ? 'ok' : 'stale';
   return { ok: true, status, hasName: !!(rec && rec.displayName), attempts: it ? it.attempts : null, netErrors: it ? it.netErrors || 0 : null,
-    retryAt: it && it.nextAt > now ? iso(it.nextAt) : null, queuedAt: it ? iso(it.addedAt) : null, prioritized: !!(it && it.prio),
+    retryAt: it && it.nextAt > now ? iso(it.nextAt) : null, queuedAt: it ? iso(queuedTime(h, it)) : null, prioritized: !!(it && it.prio),
     lastTriedAt: iso((it && it.lastTriedAt) || (rec && rec.fetchedAt)), fetchedAt: rec ? iso(rec.fetchedAt) : null,
     failReason: rec && rec.failed ? rec.failReason || null : null, failStatus: rec && rec.failed && rec.failInfo ? rec.failInfo.status ?? null : null,
     credentialsUsed: rec ? rec.credentialsUsed || null : null };
@@ -639,7 +646,7 @@ async function retryFailedChannels(opts) {
   const added = await withQueue(async () => {
     const q = await readQueue();
     let n = 0;
-    for (const h of handles) if (!q[h]) { q[h] = { attempts: 0, nextAt: 0, addedAt: Date.now() }; n++; }
+    for (const h of handles) if (!q[h]) { q[h] = newQueueItem(h); n++; }
     if (n) await writeQueue(q);
     return n;
   });
