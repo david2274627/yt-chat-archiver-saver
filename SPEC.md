@@ -490,6 +490,12 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - （v48，審查十一 27 第 1 點）**待機室 → 開播，分頁不重新整理**：
       1. **準時或延後開播**：預定時間一到變成 `startPending`，background 每 60 秒重新抓取（`chrome.alarms` 每 1 分鐘檢查有分頁開著的場次）；開播後下一次抓取取得實際開播時間（`meta-actual`）。**延遲：開播後約 1～2 分鐘**轉為「直播中」。
          - （v51，T6.2，審查十一 32.8）**實測：準時開播約 10 秒內**轉為「直播中」（2026-11-22 20:30，海克莉獅的待機室，不重新整理）。比上面的估計快，推測是較快的另一條路徑：**播放器訊號**（top frame 每 30 秒重讀場次資訊，播放器長度由無變有且頁面已開超過 60 秒 → `liveSignalAt`；擷取端在 `startPending` 期間採用為 `signal`，隨下一批訊息送給 background）。延遲 0～30 秒。之後 background 重新抓取的 `meta-actual` 以實際時間覆蓋、`pre→live` 重算。
+         - （v52，T6.3，審查十一 33.8.2）**實測改為「10～20 秒，看哪條路徑先到」**：`--LZ…` 的 `firstStartSource` 是 `meta-actual`、比實際開播晚 19 秒（頁面 meta 或重新抓取先到），32.8 那場推測是播放器訊號。兩條都可能先到。
+         - **`liveConfirmed` 可能晚很多**（`--LZ…` 晚 26 分鐘），不影響 phase 與 offset（開播時間 19 秒就有了）：
+           - 原因一：得知開播時間後，重新抓取改為直播中的間隔 `META_POLL_LIVE_MS` = **5 分鐘**一次（為了偵測結束時間）。
+           - 原因二：`liveConfirmedAt` 要重新抓到的 watch 頁（`credentials: 'omit'`，未登入）同時是 `isLiveNow: true` 且開播時間與已採用的相同；未登入的頁面可能有快取，開播後一段時間仍是 `false`。26 分鐘約等於 5 次重新抓取都還沒拿到 `true`。
+           - **重新抓取沒有停止**：直播中每 5 分鐘一次照常，直到 meta 出現 `endDate`（降落暫定的結束也照常抓，`raid-end` 每 60 秒）。
+           - v52 起每次重新抓取記 F-20 P4 `meta-refetch`（種類、`isLiveNow`、有無開播／結束時間、來源、是否確認、credentials；只有代碼與布林），可以看出是哪個原因。
          - 判讀方式：`await YTCAS_BG.streamTimes('videoId')` 的 `firstStartSource`（v51 起記錄**第一次**得知開播的來源與時間 `firstStartKnown`；之後被覆蓋也保留）。`signal` → 播放器訊號；`meta-actual` → 重新抓取或頁面 meta。v50 以前的場次沒有這兩個欄位，`startedAtSource` 已被 `meta-actual` 覆蓋，無法事後分辨。
       2. **提早開播**（頁面上的 meta 仍說預定時間在未來）：v47 在預定時間到之前完全不重新抓取，最多延遲到預定時間。v48 起**待機室也重新抓取**：預定時間前 `META_POLL_SOON_WINDOW_MS` = 30 分鐘內每 `META_POLL_SOON_MS` = 2 分鐘、更早每 `META_POLL_FUTURE_MS` = 15 分鐘（只限有分頁開著的場次，`credentials: 'omit'`）。**延遲：預定前 30 分鐘內提早開播約 2～3 分鐘；更早開播最多約 15～16 分鐘**。重新抓到 `isLiveNow: true` 且有實際開播時間 → 採用並記 `liveConfirmedAt`；之後分頁上沒重新整理的舊 meta 仍說「在未來」時，擷取端與 background 都**不再**當成待機室（`C.isFutureScheduled` 在有 `liveConfirmedAt` 時為 false）。
       3. **期間收到的訊息**：擷取端在得知開播時間前存成 `pre`、offset 空。`startedAt` 確定時依時間重算（`pre→live`，本套件直播收錄的推算 offset 一併算出）；之後擷取端還不知道、但 background 已知開播時間時送來的 `pre`／offset 空的訊息，寫入時直接依已知的開播時間重算（`SAVE_MESSAGES` 回應的 `phaseFixed`）。
