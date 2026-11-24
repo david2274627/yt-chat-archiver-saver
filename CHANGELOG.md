@@ -213,6 +213,27 @@
   - 配對快取建索引（commit `7ed32a9`）。
   - CHANGELOG、測試清單、報告（本段落所在的 commit）。
 
+- v52／T6.3（`docs/review-2026-11-17.md` 第 33 節；報告為 `docs/reports/2026-11-22-t6-f10.md` 的「T6.3」一節）：
+  - 審查十一第 32.11～33.8 節、診斷摘要 2026-11-24 20:09（commit `22a2bd8`）。
+  - 暫時節點規則再收緊、id 先清空再設定也合併、`fixOwnDuplicates` 預覽分組、`own` 的 `tempStored`／`tempDropped`／`tempPending`（33.6、33.8.3，commit `03ba5da`）。
+  - 降落的資料正確性：videoId 綁定、導航後 microdata 一致才送標題、降落＝結束、`streamCompare`／`fixRaidLeak`／`fixStreamMeta`、P4 `meta-refetch`（33.1 第 1～5 點，commit `99633e8`）。
+  - P7 `poll-structure`（33.2、33.8.4，commit `481deb4`）。
+  - 降落自動開彈出視窗（預設開啟、手動關閉）、studio 彈出式聊天室（33.1 第 6、7 點，commit `ead88c4`）。
+  - 取消置頂偵測、置頂卡 ✕、「📌 置頂」膠囊（33.3，commit `ec62393`）。
+  - 篩選／搜尋欄預設收起（面板與後台）、🔍、篩選標籤（33.4、33.8，commit `44bd6c4`）。
+  - VOD 開播前顯示「開播前 …」（33.8.1，commit `c825918`）。
+  - SPEC 延遲表「實測 10～20 秒，看哪條路徑先到」（33.8.2，commit `9a64963`）。
+  - 直播 30 分鐘 P95 上升的來源（`b3d8890` 的佇列項目 `addedAt`）與修正（第 33 節漏掉的第 2 點，commit `6eaf27f`）。
+  - CHANGELOG、測試清單、報告（本段落所在的 commit）。
+
+### 規格 v52（2026-11-24，T6.3）
+- F-14：暫時節點規則（直播來源、文字、到達時間、30 秒）、id 先清空再設定；降落的 videoId 綁定、microdata 一致、降落＝結束訊號、`streams.crossVideo`、`streamCompare`／`fixRaidLeak`／`fixStreamMeta`；延遲表「10～20 秒，看哪條路徑先到」、P4 `meta-refetch`。
+- F-19：降落自動開彈出視窗（`raidAutoPopout`，預設開啟、手動關閉、面板一行提示）；`studio.youtube.com/live_chat*`。
+- F-07、F-05、10.4：取消置頂（`unpinnedAt`）、置頂卡 ✕（只影響顯示）、「📌 置頂」膠囊。
+- F-06、10.4：過濾使用者與搜尋欄預設收起（面板與後台）、🔍、篩選標籤、不記住展開狀態。
+- F-08：「影片開頭之前」只用於 live；開播前顯示「開播前 …」。
+- 6.8：投票卡結構記錄（P7 `poll-structure`），結構確認前不猜選擇器。
+
 ### 規格 v51（2026-11-22～23，T6.2）
 - F-02：直播／待機室訊息的時間不得在未來、回溯擷取依 DOM 順序重建日期、`clock-ambiguous`、`fixFutureTimes`、P1 `clockFuture`、P7 `ts-format`。
 - F-14：等待開播期間一律暫定 `pre`、清單依 phase 分段；自己送出的訊息的暫時 id 格式、原地改 id 比對作者與內容、頁面移除 10 秒、P1 `own` 的新結構、P7 `own-replace` 一定記錄；`firstStartSource`、延遲表實測。

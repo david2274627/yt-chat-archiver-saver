@@ -253,6 +253,16 @@
 | T6.2 實機【待機室→開播】等待開播期間只有一個「直播開始前」標題；開播後 `streamTimes` 的 `firstStartSource` | ⬜ | |
 | T6.2 實機【不限】`fixOwnDuplicates()` 預覽 `pairs` 約 33；`channelStats()` 新欄位；`channelInfo('@handle')`；`scTiers()` | ⬜ | |
 | T6.2 實機【VOD】`G1Ov…` 開頭顯示「影片開頭之前」，不是一串 0:00 | ⬜ | |
+| T6.3 自動 (33.6、33.8.3) | 重播／遷移／SC／會員的短 `C` 開頭 id 不是暫時 id、超過 30 秒不配對、id 先清空再設定合併、`tempStored`／`tempDropped`／`tempPending`（`test-capture.html`）；`fixOwnDuplicates` 預覽 `tempShapes`／`pairShapes`／`pairDt`（`test-db.html`） | ✅ | 2026-11-24 |
+| T6.3 自動 (33.1) | chat frame 綁定 videoId、`#items` 換掉時重新綁定、P7 `video-switch`、降落＝結束（`test-capture.html`）；`streamCompare`、`fixRaidLeak`、`fixStreamMeta`、`crossVideo`、`raid-end` 重抓、P4 `meta-refetch`（`test-db.html`）；彈出視窗收錄無標題時抓標題（`test-content-chat.html`）。top frame 的 microdata 檢查沒有測試頁 | ✅ | 2026-11-24 |
+| T6.3 自動 (33.1 第 6、7 點、33.2、33.3、33.4、33.8.1) | 降落自動開彈出視窗（已開不重開、設定關閉不開、3 分鐘內）、面板提示（`test-db.html`、`test-viewer.html`）；P7 `poll-structure`（`test-chat-input.html`）；取消置頂、✕、📌 膠囊（`test-capture.html`、`test-db.html`、`test-viewer.html`）；篩選／搜尋欄收起、🔍、標籤、300／340／360px 單列（`test-viewer.html`）；VOD 開播前「開播前 56:00」（`test-viewer.html`） | ✅ | 2026-11-24 |
+| T6.3 壓力測試（第 33 節第 2 點） | 逐 commit 量直播 30 分鐘 P95：`b3d8890` 起 ≈ 62ms（前一版 ≈ 48ms），來源為佇列項目的 `addedAt`；`6eaf27f` 修正後 53～56ms（`test-stress.html`） | ✅ | 2026-11-24 |
+| T6.3 實機【不限】`fixOwnDuplicates()` 預覽 `pairs` 約 33 才執行；`streamCompare('LjiG…','mb9I…')`；`fixStreamMeta()`／`fixRaidLeak()` 預覽 | ⬜ | |
+| T6.3 實機【任何直播】有降落時：自動開彈出視窗（不搶焦點）、面板一行提示、新場次標題正確、原場次之後的訊息為 `post` | ⬜ | |
+| T6.3 實機【任何直播】投票卡：P7 `poll-structure` 記錄；無痕視窗「Live chat」模式對照 | ⬜ | |
+| T6.3 實機【任何直播】取消置頂後置頂卡消失、✕ 只隱藏、📌 膠囊；篩選／搜尋欄預設收起、點名稱自動展開 | ⬜ | |
+| T6.3 實機【VOD】開播前的訊息顯示「開播前 …」，只有直播開頭被剪掉的才是「影片開頭之前」 | ⬜ | |
+| T6.3 實機【不限】studio.youtube.com 的彈出式聊天室：P7 `popout-env` | ⬜ | |
 
 ## UI 設計（SPEC 第 10 節）
 | 項目 | 狀態 | 備註 |
