@@ -422,6 +422,106 @@ async function channelStats() {
   r.consecutiveNetErrors = chStats.consecutiveNet;
   return r;
 }
+// ---------------------------------------------------------------- v52（T6.3，審查十一 33.1）降落時的資料正確性
+// streamCompare(a, b)：兩場的比對（只有數字、代碼、4 碼 videoId，不含標題、名稱、內容）
+const v4 = (v) => String(v || '').slice(0, 4);
+const isoOf = (t) => (typeof t === 'number' ? new Date(t).toISOString() : null);
+const authorKeyOf = (m) => (m.authorHandle || '').toLowerCase() || m.authorChannelId || m.authorName || '';
+async function streamFacts(videoId) {
+  const [s, msgs, cs] = await Promise.all([DB.getStream(videoId), DB.queryMessages(videoId), DB.listCaptureSessions(videoId)]);
+  const sessions = (cs && cs.sessions) || [];
+  const tally = (f) => msgs.reduce((o, m) => { const k = f(m) || '(無)'; o[k] = (o[k] || 0) + 1; return o; }, {});
+  const firstCap = sessions.reduce((a, x) => Math.min(a, x.startedAt || Infinity), Infinity);
+  return { s, msgs, sessions, firstCap, out: {
+    v: v4(videoId), messages: msgs.length, phases: tally((m) => m.phase), tsSource: tally((m) => m.tsSource), types: tally((m) => m.type),
+    startedAt: isoOf(s && s.startedAt), startedAtSource: (s && s.startedAtSource) || null, endedAt: isoOf(s && s.endedAt), endedAtSource: (s && s.endedAtSource) || null,
+    sessions: sessions.map((x) => ({ source: x.source, start: isoOf(x.startedAt), end: isoOf(x.endedAt), added: x.added || 0, merged: x.merged || 0 })),
+    beforeFirstCapture: Number.isFinite(firstCap) ? msgs.filter((m) => typeof m.timestampAbs === 'number' && m.timestampAbs < firstCap).length : null,
+    firstMsg: isoOf(msgs.reduce((a, m) => Math.min(a, m.timestampAbs || Infinity), Infinity) === Infinity ? null : msgs.reduce((a, m) => Math.min(a, m.timestampAbs || Infinity), Infinity)),
+    lastMsg: isoOf(msgs.reduce((a, m) => Math.max(a, m.timestampAbs || 0), 0) || null),
+  } };
+}
+async function streamCompare(a, b) {
+  if (!isVideoIdStr(a) || !isVideoIdStr(b)) return { ok: false, error: 'bad-video-id' };
+  const [A, B] = await Promise.all([streamFacts(a), streamFacts(b)]);
+  const authA = new Set(A.msgs.map(authorKeyOf).filter(Boolean)), authB = new Set(B.msgs.map(authorKeyOf).filter(Boolean));
+  const textA = new Set(A.msgs.map((m) => authorKeyOf(m) + '\u0001' + JSON.stringify(m.runs || [])));
+  const cv = (s, other) => (s && s.crossVideo && s.crossVideo[other]) || 0;
+  const raidA = A.msgs.filter((m) => m.type === 'raid').map((m) => m.timestampAbs).sort((x, y) => x - y);
+  const out = { ok: true, a: A.out, b: B.out,
+    titleSame: !!(A.s && B.s && A.s.title && A.s.title === B.s.title),
+    channelSame: !!(A.s && B.s && (A.s.channelHandle || A.s.channelName) && (A.s.channelHandle || A.s.channelName) === (B.s.channelHandle || B.s.channelName)),
+    authors: { a: authA.size, b: authB.size, both: [...authB].filter((x) => authA.has(x)).length },
+    // b 中「同作者同內容也在 a 出現過」的筆數（漏進 b 的 a 訊息會在這裡；id 全域唯一，同 id 不會存兩份）
+    bSameAuthorTextInA: B.msgs.filter((m) => textA.has(authorKeyOf(m) + '\u0001' + JSON.stringify(m.runs || []))).length,
+    // id 已存在另一場、合併到那一筆的次數（寫入時記錄，v52 起）
+    crossVideo: { aHitB: cv(A.s, b), bHitA: cv(B.s, a) },
+    // a 的第一個降落橫幅之後，b 收到、作者只在 a 出現的訊息數（fixRaidLeak 的候選；a 沒有降落則 null）
+    bAfterARaidAuthorOnlyInA: raidA.length ? B.msgs.filter((m) => m.timestampAbs >= raidA[0] - 60e3 && authA.has(authorKeyOf(m)) && !authOnlyB(B, m, raidA[0])).length : null,
+    aRaidAt: isoOf(raidA[0] || null) };
+  return out;
+}
+// 作者在 b 的「a 降落之前」或「a 降落 10 分鐘後」也出現過 → 是 b 自己的觀眾
+function authOnlyB(B, m, raidAt) {
+  const k = authorKeyOf(m);
+  return B.msgs.some((x) => authorKeyOf(x) === k && (x.timestampAbs < raidAt - 60e3 || x.timestampAbs > raidAt + 10 * 60e3));
+}
+const isVideoIdStr = (v) => typeof v === 'string' && /^[\w-]{6,20}$/.test(v);
+
+// fixRaidLeak(新, 原)：原場次（a＝orig）降落後，新場次（b＝new）收到的「其實是原場次聊天室」的訊息 → 搬回原場次（post）。
+// 規則（streamCompare 的 bAfterARaidAuthorOnlyInA）：b 中時間在 a 第一個降落橫幅前 1 分鐘之後、作者在 a 出現過、
+// 而且作者在 b 的其他時段（降落前、降落 10 分鐘後）都沒有出現的訊息；另含 a 的降落橫幅本身（b 中同內容的 raid）。
+// 預覽只列筆數；{ dryRun: false } 才搬。**規則依使用者 streamCompare 的結果確認後才執行**
+async function fixRaidLeak(newVid, origVid, opts) {
+  if (!isVideoIdStr(newVid) || !isVideoIdStr(origVid)) return { ok: false, error: 'bad-video-id' };
+  const dryRun = !(opts && opts.dryRun === false);
+  const [A, B] = await Promise.all([streamFacts(origVid), streamFacts(newVid)]);
+  const raids = A.msgs.filter((m) => m.type === 'raid').map((m) => m.timestampAbs).sort((x, y) => x - y);
+  if (!raids.length) return { ok: true, dryRun, error: 'no-raid-in-orig', candidates: 0 };
+  const raidAt = raids[0];
+  const authA = new Set(A.msgs.map(authorKeyOf).filter(Boolean));
+  const raidTextA = new Set(A.msgs.filter((m) => m.type === 'raid').map((m) => JSON.stringify(m.runs || [])));
+  const cands = B.msgs.filter((m) => (m.type === 'raid' && raidTextA.has(JSON.stringify(m.runs || [])))
+    || (m.timestampAbs >= raidAt - 60e3 && authA.has(authorKeyOf(m)) && !authOnlyB(B, m, raidAt)));
+  const out = { ok: true, dryRun, orig: v4(origVid), new: v4(newVid), candidates: cands.length, raidBanners: cands.filter((m) => m.type === 'raid').length,
+    phases: cands.reduce((o, m) => { o[m.phase || '(無)'] = (o[m.phase || '(無)'] || 0) + 1; return o; }, {}),
+    spanSec: cands.length ? Math.round((Math.max(...cands.map((m) => m.timestampAbs)) - Math.min(...cands.map((m) => m.timestampAbs))) / 1000) : 0, moved: 0 };
+  if (dryRun) return out;
+  // 原場次還沒有結束時間 → 以降落時間暫定（之後 meta 覆蓋）
+  if (!(A.s && A.s.endedAt != null)) await DB.saveMessages({ videoId: origVid, source: 'live', stream: { endedAt: raidAt, endedAtSource: 'raid' }, messages: [] });
+  const r = await DB.moveMessages(newVid, origVid, cands.map((m) => m.id));
+  out.moved = r.moved;
+  console.info('[ytcas] 降落後漏進新場次的訊息', out);
+  return out;
+}
+
+// fixStreamMeta(videoId)：重新抓 watch 頁，覆蓋標題與頻道（導航時存了上一場的標題）。不帶參數：列出同頻道同標題、
+// 開始時間相差 6 小時內的場次組（只有 4 碼與筆數）。預覽只比較是否相同；{ dryRun: false } 才寫入
+async function fixStreamMeta(videoId, opts) {
+  const dryRun = !(opts && opts.dryRun === false);
+  if (!videoId) {
+    const list = await DB.listStreams();
+    const groups = new Map();
+    for (const s of list) { if (!s.title) continue; const k = s.title; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(s); }
+    const dup = [];
+    for (const arr of groups.values()) if (arr.length > 1) dup.push(arr.map((s) => ({ v: v4(s.videoId), messages: s.messageCount || 0, created: isoOf(s.createdAt) })));
+    return { dryRun: true, sameTitleGroups: dup.length, groups: dup.slice(0, 20), hint: 'fixStreamMeta(videoId) 逐場預覽' };
+  }
+  if (!isVideoIdStr(videoId)) return { ok: false, error: 'bad-video-id' };
+  const s = await DB.getStream(videoId);
+  if (!s) return { ok: false, error: 'no-stream' };
+  let meta;
+  try { meta = await fetchStreamMeta(videoId, s.scheduledStartAt); } catch (e) { return { ok: false, error: 'fetch:' + C.asciiOnly(String(e && e.message)).slice(0, 40) }; }
+  if (!meta || !meta.title) return { ok: false, error: 'no-title' };
+  const out = { ok: true, dryRun, v: v4(videoId), titleChanges: meta.title !== s.title, channelChanges: (meta.channelHandle || '') !== (s.channelHandle || '') || (meta.channelName || '') !== (s.channelName || '') };
+  if (dryRun || !(out.titleChanges || out.channelChanges)) return Object.assign(out, { updated: false });
+  await DB.updateStream(videoId, (x) => {
+    x.title = meta.title;
+    for (const k of ['channelName', 'channelHandle', 'channelUrl']) if (meta[k]) x[k] = meta[k];
+  });
+  return Object.assign(out, { updated: true });
+}
+
 // v51（T6.2，審查十一 32.11）SC 的金額分級：await YTCAS_BG.scTiers()（或 { videoId }）
 // 依「幣別前綴＋顏色」統計 SC／超級貼圖的筆數與金額最小／最大值（不含名稱、內容、videoId）。
 // overlaps：同一幣別裡，兩種顏色的金額範圍重疊（同幣別但金額與顏色分級不一致的線索，例如 $170 卻是 $75～149 的顏色）
@@ -866,6 +966,12 @@ const pickTimes = (s) => DB.pickStreamTimes(s);
 // 只讀 startDate／endDate／isLiveBroadcast 等 meta；credentials: 'omit'，不帶 Cookie。
 const metaPoll = new Map(); // videoId → { firstAt, lastAt }
 function metaPollDue(videoId, s, now) {
+  // v52（T6.3，審查十一 33.1 第 4 點）降落暫定的結束時間（endedAtSource 'raid'）：照常重新抓取，等 meta 的 endDate 覆蓋
+  if (s && s.endedAt != null && s.endedAtSource === 'raid') {
+    const st = metaPoll.get(videoId) || { firstAt: now, lastAt: 0 };
+    if (now - (s.endedAt || now) > C.META_POLL_PENDING_MAX_MS) return null;
+    return now - st.lastAt >= C.META_POLL_PENDING_MS ? { st, kind: 'raid-end' } : null;
+  }
   if (!s || s.endedAt != null) return null;
   const st = metaPoll.get(videoId) || { firstAt: now, lastAt: 0 };
   const pending = s.startedAt == null && (s.startPending || (s.scheduledStartAt != null && s.scheduledStartAt <= now));
@@ -893,6 +999,9 @@ async function maybeRefetchMeta(videoId, times, source) {
   metaPoll.set(videoId, due.st);
   let meta;
   try { meta = await fetchStreamMeta(videoId, times.scheduledStartAt); } catch (e) { console.info('[ytcas] 重新抓取場次資訊失敗', String(e && e.message)); return null; }
+  // v52（T6.3，審查十一 33.8.2）每次重新抓取的結果（只有代碼與布林）：liveConfirmed 晚到時，看是 isLiveNow 遲遲不是 true 還是間隔太長
+  if (diagOn('P4')) diagLog('P4', 'meta-refetch', { kind: due.kind, isLiveNow: meta.isLiveNow ?? null, hasStart: meta.startedAt != null,
+    startSrc: meta.startedAtSource || null, hasEnd: meta.endedAt != null, confirm: meta.liveConfirmedAt != null, cred: meta.credentialsUsed || 'omit' }, { env: 'bg', videoId });
   const upd = {};
   for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt', 'startPending', 'scheduledFuture', 'liveConfirmedAt']) if (meta[k] != null) upd[k] = meta[k];
   if (!Object.keys(upd).length) return null;
@@ -1007,6 +1116,18 @@ const handlers = {
     const policy = await capturePolicy(await handleOf(videoId, stream));
     if (!policy.allowed) return { allowed: false, reason: policy.reason };
     const r = await DB.captureStart({ videoId, source: msg.source, duration: msg.duration, stream });
+    // v52（T6.3，審查十一 33.1 第 3 點）嵌入式聊天室在導航後沒有送標題（頁面 microdata 還是上一場的，content.js 不送）→ 背景抓 watch 頁補上
+    if (msg.source === 'live' && !stream.title) {
+      DB.getStream(videoId).then((s) => {
+        if (s && s.title) return null;
+        return fetchStreamMeta(videoId, s && s.scheduledStartAt).then((meta) => {
+          if (!meta || !meta.title) return null;
+          const m = { title: meta.title };
+          for (const k of ['channelName', 'channelHandle', 'channelUrl']) if (meta[k]) m[k] = meta[k];
+          return DB.saveMessages({ videoId, stream: m, messages: [], source: 'live' });
+        });
+      }).catch((e) => console.info('[ytcas] 場次標題補抓失敗', String(e && e.message)));
+    }
     // F-19（v30）：記下彈出視窗所在分頁，關閉時由 tabs.onRemoved 接手
     const tabId = sender && sender.tab && sender.tab.id;
     if (msg.source === 'popout' && typeof tabId === 'number' && tabId >= 0) {
@@ -1347,4 +1468,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, _metaPollDue: metaPollDue, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, streamCompare, fixRaidLeak, fixStreamMeta, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

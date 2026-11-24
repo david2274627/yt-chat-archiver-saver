@@ -154,6 +154,70 @@
     eq([CAP.clockShape('下午11:13'), CAP.clockShape('11:13 PM'), CAP.clockShape('-0:05'), CAP.clockShape('週三 9:00')], ['Pdd:dd', 'dd:dd P', '-d:dd', '?? d:dd']);
   });
 
+  test('T6.3（33.1 第 2 點）bindVideo：收到別的 videoId → 暫停、之後的訊息不存進新場次；#items 換成同一個聊天室（有看過的 id）不重新綁定；換成新的聊天室（沒看過的 id）→ 重新綁定；P7 video-switch 只有數字', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const recs = [];
+    const e = engine({ send, bindVideo: true, onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidBndA', startDate: NOW - 3600e3, channelHandle: '@a' });
+    await until(() => e.state().mode === 'capturing');
+    items.append(textMsg({ id: 'BA1', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('BA1'), 3000);
+    // 降落：top 導航到 B，舊聊天室收到 B 的 STREAM_INFO
+    e.setInfo({ videoId: 'testVidBndB', startDate: NOW - 60e3 });
+    eq([e.state().mode, e.state().videoId], ['paused', 'testVidBndA'], '暫停、仍綁定 A');
+    items.append(textMsg({ id: 'BA2-after-raid', ts: '下午10:23' }));
+    await sleep(1300);
+    const saves = send.of(RT.SAVE_MESSAGES);
+    assert(!saves.some((c) => c.msg.videoId === 'testVidBndB'), '沒有存進 B');
+    assert(!savedIds(send).includes('BA2-after-raid'), '暫停中不存');
+    eq(send.of(RT.CAPTURE_START).filter((c) => c.msg.videoId === 'testVidBndB').length, 0);
+    // 同一個聊天室重新渲染：#items 換掉但內容是看過的 id → 不重新綁定
+    const ids = Array.from(items.children).map((x) => x.id);
+    const box = items.parentElement;
+    const items2 = h('div', { id: 'items' }, ids.filter((x) => x === 'BA1').map((x) => textMsg({ id: x, ts: '下午10:23' })));
+    items.remove(); box.append(items2);
+    e._tick();
+    eq([e.state().mode, e.state().videoId], ['paused', 'testVidBndA'], '同一個聊天室：不重新綁定');
+    // 新的聊天室：#items 換成沒看過的 id → 重新綁定到 B
+    const items3 = h('div', { id: 'items' }, [textMsg({ id: 'BB1', ts: '下午10:23' })]);
+    items2.remove(); box.append(items3);
+    e._tick();
+    await until(() => e.state().videoId === 'testVidBndB' && e.state().mode === 'capturing', 3000, '重新綁定');
+    await until(() => send.of(RT.SAVE_MESSAGES).some((c) => c.msg.videoId === 'testVidBndB' && c.msg.messages.some((m) => m.id === 'BB1')), 3000, 'B 的訊息');
+    e.stop();
+    const vs = recs.filter((r) => r.k === 'video-switch').map((r) => r.d.phase);
+    eq(vs, ['mismatch', 'swap-same-chat', 'rebind']);
+    assert(recs.filter((r) => r.k === 'video-switch').every((r) => Object.values(r.d).every((v) => v === null || ['number', 'boolean'].includes(typeof v) || ['mismatch', 'swap-same-chat', 'rebind', 'back'].includes(v))), '只有數字、布林與代碼');
+  });
+
+  test('T6.3（33.1 第 4 點）降落橫幅＝原直播結束：暫定 endedAt（raid），之後的訊息標 post；SAVE_MESSAGES 帶 endedAtSource raid；待機室與重播不適用', async () => {
+    const { items, banner } = buildChat();
+    const send = mockSend();
+    let T = NOW;
+    const e = engine({ send, now: () => T });
+    e.start();
+    e.setInfo({ videoId: 'testVidRaid1', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    items.append(textMsg({ id: 'RD-before', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('RD-before'), 3000);
+    T = NOW + 10000;
+    banner.append(h('yt-live-chat-banner-redirect-renderer', { id: 'redir1' }, [h('div', { text: '千萬別錯過！和大家一起收看@OtherCh' })]));
+    await until(() => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).some((m) => m.type === 'raid'), 3000, '降落');
+    const raid = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.type === 'raid');
+    eq(raid.phase, 'live', '降落橫幅本身在直播中');
+    T = NOW + 20000;
+    items.append(textMsg({ id: 'RD-after', ts: '下午10:24' }));
+    await until(() => savedIds(send).includes('RD-after'), 3000);
+    const after = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'RD-after');
+    eq(after.phase, 'post', '降落之後：結束後');
+    const lastSave = send.of(RT.SAVE_MESSAGES).pop().msg;
+    eq([lastSave.stream.endedAt, lastSave.stream.endedAtSource], [NOW + 10000, 'raid']);
+    eq(e.state().stats.raidEnd, 1);
+    e.stop();
+  });
+
   test('T6.3（33.8.3、33.6）暫時節點：同一個節點「暫時 id → 空 → 正式 id」也合併（v51 找不到而存成兩筆）；暫時節點超過 30 秒不再以暫時 id 配對；P1 own.tempStored／tempPending／tempDropped', async () => {
     const { items } = buildChat();
     const send = mockSend();

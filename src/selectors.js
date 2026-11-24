@@ -22,6 +22,10 @@
       endDateMeta: 'meta[itemprop="endDate"]',             // 待實機確認
       isLiveMeta: 'meta[itemprop="isLiveBroadcast"]',       // 筆記 1.2 確認存在；值的寫法待實機確認
       titleMeta: 'meta[name="title"]',
+      // v52（T6.3，審查十一 33.1 第 3 點）microdata 自己的 videoId：導航後 microdata（標題、頻道、startDate）可能還是上一場的。
+      // 與網址的 videoId 一致才採用（不一致就只送 videoId，最多重試 10 秒；之後由 background 抓 watch 頁補）。**待實機確認**哪一個存在
+      identifierMeta: 'meta[itemprop="identifier"]',
+      canonicalLink: 'link[rel="canonical"]',
       channelLink: 'ytd-watch-metadata ytd-channel-name a, #owner ytd-channel-name a',
       darkThemeAttr: 'html[dark]', // 深色狀態待實機確認（筆記 1.5）
 

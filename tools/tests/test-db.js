@@ -622,9 +622,14 @@
       eq(urls.length, 1, '已有資料不重抓');
       await chrome.storage.local.set({ captureExcludedChannels: ['@pophost'] });
       eq((await send({ type: 'CAPTURE_START', videoId: V2, source: 'popout' })).reason, 'channel', '抓到頻道後才判斷暫停');
-      // 直播（嵌入式）不抓
-      await send({ type: 'CAPTURE_START', videoId: 'vidCCCCCCC3', source: 'live', stream: { channelHandle: '@x' } });
+      // 直播（嵌入式）有標題：不抓
+      await send({ type: 'CAPTURE_START', videoId: 'vidCCCCCCC3', source: 'live', stream: { channelHandle: '@x', title: '有標題' } });
+      await sleep(100);
       eq(urls.length, 2);
+      // v52（33.1 第 3 點）直播沒有標題（導航後 microdata 還是上一場的，top 不送）→ 背景抓 watch 頁補標題（不阻擋收錄）
+      await send({ type: 'CAPTURE_START', videoId: 'vidDDDDDDD4', source: 'live', stream: { channelHandle: '@x' } });
+      await until(async () => (await DB.getStream('vidDDDDDDD4') || {}).title === 'T', 2000, '補上標題');
+      eq(urls.slice(-1), ['https://www.youtube.com/watch?v=vidDDDDDDD4']);
     } finally {
       self.fetch = self.__blockedFetch;
     }
@@ -1647,6 +1652,61 @@
       eq([ci.hasName, ci.credentialsUsed], [true, 'omit']);
       assert(!('displayName' in ci), 'channelInfo 不回傳名稱');
       eq((await send({ type: 'RESOLVE_CHANNELS', handles: ['@arthurW77748'] }, PAGE)).queued, 0, '已解析的不再排入');
+    } finally { self.fetch = self.__blockedFetch; }
+  });
+
+  test('T6.3（33.1）降落：streamCompare 只輸出數字與代碼；id 已在別的場次 → crossVideo 計數；fixRaidLeak 預覽／搬回原場次（post）；降落暫定結束時照常重新抓取；fixStreamMeta 覆蓋標題', async () => {
+    await resetAll();
+    U._resetTwins();
+    const A = 'vidRAIDorg1', B = 'vidRAIDnew2';
+    const t0 = Date.now() - 3 * 3600e3;
+    const raidAt = t0 + 2 * 3600e3;
+    const mm = (id, vid, h, text, ts, o) => Object.assign({ id, videoId: vid, type: 'text', authorHandle: h, runs: [{ text }], timestampAbs: ts, tsSource: 'arrival' }, o);
+    // 原場次 A：一般訊息、降落橫幅
+    await DB.saveMessages({ videoId: A, source: 'live', stream: { title: '原直播', channelHandle: '@orig', startedAt: t0, startedAtSource: 'meta-actual' }, messages: [
+      mm('a1', A, '@fan1', '你好', t0 + 60e3), mm('a2', A, '@fan2', '加油', t0 + 3600e3), mm('a3', A, '@fan1', '再見', raidAt - 30e3),
+      { id: 'ytcas-raid-x', type: 'raid', runs: [{ text: '千萬別錯過！和大家一起收看@target' }], timestampAbs: raidAt, phase: 'live' }] });
+    // 新場次 B：被存成 A 的標題；自己的 backlog（@tfan）＋漏進來的 A 訊息（@fan1、@fan2、A 的降落橫幅）
+    await DB.saveMessages({ videoId: B, source: 'live', stream: { title: '原直播', channelHandle: '@target', startedAt: t0 + 1800e3, startedAtSource: 'meta-actual' }, messages: [
+      mm('b1', B, '@tfan', '演唱中', raidAt - 1800e3), mm('b2', B, '@tfan', '好聽', raidAt + 20 * 60e3),
+      mm('leak1', B, '@fan1', '今天拿這麼大的', raidAt + 30e3), mm('leak2', B, '@fan2', '怎麼這樣', raidAt + 60e3),
+      { id: 'ytcas-raid-x2', type: 'raid', runs: [{ text: '千萬別錯過！和大家一起收看@target' }], timestampAbs: raidAt + 5e3, phase: 'live' }] });
+    // 原場次的彈出視窗又收到 leak1（同 id）→ 合併到 B 那筆，記 crossVideo
+    await DB.saveMessages({ videoId: A, source: 'popout', messages: [mm('leak1', A, '@fan1', '今天拿這麼大的', raidAt + 30e3)] });
+    const cmp = await BG.streamCompare(A, B);
+    eq([cmp.ok, cmp.a.v, cmp.b.v, cmp.titleSame, cmp.channelSame], [true, 'vidR', 'vidR', true, false]);
+    eq([cmp.crossVideo.aHitB, cmp.crossVideo.bHitA], [1, 0], 'A 的寫入命中 B 的紀錄 1 次');
+    eq(cmp.bAfterARaidAuthorOnlyInA, 2, '候選：@fan1、@fan2 的兩則');
+    eq(cmp.authors, { a: 2, b: 3, both: 2 });
+    const s = JSON.stringify(cmp);
+    assert(!s.includes('原直播') && !s.includes('@fan1') && !s.includes('你好') && !s.includes(A) && !s.includes(B), '不含標題、作者、內容、完整 videoId');
+    // fixRaidLeak 預覽 → 執行
+    const pre = await BG.fixRaidLeak(B, A);
+    eq([pre.dryRun, pre.candidates, pre.raidBanners], [true, 3, 1], '兩則訊息＋降落橫幅');
+    eq((await DB.queryMessages(B)).length, 5, '預覽不寫入');
+    const ex = await BG.fixRaidLeak(B, A, { dryRun: false });
+    eq(ex.moved, 3);
+    const inA = await DB.queryMessages(A);
+    const leak = inA.find((m) => m.id === 'leak2');
+    assert(leak && leak.phase === 'post', '搬回原場次並標結束後 ' + (leak && leak.phase));
+    eq((await DB.queryMessages(B)).map((m) => m.id).sort(), ['b1', 'b2'], '新場次只剩自己的');
+    eq([(await DB.getStream(A)).endedAtSource, (await DB.getStream(A)).messageCount], ['raid', inA.length]);
+    // 降落暫定結束：照常重新抓取（等 meta 的 endDate）
+    const due = BG._metaPollDue('vidZZZZZZZ9', { endedAt: Date.now() - 60e3, endedAtSource: 'raid', startedAt: t0, isLive: true }, Date.now());
+    eq(due && due.kind, 'raid-end');
+    eq(BG._metaPollDue('vidZZZZZZZ8', { endedAt: Date.now() - 60e3, endedAtSource: 'meta-actual', startedAt: t0, isLive: true }, Date.now()), null, '確定的結束時間：停止');
+    // fixStreamMeta：重新抓 watch 頁覆蓋標題
+    self.fetch = async () => new Response('<meta name="title" content="杉山唱歌"><meta itemprop="startDate" content="' + new Date(t0 + 1800e3).toISOString() + '">' +
+      '<span itemprop="author"><link itemprop="url" href="http://www.youtube.com/@target"><link itemprop="name" content="杉山"></span>', { status: 200 });
+    try {
+      const fp = await BG.fixStreamMeta(B);
+      eq([fp.ok, fp.dryRun, fp.titleChanges, fp.updated], [true, true, true, false]);
+      eq((await DB.getStream(B)).title, '原直播', '預覽不寫入');
+      const fx = await BG.fixStreamMeta(B, { dryRun: false });
+      eq(fx.updated, true);
+      eq([(await DB.getStream(B)).title, (await DB.getStream(B)).channelName], ['杉山唱歌', '杉山']);
+      const groups = await BG.fixStreamMeta();
+      eq(groups.sameTitleGroups, 0, '修正後沒有同標題的組');
     } finally { self.fetch = self.__blockedFetch; }
   });
 

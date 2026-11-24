@@ -91,6 +91,20 @@
     eq(w().__errors, []);
   });
 
+  test('T6.3（33.1 第 2 點）嵌入式聊天室的 videoId 綁定後不換場次：收到別的 videoId 的 STREAM_INFO → 暫停（video-mismatch）、不送 CAPTURE_START；再收到原本的 → 恢復', async () => {
+    const starts = () => w().__sent.filter((t) => t === 'CAPTURE_START').length;
+    const n0 = starts();
+    w().postMessage({ __ytcas: true, type: 'STREAM_INFO', videoId: 'vidOTHERVD1', title: '', startDate: Date.now() - 600e3, isLiveBroadcast: true }, location.origin);
+    await until(() => { const cs = got.filter((m) => m.type === 'CAPTURE_STATUS').pop(); return cs && cs.capturing === false && cs.policy === 'video-mismatch'; }, 3000, '暫停 video-mismatch');
+    const cs = got.filter((m) => m.type === 'CAPTURE_STATUS').pop();
+    eq(cs.videoId, VID, '仍綁定原本的 videoId');
+    await sleep(300);
+    eq(starts(), n0, '沒有為新 videoId 開始收錄');
+    w().postMessage({ __ytcas: true, type: 'STREAM_INFO', videoId: VID, title: '', startDate: Date.now() - 3600e3, isLiveBroadcast: true }, location.origin);
+    await until(() => { const c = got.filter((m) => m.type === 'CAPTURE_STATUS').pop(); return c && c.capturing === true && c.videoId === VID; }, 3000, '回到原本的影片 → 恢復');
+    eq(w().__errors, []);
+  });
+
   test('整段過程沒有未捕捉的例外（等 F-12 結果與一輪定時工作）', async () => {
     await sleep(6000);
     eq(w().__errors, []);

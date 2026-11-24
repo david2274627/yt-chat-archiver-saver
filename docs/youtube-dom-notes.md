@@ -154,6 +154,16 @@ yt-live-chat-renderer
   3. 暫時節點有沒有特別的屬性（P7 `oldAttrs`／`newAttrs` 比對），例如「送出中」狀態。
 - 擷取端不依賴第 1 點：頁面移除已存節點（不是修剪、不是列表開頭）、id 原地改變、列表被換掉，都當成替換的證據（SPEC F-14 v50）。
 
+### 2.10 降落（**部分已驗證**，審查十一 32.12、33.1）
+- **已驗證**（2026-11-23，32.12 圖 1、2）：降落橫幅是置頂列（`yt-live-chat-banner-manager`）內的 `yt-live-chat-banner-redirect-renderer`，文字如「千萬別錯過！和大家一起收看@…」；本套件收錄為「✨ 降落」卡。降落後主分頁被導向新直播，**彈出視窗不會**跟著導向（至少 `studio` 網域那次）。
+- **實機現象**（2026-11-24，33.1、33.6）：降落後新場次 `mb9I…` 被存成原場次 `LjiG…` 的標題，新場次裡混有原直播的訊息與降落橫幅，全部標成直播中。
+  - 推測一：導航後 top frame 的 microdata（標題、頻道、`startDate`）還是上一場的，800ms 後送出的 `STREAM_INFO` 帶著新 videoId＋舊標題。
+  - 推測二：舊的聊天室 iframe（仍顯示原直播）先收到新 videoId 的 `STREAM_INFO`，v51 的擷取引擎接受不同的 videoId → 把原直播之後的訊息存進新場次。
+- **待驗證**（v52 的 F-20 記錄；只有布林、數字）：
+  - P7 `video-switch`：`mismatch`（同一個聊天室文件收到不同 videoId）→ `itemsSame`、`itemsNodes`、`seenNodes`（看過的 id 數）、`frameAgeSec`；`rebind`（`#items` 換成沒看過 id 的新列表）／`swap-same-chat`／`back`。看 iframe 是否重新載入（新的文件 → `frameAgeSec` 很小、沒有 `mismatch`）或沿用同一個文件。
+  - P4 `meta-stale`／`meta-fresh`（`waitedMs`）：導航後 microdata 的 videoId（`meta[itemprop="identifier"]` 或 `link[rel="canonical"]`，哪一個存在**待驗證**）多久才與網址一致。
+  - 降落橫幅與「剛剛加入」（被降落方的進場卡）是否同一個元件：v52 把 `banner-redirect` 當成**原直播結束**（33.1 第 4 點）；若進場卡也是這個元件，目標直播會被誤判結束 → 以 P7 `raid` 結構確認。
+
 ### 2.5 輸入區 `#input-panel`（2026-11-15）
 ```
 #input-panel > yt-live-chat-message-input-renderer#live-chat-message-input

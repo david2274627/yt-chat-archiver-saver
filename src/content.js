@@ -174,6 +174,8 @@
     };
     const engine = CAP.createEngine({
       doc: document, source, send, isConnected: connected,
+      // v52（T6.3，審查十一 33.1 第 2 點）嵌入式聊天室：videoId 綁定後不換場次（彈出視窗的 videoId 來自網址，本來就固定）
+      bindVideo: env === 'chatframe',
       onStatus: (s) => postStatus(s),
       onF12: (r) => { diag(r); postStatus(null); }, // T5：F-12 結果也告訴 top（面板說明文字）
       // F-20 P1／P2／P7：引擎的統計、節點分類、結構探針（記錄中才轉送）
@@ -379,9 +381,29 @@
     const metaContent = (sel) => { const el = document.querySelector(sel); return el ? el.getAttribute('content') : null; };
     const parseDate = (s) => { const t = s ? Date.parse(s) : NaN; return Number.isFinite(t) ? t : null; };
 
+    // v52（T6.3，審查十一 33.1 第 3 點）microdata 的 videoId（identifier meta 或 canonical 連結）；取不到 → null
+    function metaVideoId() {
+      const idm = metaContent(T.identifierMeta);
+      if (isVideoId(idm)) return idm;
+      const c = document.querySelector(T.canonicalLink);
+      const href = c ? c.getAttribute('href') || '' : '';
+      try {
+        const u = new URL(href, YT);
+        const v = u.searchParams.get('v') || (/^\/(?:live|shorts)\/([\w-]{6,20})/.exec(u.pathname) || [])[1];
+        if (isVideoId(v)) return v;
+      } catch (_) { /* ignore */ }
+      return null;
+    }
     function streamInfo() {
       const videoId = currentVideoId();
       if (!isVideoId(videoId)) return null;
+      // microdata 還是上一場的（導航後尚未更新）→ 只送 videoId 與播放器長度，標題、頻道、時間一律不送
+      const mv = metaVideoId();
+      if (mv && mv !== videoId) {
+        const v0 = document.querySelector(T.video);
+        return { videoId, metaStale: true, title: '', channelName: '', channelHandle: '', channelUrl: '', startDate: null, endDate: null, isLiveBroadcast: null,
+          duration: v0 && Number.isFinite(v0.duration) && v0.duration > 0 ? Math.round(v0.duration) : null, liveSignalAt: null };
+      }
       const a = document.querySelector(T.channelLink);
       const href = a ? a.getAttribute('href') || '' : '';
       const hm = /^\/(@[^/?#]+)/.exec(href);
@@ -405,10 +427,16 @@
       };
     }
 
+    let staleRetry = 0, staleSince = 0;
     function sendInfo() {
       const f = chatIframe();
       const info = streamInfo();
       if (!f || !f.contentWindow || !info) return;
+      // v52（33.1 第 3 點）microdata 還沒更新：每秒重試，最多 10 秒（之後 30 秒的定時重讀照常；background 會抓 watch 頁補標題）
+      if (info.metaStale) {
+        if (!staleSince) { staleSince = Date.now(); dlog('P4', 'meta-stale', {}, { videoId: info.videoId }); }
+        if (!staleRetry && Date.now() - staleSince < 10000) staleRetry = setTimeout(() => { staleRetry = 0; sendInfo(); }, 1000);
+      } else if (staleSince) { dlog('P4', 'meta-fresh', { waitedMs: Date.now() - staleSince }, { videoId: info.videoId }); staleSince = 0; }
       try { f.contentWindow.postMessage(Object.assign({ __ytcas: true, type: FM.STREAM_INFO }, info), YT); } catch (_) { /* ignore */ }
       if (diagFor !== info.videoId) {
         diagFor = info.videoId;

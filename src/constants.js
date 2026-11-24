@@ -286,7 +286,8 @@
   // T3.6（審查十追加五 E、E-3）開播／結束時間的來源等級：等級高者覆蓋低者
   //   scheduled（預定，不得寫入 startedAt）< signal（頁面訊號，誤差 ≤ 30 秒）< meta-actual（重新取得 watch 頁的實際時間）< replay
   //   沒有來源的既有值（T3.5 以前、遷移、匯入）視同 signal：meta-actual 以上可以覆蓋
-  C.START_SOURCE_RANK = Object.freeze({ scheduled: 0, signal: 1, 'meta-actual': 2, replay: 3 });
+  // v52（T6.3，審查十一 33.1 第 4 點）raid：降落橫幅出現的時間，暫定為結束時間（與 signal 同級，meta 的 endDate 覆蓋）
+  C.START_SOURCE_RANK = Object.freeze({ scheduled: 0, signal: 1, raid: 1, 'meta-actual': 2, replay: 3 });
   C.startRank = function (src) {
     return Object.prototype.hasOwnProperty.call(C.START_SOURCE_RANK, src) ? C.START_SOURCE_RANK[src] : 1;
   };

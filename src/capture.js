@@ -417,7 +417,9 @@
         // v51（32.2）合併次數依規則分開計（replacedTemp／Removed／Swap、late、inPlaceMerged）；idChanges、idFromEmpty、pageRemoved 是事件次數
         ownTempSeen: 0, ownTempStored: 0, ownTempDropped: 0, ownReplacedTemp: 0, ownReplacedRemoved: 0, ownReplacedSwap: 0, ownInPlaceMerged: 0, ownLate: 0, idChanges: 0, idFromEmpty: 0, pageRemoved: 0,
         // v51（T6.2，32.7）時間解析在未來而往前推、重建後早於擷取超過 24 小時
-        clockFuture: 0, clockAmbiguous: 0 },
+        clockFuture: 0, clockAmbiguous: 0,
+        // v52（T6.3，33.1）videoId 不一致（不換場次、暫停）的次數；降落當成結束訊號的次數
+        videoMismatch: 0, raidEnd: 0 },
       seenIds: new Set(),
       // v50（30.5）最近 90 秒擷取的文字訊息（配對暫時節點 → 正式節點）：{ id, key, el, list, at, m, removedAt, head, trimmed, matched, reborn }
       recent: [], trimmedEls: new WeakSet(), ownRecent: [], // v51（32.2）最近 5 次合併的 id 形狀（P1 own.recent）
@@ -866,6 +868,16 @@
         const m = parseRaid(el, ctxNow(), st.videoId);
         el.dataset[SAVED] = m ? '1' : 'skip';
         if (m) { st.stats.captured++; enqueue(m); }
+        // v52（T6.3，審查十一 33.1 第 4 點）降落橫幅（yt-live-chat-banner-redirect-renderer，實機已驗證）＝原直播結束：
+        // 以降落時間暫定結束時間（endedAtSource 'raid'），之後的訊息標 post；background 照常重新抓取，meta 的 endDate 覆蓋
+        if (m && source !== 'replay' && st.stream.startedAt != null && st.stream.endedAt == null) {
+          if (adoptTimes({ endedAt: now(), endedAtSource: 'raid' }).end) {
+            st.stats.raidEnd++;
+            st.raidAt = now();
+            console.info('[ytcas] 降落：暫以降落時間為結束時間，之後的訊息標為結束後（post）', { videoId: st.videoId });
+            if (opts.onRaid) try { opts.onRaid({ videoId: st.videoId, at: st.raidAt }); } catch (_) { /* ignore */ }
+          }
+        }
       });
     }
 
@@ -1146,6 +1158,7 @@
         // v51（T6.2，32.2）合併次數（merged：依規則分開）與觀察到的事件次數（events）分開，名稱即語意
         // v52（T6.3，33.8.3）暫時節點的去向：tempStored＝暫時節點已存（等正式節點合併）、tempPending＝目前還在等、
         // tempDropped＝90 秒內沒等到（兩筆都留著；之後可由 fixOwnDuplicates 處理）。合併成功的計在 merged.temp／removed／inPlace
+        videoMismatch: s.videoMismatch, raidEnd: s.raidEnd, // v52（33.1）
         own: { tempSeen: s.ownTempSeen, tempStored: s.ownTempStored, tempDropped: s.ownTempDropped,
           tempPending: st.recent.filter((e) => isTempEntry(e) && !e.matched).length,
           merged: { temp: s.ownReplacedTemp, removed: s.ownReplacedRemoved, swap: s.ownReplacedSwap, late: s.ownLate, inPlace: s.ownInPlaceMerged },
@@ -1166,10 +1179,34 @@
     // ------------------------------------------------ 對外
     // 定時：重新確認列表元素（T3.3：v29 只在「原本沒有列表」時回溯，YouTube 換掉列表元素後新列表的既有節點永遠未擷取）、
     // 補掃 observer 漏掉的節點、保底修剪
+    // v52（T6.3，33.1 第 2 點）F-20 P7 video-switch：videoId 不一致時的聊天室狀態（只有布林、數字）。
+    // 用來實機確認降落導航時 iframe 是否重新載入、#items 何時換掉（dom-notes 2.10）
+    function probeSwitch(phase) {
+      if (!opts.onDiag) return;
+      const cur = doc.querySelector(S.chat.items);
+      const kids = cur ? Array.from(cur.children) : [];
+      diag('P7', 'video-switch', { phase, itemsSame: !!cur && cur === st.items, itemsConnected: !!(st.items && st.items.isConnected), itemsNodes: kids.length,
+        seenNodes: kids.filter((el) => el.id && st.seenIds.has(el.id)).length, frameAgeSec: Math.round((Date.now() - st.createdAt) / 1000),
+        sinceMismatchSec: st.mismatchAt ? Math.round((now() - st.mismatchAt) / 1000) : null });
+    }
     function tick() {
       const prev = st.items;
       const ok = attach();
       if (ok && prev && st.items !== prev) st.stats.itemsSwaps++; // v48（28.1）YouTube 換掉了 #items
+      // v52（33.1 第 2 點）videoId 不一致中：#items 換掉、而且新列表沒有本頁看過的 id → 新的聊天室，重新綁定
+      if (st.mismatch && ok && st.items !== prev) {
+        const kids = Array.from(st.items.children);
+        const seen = kids.filter((el) => el.id && st.seenIds.has(el.id)).length;
+        if (kids.length && !seen) {
+          probeSwitch('rebind');
+          const info = st.mismatchInfo;
+          st.mismatch = null; st.mismatchInfo = null;
+          st.rebinding = true;
+          try { api.setInfo(info); } finally { st.rebinding = false; }
+          return;
+        }
+        probeSwitch('swap-same-chat');
+      }
       if (ok && st.items !== prev && st.mode === 'capturing') backfill('backfill');
       else if (ok && st.mode === 'capturing') backfill('sweep');
       // 聊天室已渲染（有 renderer）且超過 10 秒仍找不到訊息列表才是問題：warn；載入中不輸出
@@ -1184,6 +1221,25 @@
       setInfo(info) {
         if (!info || st.mode === 'stopped') return;
         const vid = typeof info.videoId === 'string' && /^[\w-]{6,20}$/.test(info.videoId) ? info.videoId : null;
+        // v52（T6.3，審查十一 33.1 第 2 點）嵌入式聊天室（bindVideo）：videoId 綁定後同一個聊天室文件不換場次。
+        // 實機：降落時 top 先導航到新直播，舊的聊天室（仍顯示原直播）收到新 videoId → 原直播之後的訊息被存進新場次、標成直播中。
+        // 收到不同的 videoId → 送出剩下的、結束 session、暫停（video-mismatch），記 P7 video-switch；
+        // YouTube 換掉 #items、新列表裡沒有本頁看過的 id（新的聊天室）才重新綁定（tick）
+        if (opts.bindVideo && vid && st.videoId && vid !== st.videoId && !st.rebinding) {
+          if (st.mismatch !== vid) {
+            st.mismatch = vid; st.mismatchAt = now(); st.stats.videoMismatch++;
+            probeSwitch('mismatch');
+            if (st.mode === 'capturing') { flush(); endSession(); logStats(true); }
+            pauseCapture('video-mismatch');
+          }
+          st.mismatchInfo = Object.assign({}, st.mismatchInfo || {}, info);
+          return;
+        }
+        if (opts.bindVideo && vid && vid === st.videoId && st.mismatch) {
+          // top 又導航回原本的影片：恢復收錄
+          st.mismatch = null; st.mismatchInfo = null; probeSwitch('back');
+          setStatus('pending'); beginCapture();
+        }
         const changed = vid && vid !== st.videoId;
         st.info = Object.assign({}, st.info || {}, info);
         if (changed) st.stream = {}; // 新影片：先清掉舊場次的時間，再依新資訊判斷

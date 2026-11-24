@@ -531,6 +531,13 @@
             else if (cache.has(ak)) { inc.authorAvatar = cache.get(ak); stats.avatarFilled = (stats.avatarFilled || 0) + 1; }
           }
           const ex = await findExisting(store, inc, ctx, stats);
+          // v52（T6.3，審查十一 33.1）id 全域唯一：已存在**別的場次**（例：降落時舊聊天室的訊息被存進新場次，之後原場次的彈出視窗又收到同一則）
+          // → 照 F-14 合併到既有那筆（場次不變），但記下跨場次的次數（streamCompare 用；只存次數）
+          if (ex && ex.videoId !== videoId) {
+            stats.crossVideo = (stats.crossVideo || 0) + 1;
+            const cv = stream.crossVideo && typeof stream.crossVideo === 'object' ? stream.crossVideo : (stream.crossVideo = {});
+            cv[ex.videoId] = (cv[ex.videoId] || 0) + 1;
+          }
           let rec;
           // v48（T5.7，審查十一 27 第 1 點）擷取端還不知道開播時間（待機室→開播、不重新整理），background 已經知道：
           // 送來的 pre／offset 空的直播訊息依已知的開播時間重算（pre→live），不必等下一次 startedAt 變動
@@ -1717,6 +1724,42 @@
     });
   }
 
+  // v52（T6.3，審查十一 33.1 第 5 點）把訊息從 from 場次搬到 to 場次（fixRaidLeak）：videoId 改為 to、phase 依 to 的開播／結束時間重算
+  //（to 已結束或降落暫定結束 → 結束後 post），推算的 offset 依 to 的開播時間重算；to 已有同 id → 依 F-14 合併。兩場的筆數重算
+  async function moveMessages(fromVid, toVid, ids) {
+    const db = await open();
+    let moved = 0;
+    const merged = 0;
+    await withLock(fromVid, () => withLock(toVid, async () => {
+      const t = db.transaction(['messages', 'streams'], 'readwrite');
+      const ms = t.objectStore('messages');
+      const work = (async () => {
+        const to = await req(t.objectStore('streams').get(toVid));
+        if (!to) throw new Error('stream not found');
+        const st0 = C.effectiveStart(to);
+        for (const id of ids) {
+          const cur = await req(ms.get(id));
+          if (!cur || cur.videoId !== fromVid) continue;
+          const v = clone(cur);
+          v.videoId = toVid;
+          const ts = num(v.timestampAbs);
+          if (st0 != null && ts !== null) {
+            v.phase = ts < st0 ? 'pre' : (to.endedAt != null && ts > to.endedAt ? 'post' : 'live');
+            if (v.offsetSource !== 'replay') { v.videoOffsetSec = Math.round((ts - st0) / 100) / 10; v.offsets = { v1: v.videoOffsetSec }; v.offsetSource = 'estimated'; }
+          } else { v.videoOffsetSec = null; v.offsets = {}; }
+          v.fp = makeFp(v);
+          // messages 的 keyPath 是 id（全域唯一）：同一筆紀錄改掉 videoId 即可
+          ms.put(v); moved++;
+        }
+      })();
+      work.catch(() => { try { t.abort(); } catch (_) { /* */ } });
+      await Promise.all([work, done(t)]);
+    }));
+    await recountStream(fromVid);
+    await recountStream(toVid);
+    return { moved, merged };
+  }
+
   const setVersionLabel = (p) => updateStream(p.videoId, (s) => {
     const v = s.versions.find((x) => x.id === p.versionId);
     if (!v) throw new Error('version not found');
@@ -2060,7 +2103,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeAllPhases, systemTagStats, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, moveMessages, updateStream, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,

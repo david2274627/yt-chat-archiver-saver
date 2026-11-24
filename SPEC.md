@@ -448,6 +448,13 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - **id 先清空再設成新值**（實機 P1 `idFromEmpty` 與即時到達筆數相同：YouTube 幾乎每則都這樣）：v51 以空 id 找舊紀錄，暫時節點「暫時 id → 空 → 正式 id」時找不到 → 不合併、兩筆都存。v52 改以節點找最近一次的紀錄；清空後設回同一個 id → 同一則，不重送。
     - `fixOwnDuplicates` 預覽：`tempIds`＝暫時節點的紀錄數、`tempShapeMatches`＝只看形狀的筆數、`tempShapes`（形狀＋來源＋類型＋時間來源分組，符合規則的標 ✓）、`pairShapes`、`pairDt`（≤ 10 秒／≤ 30 秒）。
     - P1 `own` 加 `tempStored`（暫時節點已存、等正式節點合併）、`tempPending`（目前還在等）、`tempDropped`（90 秒內沒等到，兩筆都留著）。
+- （v52，T6.3，審查十一 33.1）**降落時的資料正確性**（實機：新場次 `mb9I…` 被存成原場次 `LjiG…` 的標題，新場次裡混有原直播的訊息與降落橫幅、全部標成直播中；dom-notes 2.10）：
+  1. **證據**：`await YTCAS_BG.streamCompare('a', 'b')`（只有數字、代碼、4 碼 videoId）：兩場的筆數、phase／`tsSource`／類型分布、開播與結束時間及來源、各收錄紀錄（來源、時間、新增／合併）、收錄開始前就有的筆數、標題／頻道是否相同（布林）、作者數與共同作者數、b 中「同作者同內容也在 a」的筆數、`crossVideo`（id 已存在另一場而合併到那一筆的次數，寫入時記錄）、a 降落後 b 收到「作者只在 a 出現」的筆數。
+     - 訊息 id 全域唯一：漏進新場次的訊息，之後原場次的彈出視窗再收到時會**合併到新場次那一筆**（場次不變）→ 原場次只拿到少數幾則。v52 起記下這種跨場次的次數（`streams.crossVideo`，只存次數）。
+  2. **嵌入式聊天室的 videoId 綁定後不換場次**（`createEngine({ bindVideo: true })`）：同一個聊天室文件收到不同 videoId 的 `STREAM_INFO` → 送出剩下的、結束收錄紀錄、暫停（`video-mismatch`）；YouTube 把 `#items` 換成**沒有本頁看過 id 的新列表**才重新綁定；top 導航回原影片 → 恢復。P7 `video-switch`、P1 `videoMismatch`。彈出視窗的 videoId 來自網址，本來就固定。
+  3. **導航後的場次資訊**（top frame）：microdata 自己的 videoId（`meta[itemprop="identifier"]` 或 `link[rel="canonical"]`）與網址不一致 → 只送 videoId 與播放器長度，標題、頻道、時間一律不送，每秒重試最多 10 秒（P4 `meta-stale`／`meta-fresh`）。嵌入式聊天室沒有標題時，background 在 `CAPTURE_START` 後抓 watch 頁補上（不阻擋收錄）。既有的錯誤標題：`YTCAS_BG.fixStreamMeta()`（列出同標題的場次組）→ `fixStreamMeta('videoId')`（預覽：標題／頻道是否會改變）→ `{ dryRun: false }`（重新抓 watch 頁覆蓋）。
+  4. **降落橫幅＝原直播結束**：收錄中的直播出現 `yt-live-chat-banner-redirect-renderer` → 以降落時間暫定 `endedAt`（`endedAtSource: 'raid'`，與 `signal` 同級），之後的訊息標 `post`；background 照常重新抓取（每 60 秒，`metaPollDue` 的 `raid-end`），meta 的 `endDate` 覆蓋。彈出視窗收錄時同樣適用。P1 `raidEnd`。
+  5. **既有資料**：`YTCAS_BG.fixRaidLeak('新', '原')`：新場次中「時間在原場次第一個降落橫幅前 1 分鐘之後、作者在原場次出現過、而且作者在新場次的其他時段（降落前、降落 10 分鐘後）都沒有出現」的訊息，加上與原場次降落橫幅同內容的那則 → 搬回原場次（phase 依原場次重算，結束後為 `post`；原場次沒有結束時間時以降落時間暫定）。預覽只列筆數、phase 分布、時間跨度。**規則依使用者 `streamCompare` 的結果確認後才執行**。
 - （v51，T6.2，審查十一 32.9）**等待開播期間一律暫定 `pre`**：有預定時間、還沒有開播時間（`startedAt`）→ 新訊息一律 `pre`，不以預定時間推算 `live`（`capture.js` `livePhase`）。實機：預定時間剛過、頁面 meta 下一次重讀（`startPending`）之前到的一則被判成 `live`，之後的又是 `pre`，面板分段標題來回出現。確認開播後由 background 依實際時間重算 `pre → live`（v48 起的機制）。面板與後台的直播／待機室清單也依 phase 分段（頁面狀態提示 → `pre` → `live` → `post`，`CORE.sortByPhase`），段內維持時間順序，每段標題只出現一次（與 VOD 的 v45 規則一致）。
 - **收錄紀錄 `capture_sessions`**（4.1）：每次開始收錄（chat frame 開始擷取）記一筆，結束時補 `endedAt`、`lastOffset`、`added`、`merged`、`phases`。
   - 後台場次清單顯示「直播收錄 2 次・重播 1 次」，以及**時間軸覆蓋範圍**（只會收錄實際有開著的時段，中途離開的空檔一目了然；含 `pre`／`post`）。
