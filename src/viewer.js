@@ -309,7 +309,9 @@
       const b = el('button', 'pill'); b.type = 'button'; b.setAttribute('role', 'tab'); b.dataset.pill = p;
       const [ico, lbl] = PILL_LABEL[p];
       if (ico) b.appendChild(el('span', 'pi', ico));
-      b.appendChild(el('span', p === 'all' ? 'lbl-all' : 'lbl', lbl));
+      // v52（33.4）「SC／禮物」的「／禮物」在很窄的面板隱藏（文字仍在、aria-label 完整），讓 🔍 與 5 個膠囊單列
+      if (p === 'sc') { const s = el('span', 'lbl', 'SC'); s.appendChild(el('span', 'lbl-more', '／禮物')); s.appendChild(document.createTextNode(' ')); b.appendChild(s); b.setAttribute('aria-label', 'SC／禮物'); }
+      else b.appendChild(el('span', p === 'all' ? 'lbl-all' : 'lbl', lbl));
       b.appendChild(el('span', 'num', '0'));
       if (p === 'pin') b.title = '置頂過的訊息';
       b.addEventListener('click', () => { S.f.pill = p; apply({ toBottom: S.vl && S.vl.follow, reset: true }); });
@@ -319,7 +321,38 @@
     const uField = searchField('user', '過濾使用者 (頻道名稱 / @代碼)...', '過濾使用者');
     const kField = searchField('search', '搜尋訊息關鍵字或表符...', '搜尋訊息');
     search.append(uField.root, kField.root);
-    tools.append(pills, search);
+    // v52（T6.3，審查十一 33.4、33.8，使用者 2026-11-24）過濾使用者與搜尋欄**預設收起**（面板與後台都是），膠囊列右側 🔍 手動開關；
+    // 點名稱等套用使用者篩選的操作 → 自動展開；收起時有篩選生效 → 🔍 顯示啟用中，膠囊列多一個「@xxx ✕」小標籤可直接清除。
+    // 不記住展開狀態（每次開面板都收起）
+    S.searchOpen = false;
+    const pillRow = el('div', 'pill-row');
+    const fTag = el('button', 'filter-tag'); fTag.type = 'button'; fTag.hidden = true;
+    const sToggle = el('button', 'search-toggle'); sToggle.type = 'button'; sToggle.appendChild(glyph('search'));
+    sToggle.setAttribute('aria-label', '篩選／搜尋'); sToggle.title = '篩選／搜尋'; sToggle.setAttribute('aria-expanded', 'false');
+    sToggle.addEventListener('click', () => { setSearchOpen(!S.searchOpen); if (S.searchOpen) (S.f.userChip ? kField.input : uField.input).focus(); });
+    fTag.addEventListener('click', () => {
+      S.f.userChip = ''; S.f.userChipLabel = ''; S.f.userQuery = ''; S.f.keyword = ''; uField.input.value = ''; kField.input.value = '';
+      syncFields(); apply({ reset: true });
+    });
+    pillRow.append(pills, fTag, sToggle);
+    function setSearchOpen(on) {
+      S.searchOpen = !!on;
+      search.hidden = !S.searchOpen;
+      sToggle.setAttribute('aria-expanded', String(S.searchOpen));
+      syncFilterTag();
+    }
+    function syncFilterTag() {
+      const active = !!(S.f.userChip || S.f.userQuery || S.f.keyword);
+      sToggle.classList.toggle('active', active);
+      const parts = [];
+      if (S.f.userChip) parts.push(S.f.userChipLabel || '使用者');
+      else if (S.f.userQuery) parts.push(S.f.userQuery);
+      if (S.f.keyword) parts.push('「' + S.f.keyword + '」');
+      fTag.hidden = S.searchOpen || !active;
+      if (!fTag.hidden) { fTag.textContent = parts.join(' ').slice(0, 40) + ' ✕'; fTag.setAttribute('aria-label', '清除篩選：' + parts.join(' ')); }
+    }
+    tools.append(pillRow, search);
+    search.hidden = true;
     panel.appendChild(tools);
 
     const pin = el('div', 'pin'); pin.setAttribute('role', 'button'); pin.tabIndex = 0; pin.hidden = true;
@@ -387,11 +420,13 @@
       kField.clear.hidden = !S.f.keyword;
       uField.root.classList.toggle('has', chipOn || !!S.f.userQuery);
       kField.root.classList.toggle('has', !!S.f.keyword);
+      syncFilterTag();
     }
     function setUserChip(it) {
       if (!it.key) return;
       S.f.userChip = it.key; S.f.userChipLabel = it.name || it.m.authorHandle || '';
       S.f.userQuery = ''; uField.input.value = '';
+      setSearchOpen(true); // v52（33.4）點名稱 → 自動展開
       syncFields();
       apply({ reset: true, toTop: true });
     }
@@ -1578,7 +1613,7 @@
 
     return {
       ready, load, state: S, _onRuntime: onRuntime, _sendVisibleNames: sendVisibleNames, _visibleUnresolved: visibleUnresolved, _shiftLatency: shiftLatency, _p9Sample: p9Sample, _p9Tick: p9Tick, _p10Sample: p10Sample, _avatarUrl: (m) => avatarUrl(m), _onFrame: onFrame, _onClock: onClock, _onCapture: (d) => { S.capture = d; renderNote(); }, _refreshStreamCounts: refreshStreamCounts, apply,
-      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText, syncHint },
+      els: { panel, list, pills: pillBtn, user: uField, keyword: kField, search, searchToggle: sToggle, filterTag: fTag, pin, menu, moreBtn, miDel, empty, resume, meta, pick, closeBtn, verPick, linkBox, linkText, note, noteText, latBox, latText, syncHint },
     };
   }
 

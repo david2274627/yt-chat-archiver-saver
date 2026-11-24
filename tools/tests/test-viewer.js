@@ -1507,6 +1507,44 @@
     assert(!pin.classList.contains('open'), '點提示 → 收合');
   });
 
+  test('T6.3（33.4、33.8）篩選／搜尋欄預設收起（面板與後台）；🔍 開關；點名稱自動展開並套用；收起時有篩選 → 🔍 啟用中＋「名稱 ✕」標籤可直接清除；不記住展開狀態', async () => {
+    await resetDb();
+    const VS = 'vidSEARCH01';
+    const now = Date.now();
+    await put({ videoId: VS, title: 'S', isLive: true, startedAt: now - 3600e3, lastMessageAt: now, messageCount: 3, versions: [], linkedVideos: [] },
+      [mk({ id: 's1', videoId: VS, authorHandle: '@alice', timestampAbs: now - 3000 }), mk({ id: 's2', videoId: VS, authorHandle: '@bob', timestampAbs: now - 2000 }), mk({ id: 's3', videoId: VS, authorHandle: '@alice', timestampAbs: now - 1000 })]);
+    await DB.close();
+    for (const embed of [true, false]) {
+      const c = V.mount(host, { embed, videoId: VS });
+      await c.ready; await frame();
+      const E = c.els;
+      eq([E.search.hidden, E.searchToggle.getAttribute('aria-expanded'), E.filterTag.hidden], [true, 'false', true], (embed ? '面板' : '後台') + '：預設收起');
+      E.searchToggle.click();
+      eq([E.search.hidden, E.searchToggle.getAttribute('aria-expanded')], [false, 'true'], '🔍 展開');
+      E.searchToggle.click();
+      eq(E.search.hidden, true, '🔍 收起');
+      // 點名稱 → 自動展開並套用
+      c.els.list.querySelector('[data-id="s1"] .nm').click(); await frame();
+      eq([E.search.hidden, c.state.f.userChip !== ''], [false, true], '點名稱 → 展開');
+      eq(c.state.entries.filter((e) => e.kind === 'msg').length, 2, '只看 @alice');
+      // 收起時有篩選 → 啟用中、標籤
+      E.searchToggle.click();
+      assert(E.searchToggle.classList.contains('active') && !E.filterTag.hidden && /✕$/.test(E.filterTag.textContent), '啟用中＋標籤 ' + E.filterTag.textContent);
+      E.filterTag.click(); await frame();
+      eq([c.state.f.userChip, E.filterTag.hidden, E.searchToggle.classList.contains('active')], ['', true, false], '標籤 → 清除篩選');
+      eq(c.state.entries.filter((e) => e.kind === 'msg').length, 3);
+      // 關鍵字篩選：收起時也顯示標籤
+      E.searchToggle.click();
+      E.keyword.input.value = '安'; E.keyword.input.dispatchEvent(new Event('input'));
+      E.searchToggle.click();
+      assert(!E.filterTag.hidden && /「安」/.test(E.filterTag.textContent), '關鍵字標籤 ' + E.filterTag.textContent);
+    }
+    // 不記住：重新開啟 → 收起
+    const c2 = V.mount(host, { embed: true, videoId: VS });
+    await c2.ready; await frame();
+    eq(c2.els.search.hidden, true, '重新開啟仍收起');
+  });
+
   test('T6.3（33.3）置頂：取消的不顯示在置頂卡；✕ 只影響這次顯示（同一則不再出現、新的置頂出現時再顯示）；「📌 置頂」膠囊列出所有置頂過的（依置頂時間、已取消標記、計數）', async () => {
     await resetDb();
     const VP = 'vidPINPILL1';
