@@ -114,7 +114,7 @@ function report(data) {
         const mg = o.merged || { temp: '—', removed: '—', swap: '—', late: o.late, inPlace: '—' };
         const ev = o.events || { idChanges: o.inPlace, idFromEmpty: '—', pageRemoved: o.pageRemoved };
         const recent = (o.recent || []).map((x) => (x.oldId ? x.oldId.p + '|' + x.oldId.len : '?') + '→' + (x.newId ? x.newId.p + '|' + x.newId.len : '?') + (x.rule ? '（' + x.rule + '）' : '')).join('、');
-        L('| ' + [vid4(vidFull), src, o.tempSeen, o.merged ? [mg.temp, mg.removed, mg.swap, mg.late, mg.inPlace].join('／') : 'v50：replaced ' + o.replaced + '、late ' + o.late,
+        L('| ' + [vid4(vidFull), src, o.tempSeen + (o.tempStored != null ? '（存 ' + o.tempStored + '／等 ' + o.tempPending + '／沒等到 ' + o.tempDropped + '）' : ''), o.merged ? [mg.temp, mg.removed, mg.swap, mg.late, mg.inPlace].join('／') : 'v50：replaced ' + o.replaced + '、late ' + o.late,
           ev.idChanges + '（' + ev.idFromEmpty + '）／' + ev.pageRemoved, recent || '—', d.clockFuture ?? '—', d.clockAmbiguous ?? '—'].map(esc).join(' | ') + ' |');
       }
       L();

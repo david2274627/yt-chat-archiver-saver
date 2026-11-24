@@ -1650,6 +1650,38 @@
     } finally { self.fetch = self.__blockedFetch; }
   });
 
+  test('T6.3（33.6）暫時 id 的規則收緊：只限直播來源、一般文字、到達時間、時間差 ≤ 30 秒；重播來源、遷移資料、SC／會員、顯示時間的短 C 開頭 id 不是暫時；預覽列 tempShapes、pairShapes、pairDt', async () => {
+    await resetAll();
+    U._resetTwins();
+    const t0 = 1_700_400_000_000;
+    const C28 = (s) => 'CM_E' + s.padEnd(24, 'x');
+    const base = (o) => Object.assign({ type: 'text', authorHandle: '@me', runs: [{ text: '同一句' }], tsSource: 'arrival' }, o);
+    // 以匯入寫入（不經寫入時合併），各種「形狀符合但不是暫時節點」的資料＋一對真的
+    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [
+      base({ id: C28('rp'), sources: ['replay'], timestampAbs: t0, runs: [{ text: '重播' }] }), base({ id: 'ChwK' + 'r'.repeat(36), sources: ['replay'], timestampAbs: t0 + 5000, runs: [{ text: '重播' }] }),
+      base({ id: C28('lg'), sources: ['legacy'], timestampAbs: t0, runs: [{ text: '遷移' }] }), base({ id: 'ChwK' + 'l'.repeat(36), sources: ['legacy'], timestampAbs: t0 + 5000, runs: [{ text: '遷移' }] }),
+      base({ id: C28('sc'), type: 'superchat', amount: '$30.00', timestampAbs: t0, runs: [{ text: 'SC' }] }), base({ id: 'ChwK' + 's'.repeat(36), type: 'superchat', amount: '$30.00', timestampAbs: t0 + 5000, runs: [{ text: 'SC' }] }),
+      base({ id: C28('ck'), tsSource: 'clock', timestampAbs: t0, runs: [{ text: '顯示時間' }] }), base({ id: 'ChwK' + 'c'.repeat(36), timestampAbs: t0 + 5000, runs: [{ text: '顯示時間' }] }),
+      base({ id: C28('far'), timestampAbs: t0, runs: [{ text: '超過30秒' }] }), base({ id: 'ChwK' + 'f'.repeat(36), timestampAbs: t0 + 45000, runs: [{ text: '超過30秒' }] }),
+      base({ id: C28('ok'), timestampAbs: t0, runs: [{ text: '真的' }] }), base({ id: 'ChwK' + 'o'.repeat(36), tsSource: 'clock', timestampAbs: t0 + 18000, runs: [{ text: '真的' }] }),
+    ] });
+    const pre = await BG.fixOwnDuplicates();
+    eq([pre.pairs, pre.tempIds, pre.tempShapeMatches], [1, 2, 6], '只有「真的」那對；形狀符合 6、暫時節點 2（真的＋超過 30 秒）');
+    eq(pre.pairDt, { le10s: 0, le30s: 1 });
+    assert(pre.pairShapes.length === 1 && /CM_E\|28 → ChwK\|40 @ live · text/.test(pre.pairShapes[0].k), 'pairShapes ' + JSON.stringify(pre.pairShapes));
+    const ts = pre.tempShapes.map((x) => x.k).join('｜');
+    assert(/replay · text · arrival(?! ✓)/.test(ts) && /legacy/.test(ts) && /superchat/.test(ts) && /· clock/.test(ts) && /✓/.test(ts), 'tempShapes 依來源、類型、時間來源分組 ' + ts);
+    assert(!JSON.stringify(pre).includes('同一句') && !JSON.stringify(pre).includes('@me'), '不含內容與作者');
+    // 寫入時：重播來源的短 C 開頭 id 不合併；直播文字、到達時間、30 秒內才合併
+    U._resetTwins();
+    await DB.saveMessages({ videoId: V2, source: 'replay', messages: [base({ id: C28('r2'), runs: [{ text: 'R' }], timestampAbs: t0, videoOffsetSec: 1 })] });
+    await DB.saveMessages({ videoId: V2, source: 'replay', messages: [base({ id: 'ChwK' + 'q'.repeat(36), runs: [{ text: 'R' }], timestampAbs: t0 + 3000, videoOffsetSec: 4 })] });
+    eq((await DB.queryMessages(V2)).length, 2, '重播來源不合併');
+    await DB.saveMessages({ videoId: V2, source: 'live', messages: [base({ id: C28('l2'), runs: [{ text: 'L' }], timestampAbs: t0 + 100000 })] });
+    await DB.saveMessages({ videoId: V2, source: 'live', messages: [base({ id: 'ChwK' + 'w'.repeat(36), runs: [{ text: 'L' }], tsSource: 'clock', timestampAbs: t0 + 135000 })] });
+    eq((await DB.queryMessages(V2)).filter((m) => m.runs[0].text === 'L').length, 2, '直播但超過 30 秒：不合併');
+  });
+
   test('T6.2（32.11）scTiers：依幣別前綴＋顏色統計 SC 筆數與金額範圍；同幣別兩種顏色範圍重疊列為 overlaps；不含名稱與內容', async () => {
     eq(['HK$170.00', 'US$5.00', '¥500', '€5,00', 'NT$1,500.00', '$1,500', '1.500,00 €', ''].map((t) => { const a = BG._parseAmount(t); return [a.prefix, a.value]; }),
       [['HK$', 170], ['US$', 5], ['¥', 500], ['€', 5], ['NT$', 1500], ['$', 1500], ['€', 1500], ['?', null]]);

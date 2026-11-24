@@ -415,7 +415,7 @@
         itemsSwaps: 0, itemsStaleHeals: 0, ts_arrival: 0, ts_clock: 0, ts_capture: 0, hiddenCaptured: 0, hiddenBatches: 0, hiddenBulk: 0, hiddenBulkMsgs: 0, hiddenBatchMax: 0,
         // v50（T6.1，30.5）自己送出的訊息：看到暫時 id、替換配對（新節點／原地改 id／事後配對）、頁面移除已存節點（非修剪、非開頭）
         // v51（32.2）合併次數依規則分開計（replacedTemp／Removed／Swap、late、inPlaceMerged）；idChanges、idFromEmpty、pageRemoved 是事件次數
-        ownTempSeen: 0, ownReplacedTemp: 0, ownReplacedRemoved: 0, ownReplacedSwap: 0, ownInPlaceMerged: 0, ownLate: 0, idChanges: 0, idFromEmpty: 0, pageRemoved: 0,
+        ownTempSeen: 0, ownTempStored: 0, ownTempDropped: 0, ownReplacedTemp: 0, ownReplacedRemoved: 0, ownReplacedSwap: 0, ownInPlaceMerged: 0, ownLate: 0, idChanges: 0, idFromEmpty: 0, pageRemoved: 0,
         // v51（T6.2，32.7）時間解析在未來而往前推、重建後早於擷取超過 24 小時
         clockFuture: 0, clockAmbiguous: 0 },
       seenIds: new Set(),
@@ -702,13 +702,19 @@
     const idShape = (id) => ({ p: String(id || '').slice(0, 4), len: String(id || '').length }); // 只有前 4 碼與長度（不含內容）
     const OWN_REMOVE_WINDOW_MS = 10 * 1000;
     const OWN_P7_MAX = 30; // P7 own-replace：合併一定記（每場上限 30 筆），不受 P7_MAX_PER_TAG 限制
+    // v52（T6.3，審查十一 33.6）暫時節點＝暫時 id 形狀＋文字＋到達時間（擷取端只看直播，重播在 ownMatch 就排除），配對限 30 秒
+    const OWN_TEMP_WINDOW_MS = 30 * 1000;
+    const isTempEntry = (e) => isTemp(e.id) && e.m && e.m.type === T.TEXT && e.m.tsSource === 'arrival';
     function pruneRecent() {
       const t = now() - C.OWN_REPLACE_WINDOW_MS;
-      while (st.recent.length && (st.recent[0].at < t || st.recent.length > 400)) st.recent.shift();
+      while (st.recent.length && (st.recent[0].at < t || st.recent.length > 400)) {
+        const e = st.recent.shift();
+        if (isTempEntry(e) && !e.matched) st.stats.ownTempDropped++; // v52（33.8.3）暫時節點 90 秒內沒等到正式節點（兩筆都留著）
+      }
     }
     // 看得出是暫時節點的依據：'temp'／'removed'／'swap'；看不出 → ''
     function tempRule(e) {
-      if (isTemp(e.id)) return 'temp';
+      if (isTempEntry(e)) return now() - e.at <= OWN_TEMP_WINDOW_MS ? 'temp' : '';
       if (e.removedAt != null) return !e.trimmed && !e.head && now() - e.removedAt <= OWN_REMOVE_WINDOW_MS ? 'removed' : '';
       return !e.el.isConnected && e.list !== st.items && !e.reborn && !e.trimmed ? 'swap' : '';
     }
@@ -743,7 +749,9 @@
       for (const e of st.recent) if (m.id && e.id === m.id) { e.reborn = true; e.el = el; e.list = st.items; e.removedAt = null; }
       if (isTemp(m.id)) {
         st.stats.ownTempSeen++;
-        if (!st.recent.some((e) => e.id === m.id)) probeOwn('temp-seen', null, el, m, { how });
+        // v52（33.8.3）暫時節點本身照常存（之後正式節點出現時合併成一筆）：tempStored
+        if (m.tsSource === 'arrival') st.stats.ownTempStored++;
+        if (!st.recent.some((e) => e.id === m.id)) probeOwn('temp-seen', null, el, m, { how, tsSource: m.tsSource || null });
       } else {
         let rule = '';
         const e = st.recent.find((x) => x.key === key && !x.matched && x.id !== m.id && (rule = tempRule(x)));
@@ -774,14 +782,14 @@
       if (e.head || e.matched || st.mode !== 'capturing') return;
       const t = now();
       const later = st.recent.find((x) => x !== e && x.key === e.key && !x.matched && !isTemp(x.id) && x.at >= e.at && x.el.isConnected && x.id !== e.id
-        && (isTemp(e.id) || t - x.at <= OWN_REMOVE_WINDOW_MS));
+        && ((isTempEntry(e) && t - e.at <= OWN_TEMP_WINDOW_MS) || t - x.at <= OWN_REMOVE_WINDOW_MS));
       if (!later) return;
       e.matched = true; later.matched = true;
       const fix = Object.assign({}, later.m);
       ownAdopt(fix, e);
       later.m = fix;
       st.stats.ownLate++;
-      probeOwn('late', e, later.el, fix, { rule: isTemp(e.id) ? 'temp' : 'removed' });
+      probeOwn('late', e, later.el, fix, { rule: isTempEntry(e) ? 'temp' : 'removed' });
       enqueue(fix);
     }
     // 同一個節點的 id 原地改變：重新解析。**同作者同內容**（最近 90 秒內擷取過）才帶 replacesId 合併；
@@ -793,7 +801,10 @@
       let m = null;
       try { m = parseMessage(el, ctxNow()); } catch (_) { /* ignore */ }
       if (!m) return;
-      const e = st.recent.find((x) => x.el === el && x.id === (oldId || ''));
+      // v52（T6.3，33.8.3）id 先被清空再設成新值（實機 idFromEmpty＝每則即時訊息都有）：oldId 是空的 → 以節點找最近一次的紀錄。
+      // v51 以 id '' 找，暫時節點「暫時 id → 空 → 正式 id」時找不到 → 不合併，兩筆都存
+      const e = oldId ? st.recent.find((x) => x.el === el && x.id === oldId) : st.recent.slice().reverse().find((x) => x.el === el);
+      if (e && e.id === el.id) { if (m.id) st.seenIds.add(m.id); return; } // 清空後設回同一個 id：同一則，不必重送
       const key = C.ownKey(m);
       if (e && (key ? key === e.key : C.ownKey(e.m) === '' && JSON.stringify(e.m.runs || []) === JSON.stringify(m.runs || []) && (e.m.authorHandle || '') === (m.authorHandle || ''))) {
         ownAdopt(m, e);
@@ -1133,7 +1144,10 @@
         // v50（T6.1，30.5）自己送出的訊息：tempSeen＝看到暫時 id、replaced＝新節點配對、inPlace＝原地改 id、late＝事後配對、
         // pageRemoved＝頁面移除已存節點（不是修剪、不是列表開頭）
         // v51（T6.2，32.2）合併次數（merged：依規則分開）與觀察到的事件次數（events）分開，名稱即語意
-        own: { tempSeen: s.ownTempSeen,
+        // v52（T6.3，33.8.3）暫時節點的去向：tempStored＝暫時節點已存（等正式節點合併）、tempPending＝目前還在等、
+        // tempDropped＝90 秒內沒等到（兩筆都留著；之後可由 fixOwnDuplicates 處理）。合併成功的計在 merged.temp／removed／inPlace
+        own: { tempSeen: s.ownTempSeen, tempStored: s.ownTempStored, tempDropped: s.ownTempDropped,
+          tempPending: st.recent.filter((e) => isTempEntry(e) && !e.matched).length,
           merged: { temp: s.ownReplacedTemp, removed: s.ownReplacedRemoved, swap: s.ownReplacedSwap, late: s.ownLate, inPlace: s.ownInPlaceMerged },
           events: { idChanges: s.idChanges, idFromEmpty: s.idFromEmpty, pageRemoved: s.pageRemoved },
           recent: st.ownRecent.slice() } };

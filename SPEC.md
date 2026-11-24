@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v51**（前版：v50；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v52**（前版：v51；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -51,6 +51,7 @@
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
 - **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）；頻道名稱可見優先、網路錯誤退避、`channelInfo`（F-03）；SC 金額原樣顯示、`scTiers`（10.3）。
+- **v52 調整**（`docs/review-2026-11-17.md` 第 33 節，T6.3）：自己送出的訊息的暫時節點規則再收緊（直播來源、文字、到達時間、30 秒）、id 先清空再設定時也能合併（F-14）。
 
 ---
 
@@ -441,6 +442,12 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - P1 `own` 改為 `{ tempSeen, merged: { temp, removed, swap, late, inPlace }, events: { idChanges, idFromEmpty, pageRemoved }, recent }`：**`merged` 是合併次數，`events` 是觀察到的事件次數**（v50 的 `inPlace`／`pageRemoved` 數千是事件次數，例如 YouTube 重新設定 id、重新排版，大多不會合併）；`recent` 是最近 5 次合併的 id 形狀（記錄開始前的也看得到）。
     - P7 `own-replace`：每次合併一定記一筆（每場上限 30），不受 `P7_MAX_PER_TAG` 限制；帶 `rule`（`temp`／`removed`／`swap`／`same-node`）。
     - `fixOwnDuplicates` 預覽的 `sameTextBothReal.idShapes` 加上來源類別（例如 `N-Lv|52 + N-Lv|52 @ legacy + legacy`）。
+  - （v52，T6.3，審查十一 33.6、33.8.3）**再收緊**：v51 的預覽 `tempIds 803`、`pairs 155`，遠超使用者實際送出的約 33 則（重播來源等也有「`C` 開頭、≤ 31 字」的 id）。
+    - **暫時節點的紀錄**（`db.js` `isTempRec`）＝id 形狀符合＋**只有直播來源**（`live`／`popout`；重播、遷移、匯入不會有「送出中」的節點）＋一般文字＋`tsSource: 'arrival'`。擷取端同一套規則（重播不配對；暫時節點要是文字、到達時間）。
+    - 暫時 → 正式的時間差上限 **30 秒**（v51 為 90 秒），寫入時、`fixOwnDuplicates`、擷取端的「暫時 id」規則都一樣；頁面移除的 10 秒規則不變。
+    - **id 先清空再設成新值**（實機 P1 `idFromEmpty` 與即時到達筆數相同：YouTube 幾乎每則都這樣）：v51 以空 id 找舊紀錄，暫時節點「暫時 id → 空 → 正式 id」時找不到 → 不合併、兩筆都存。v52 改以節點找最近一次的紀錄；清空後設回同一個 id → 同一則，不重送。
+    - `fixOwnDuplicates` 預覽：`tempIds`＝暫時節點的紀錄數、`tempShapeMatches`＝只看形狀的筆數、`tempShapes`（形狀＋來源＋類型＋時間來源分組，符合規則的標 ✓）、`pairShapes`、`pairDt`（≤ 10 秒／≤ 30 秒）。
+    - P1 `own` 加 `tempStored`（暫時節點已存、等正式節點合併）、`tempPending`（目前還在等）、`tempDropped`（90 秒內沒等到，兩筆都留著）。
 - （v51，T6.2，審查十一 32.9）**等待開播期間一律暫定 `pre`**：有預定時間、還沒有開播時間（`startedAt`）→ 新訊息一律 `pre`，不以預定時間推算 `live`（`capture.js` `livePhase`）。實機：預定時間剛過、頁面 meta 下一次重讀（`startPending`）之前到的一則被判成 `live`，之後的又是 `pre`，面板分段標題來回出現。確認開播後由 background 依實際時間重算 `pre → live`（v48 起的機制）。面板與後台的直播／待機室清單也依 phase 分段（頁面狀態提示 → `pre` → `live` → `post`，`CORE.sortByPhase`），段內維持時間順序，每段標題只出現一次（與 VOD 的 v45 規則一致）。
 - **收錄紀錄 `capture_sessions`**（4.1）：每次開始收錄（chat frame 開始擷取）記一筆，結束時補 `endedAt`、`lastOffset`、`added`、`merged`、`phases`。
   - 後台場次清單顯示「直播收錄 2 次・重播 1 次」，以及**時間軸覆蓋範圍**（只會收錄實際有開著的時段，中途離開的空檔一目了然；含 `pre`／`post`）。

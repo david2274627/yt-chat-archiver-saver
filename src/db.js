@@ -325,6 +325,14 @@
   // 合併後以正式 id 為主、暫時 id 記入 aliasIds；時間取到達時間那一筆（通常是暫時節點），offset／phase 跟著時間
   const isTempId = (id) => { const s = root.YTCAS_SEL; return !!(s && typeof s.isTempChatId === 'function' && s.isTempChatId(id)); };
   const hasTempAlias = (r) => (r.aliasIds || []).some(isTempId);
+  // v52（T6.3，審查十一 33.6）id 形狀符合還不夠（實機 tempIds 803、pairs 155，重播來源等也有這種形狀的 id）：
+  // 暫時節點的紀錄＝形狀符合＋**只有直播來源**（live／popout；重播、遷移、匯入不會有「送出中」的節點）＋一般文字＋到達時間
+  const TEMP_PAIR_MS = 30 * 1000; // 暫時 → 正式的時間差上限（v51 為 90 秒）
+  function isTempRec(m) {
+    if (!m || !isTempId(m.id) || m.type !== 'text' || m.tsSource !== 'arrival') return false;
+    const src = Array.isArray(m.sources) ? m.sources : [];
+    return src.length > 0 && src.every((x) => x === 'live' || x === 'popout');
+  }
   const TIME_KEYS = ['timestampAbs', 'tsSource', 'videoOffsetSec', 'offsetSource', 'phase'];
   function foldTwin(real, temp) {
     const r = clone(real);
@@ -372,7 +380,7 @@
     while (c.order.length && (c.order[0].at < t || c.order.length > 3000)) { const e = c.order.shift(); if (!e.gone) dropTwin(c, e); }
     const e = c.byId.get(rec.id);
     if (e) { e.ts = rec.timestampAbs; return; }
-    const ne = { id: rec.id, key, ts: rec.timestampAbs, temp: isTempId(rec.id), at: now };
+    const ne = { id: rec.id, key, ts: rec.timestampAbs, temp: isTempRec(rec), at: now };
     c.order.push(ne); c.byId.set(rec.id, ne);
     if (!c.byKey.has(key)) c.byKey.set(key, []);
     c.byKey.get(key).push(ne);
@@ -393,9 +401,9 @@
     }
     const key = C.ownKey(rec);
     if (!key) return null;
-    const recTemp = isTempId(rec.id);
+    const recTemp = isTempRec(rec);
     if (!recTemp && hasTempAlias(rec)) return null; // 已經合併過
-    const W = C.OWN_REPLACE_WINDOW_MS;
+    const W = TEMP_PAIR_MS; // v52（33.6）30 秒
     const cands = (twinCacheFor(rec.videoId).byKey.get(key) || [])
       .filter((e) => e.id !== rec.id && e.temp !== recTemp && Math.abs(e.ts - rec.timestampAbs) <= W)
       .sort((a, b) => Math.abs(a.ts - rec.timestampAbs) - Math.abs(b.ts - rec.timestampAbs));
@@ -1199,8 +1207,10 @@
   // dryRun（預設）：只回傳筆數、各場筆數（videoId 4 碼）、暫時 id 總數；
   //   另列「同作者同內容 90 秒內、兩筆都是正式 id」的組數與 id 形狀（前 4 碼＋長度），用來核對暫時 id 的格式（不一定是重複、不會合併）。
   // { dryRun: false } 才寫入，寫入後重新計算各場筆數
+  // v52（T6.3，33.6）暫時那筆用 isTempRec（直播來源、文字、到達時間），時間差 ≤ 30 秒
   function ownPairs(list) {
-    const W = C.OWN_REPLACE_WINDOW_MS;
+    const W = TEMP_PAIR_MS;
+    const isTempId = isTempRec; // 本函式內的「暫時」一律指暫時節點的紀錄
     const groups = new Map();
     for (const m of list) {
       if (m.videoId == null) continue;
@@ -1215,18 +1225,18 @@
       if (arr.length < 2) continue;
       arr.sort((a, b) => (a.timestampAbs || 0) - (b.timestampAbs || 0));
       const used = new Set(arr.filter(hasTempAlias).map((m) => m.id)); // 已配過暫時節點的正式訊息
-      for (const t of arr.filter((m) => isTempId(m.id))) {
+      for (const t of arr.filter((m) => isTempId(m))) {
         let best = null;
         for (const r of arr) {
-          if (isTempId(r.id) || used.has(r.id)) continue;
+          if (isTempId(r) || used.has(r.id)) continue;
           const d = Math.abs((r.timestampAbs || 0) - (t.timestampAbs || 0));
           if (d <= W && (!best || d < best.d)) best = { r, d };
         }
-        if (best) { used.add(best.r.id); pairs.push({ real: best.r, temp: t }); }
+        if (best) { used.add(best.r.id); pairs.push({ real: best.r, temp: t, d: best.d }); }
       }
       for (let i = 1; i < arr.length; i++) {
         const a = arr[i - 1], b = arr[i];
-        if (!isTempId(a.id) && !isTempId(b.id) && (b.timestampAbs || 0) - (a.timestampAbs || 0) <= W) suspects.push([a, b]);
+        if (!isTempId(a) && !isTempId(b) && (b.timestampAbs || 0) - (a.timestampAbs || 0) <= W) suspects.push([a, b]);
       }
     }
     return { pairs, suspects };
@@ -1243,7 +1253,14 @@
     // v51（31.1 第 3 點）來源類別（live／replay／legacy／import）一併列出：例如 `N-Lv|52` 是 v2.6.0 遷移資料（`videoId_元素 id`）
     const srcOf = (m) => (Array.isArray(m.sources) && m.sources.length ? m.sources.slice().sort().join('/') : '?');
     for (const [a, b] of suspects) { const k = [shape(a.id), shape(b.id)].sort().join(' + ') + ' @ ' + [srcOf(a), srcOf(b)].sort().join(' + '); shapes.set(k, (shapes.get(k) || 0) + 1); }
-    const out = { dryRun, pairs: pairs.length, tempIds: all.filter((m) => isTempId(m.id)).length,
+    // v52（T6.3，33.6）形狀符合的 id 依「形狀＋來源＋類型＋時間來源」分組（v51 的 tempIds 803 是哪些）；pairs 的形狀與時間差分布
+    const tally = (arr, keyOf) => { const m = new Map(); for (const x of arr) { const k = keyOf(x); m.set(k, (m.get(k) || 0) + 1); } return Array.from(m, ([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n).slice(0, 12); };
+    const shapeMatch = all.filter((m) => isTempId(m.id));
+    const tempRecs = shapeMatch.filter(isTempRec);
+    const out = { dryRun, pairs: pairs.length, tempIds: tempRecs.length, tempShapeMatches: shapeMatch.length,
+      tempShapes: tally(shapeMatch, (m) => shape(m.id) + ' @ ' + srcOf(m) + ' · ' + (m.type || '?') + ' · ' + (m.tsSource || '?') + (isTempRec(m) ? ' ✓' : '')),
+      pairShapes: tally(pairs, (p) => shape(p.temp.id) + ' → ' + shape(p.real.id) + ' @ ' + srcOf(p.real) + ' · ' + (p.real.type || '?')),
+      pairDt: { le10s: pairs.filter((p) => p.d <= 10000).length, le30s: pairs.filter((p) => p.d > 10000 && p.d <= 30000).length },
       streams: Array.from(byVid, ([v, ps]) => ({ v: String(v).slice(0, 4), n: ps.length })),
       sameTextBothReal: { pairs: suspects.length, idShapes: Array.from(shapes, ([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n).slice(0, 5) },
       merged: 0 };

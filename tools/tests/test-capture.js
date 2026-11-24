@@ -154,6 +154,59 @@
     eq([CAP.clockShape('下午11:13'), CAP.clockShape('11:13 PM'), CAP.clockShape('-0:05'), CAP.clockShape('週三 9:00')], ['Pdd:dd', 'dd:dd P', '-d:dd', '?? d:dd']);
   });
 
+  test('T6.3（33.8.3、33.6）暫時節點：同一個節點「暫時 id → 空 → 正式 id」也合併（v51 找不到而存成兩筆）；暫時節點超過 30 秒不再以暫時 id 配對；P1 own.tempStored／tempPending／tempDropped', async () => {
+    const { items } = buildChat();
+    const send = mockSend();
+    const recs = [];
+    let T = NOW;
+    const e = engine({ send, now: () => T, onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidOwn4', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    const all = () => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    const last = (id) => all().filter((x) => x.id === id).pop();
+    const me = (id, text) => textMsg({ id, author: '@me', ts: '下午10:24', runs: [{ text }] });
+    items.append(textMsg({ id: 'O4-HEAD', author: '@x', ts: '下午10:23' }));
+    // 1. 同一個節點：暫時 id → 空 → 正式 id
+    T = NOW + 20000;
+    const n1 = me('CPfn' + 'a'.repeat(23), '你好');
+    items.append(n1);
+    await until(() => last(n1.id), 3000);
+    T = NOW + 25000;
+    n1.removeAttribute('id');
+    await sleep(20);
+    n1.id = 'ChwK' + 'b'.repeat(36);
+    await until(() => last('ChwK' + 'b'.repeat(36)), 3000);
+    const r = last('ChwK' + 'b'.repeat(36));
+    eq([r.replacesId, r.replaceInPlace, r.timestampAbs], ['CPfn' + 'a'.repeat(23), true, NOW + 20000], '暫時 id → 空 → 正式 id：合併');
+    // 2. 清空後設回同一個 id：不重送、不合併
+    const n2 = me('ChwK' + 'c'.repeat(36), '同一則');
+    items.append(n2);
+    await until(() => last(n2.id), 3000);
+    const cnt = all().filter((x) => x.id === n2.id).length;
+    const keep = n2.id; n2.removeAttribute('id'); await sleep(20); n2.id = keep; await sleep(1200);
+    eq(all().filter((x) => x.id === n2.id).length, cnt, '設回同一個 id：不重送');
+    // 3. 暫時節點超過 30 秒才出現正式節點 → 不以暫時 id 配對
+    T = NOW + 30000;
+    items.append(me('CQrs' + 'd'.repeat(23), '晚很久'));
+    await until(() => last('CQrs' + 'd'.repeat(23)), 3000);
+    T = NOW + 65000;
+    items.append(me('ChwK' + 'e'.repeat(36), '晚很久'));
+    await until(() => last('ChwK' + 'e'.repeat(36)), 3000);
+    assert(!last('ChwK' + 'e'.repeat(36)).replacesId, '超過 30 秒：不配對');
+    let st = e.state().stats;
+    eq([st.ownTempStored, st.ownInPlaceMerged, st.ownReplacedTemp], [2, 1, 0]);
+    // 90 秒後還沒配對的暫時節點 → tempDropped
+    T = NOW + 200000;
+    items.append(me('ChwK' + 'f'.repeat(36), '觸發整理'));
+    await until(() => last('ChwK' + 'f'.repeat(36)), 3000);
+    st = e.state().stats;
+    eq(st.ownTempDropped, 1, '沒等到正式節點的暫時節點');
+    e.stop();
+    const p1 = recs.filter((x) => x.p === 'P1').pop();
+    eq([p1.d.own.tempStored, p1.d.own.tempDropped, p1.d.own.tempPending], [2, 1, 0]);
+  });
+
   test('T6.2（32.11）SC／超級貼圖的金額存原生完整文字（含幣別前綴）：HK$170.00、US$5.00、¥500、€5,00、NT$1,500.00', () => {
     for (const amt of ['HK$170.00', 'US$5.00', '¥500', '€5,00', 'NT$1,500.00', '$75.00']) {
       const el = h('yt-live-chat-paid-message-renderer', { id: 'sc-' + amt.length }, [
