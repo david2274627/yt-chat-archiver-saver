@@ -176,6 +176,8 @@
       doc: document, source, send, isConnected: connected,
       // v52（T6.3，審查十一 33.1 第 2 點）嵌入式聊天室：videoId 綁定後不換場次（彈出視窗的 videoId 來自網址，本來就固定）
       bindVideo: env === 'chatframe',
+      // v52（33.1 第 6 點）降落橫幅 → background 記下這個分頁（之後導航到別的影片就自動開彈出視窗）。彈出視窗本身不需要
+      onRaid: (r) => { if (env !== 'chatframe' || !connected()) return; send({ type: RT.RAID_SEEN, videoId: r.videoId }).catch(() => {}); },
       onStatus: (s) => postStatus(s),
       onF12: (r) => { diag(r); postStatus(null); }, // T5：F-12 結果也告訴 top（面板說明文字）
       // F-20 P1／P2／P7：引擎的統計、節點分類、結構探針（記錄中才轉送）
@@ -211,6 +213,14 @@
         onLog: (kind, data) => dlog('P7', kind, data, { source, videoId: engine.state().videoId }) });
       retireHooks.push(() => pw.stop());
     }
+    // v52（T6.3，審查十一 33.1 第 7 點）彈出視窗的結構（studio 網域待實機確認）：5 秒後記一次主要元件是否存在（只有布林與數字）
+    if (env === 'popout') setTimeout(() => {
+      if (retired || !diagOn('P7')) return;
+      const q = (s) => !!document.querySelector(s);
+      dlog('P7', 'popout-env', { studio: location.hostname === 'studio.youtube.com', app: q(S.chat.app), renderer: q(S.chat.renderer), items: q(S.chat.items),
+        itemsNodes: (document.querySelector(S.chat.items) || { children: [] }).children.length, header: q(S.chat.header), inputPanel: q(S.chat.inputPanel),
+        viewSelector: document.querySelectorAll(S.chat.viewSelector.items).length, banner: q(S.chat.bannerContainer) }, { source, videoId: engine.state().videoId });
+    }, 5000);
     if (env === 'popout') dlog('P6', 'popout-open', { urlHasV: !!urlVid }, { source, videoId: isVideoId(urlVid) ? urlVid : null });
     setTimeout(() => diag(null), 10000);
     engine.start();
@@ -407,7 +417,10 @@
       const mv = metaVideoId();
       if (mv && mv !== videoId) {
         const v0 = document.querySelector(T.video);
-        return { videoId, metaStale: true, title: '', channelName: '', channelHandle: '', channelUrl: '', startDate: null, endDate: null, isLiveBroadcast: null,
+        // isLiveBroadcast 照舊（面板據此判斷直播／VOD；降落等「直播 → 直播」的導航不受影響），其餘不送
+        const lv = metaContent(T.isLiveMeta);
+        return { videoId, metaStale: true, title: '', channelName: '', channelHandle: '', channelUrl: '', startDate: null, endDate: null,
+          isLiveBroadcast: lv == null ? null : /^true$/i.test(lv),
           duration: v0 && Number.isFinite(v0.duration) && v0.duration > 0 ? Math.round(v0.duration) : null, liveSignalAt: null };
       }
       const a = document.querySelector(T.channelLink);
@@ -617,6 +630,10 @@
         },
       }).start();
       retireHooks.push(() => panel.destroy());
+      // v52（T6.3，審查十一 33.1 第 6 點）background 降落後已自動開彈出視窗 → 面板一行提示
+      try {
+        chrome.runtime.onMessage.addListener((msg) => { if (!retired && msg && msg.type === RT.RAID_POPOUT) panel.notify('raid-popout'); });
+      } catch (_) { /* ignore */ }
       // 擴充功能被關閉或重新載入（本實例斷線）而沒有新實例接手：移除面板，原生聊天室完全還原
       const dc = setInterval(() => { if (!connected()) { clearInterval(dc); panel.destroy(); } }, 2000);
     }

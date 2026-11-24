@@ -523,6 +523,7 @@
           toViewer({ type: FM.PANEL_STATE, paused: st.paused });
           st.inset = -1; applyClip('panel-ready'); // v49：面板底部留白
           sendVodTime(true);
+          if (st.note && st.note.videoId === st.videoId) toViewer({ type: FM.PANEL_NOTE, kind: st.note.kind }); // v52：面板重建後再顯示
         } else if (d.type === FM.SEEK_TO) seekTo(d.seconds);
         else if (d.type === FM.LIVE_ANCHOR) {
           // v50（30.4）錨點存在 top：面板 iframe 因版面切換重建時不會遺失（null＝作廢）
@@ -584,6 +585,8 @@
 
     const api = {
       start, destroy, open, close, toggle, evaluate,
+      // v52（T6.3，33.1 第 6 點）面板一行提示（kind 為固定代碼；顯示的文字由面板決定）
+      notify(kind) { st.note = { kind: String(kind || '').slice(0, 32), videoId: st.videoId }; toViewer({ type: FM.PANEL_NOTE, kind: st.note.kind }); log('note', { kind: st.note.kind }); },
       state: () => ({ mounted: st.mounted, paused: st.paused, pauseReason: st.pauseReason, videoId: st.videoId, dismissedFor: st.dismissedFor,
         ready: st.ready, anchors: Object.assign({}, st.anchors), capture: st.capture,
         clip: st.clip ? Object.assign({}, st.clip) : null, input: st.input ? Object.assign({}, st.input) : null, topPopup: st.topPopup, inset: st.inset,

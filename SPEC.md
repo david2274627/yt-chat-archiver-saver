@@ -51,7 +51,7 @@
 - **v49 調整**（T6，第 6 節）：**F-10 完整實作**——chat frame 量測底部互動區與彈窗（`src/chat-input.js`）、`CHAT_INPUT_STATE` 新欄位、`CHAT_INPUT_REQUEST`、`PANEL_INSET`（4.3）；top frame 的 clip 狀態機、頁面層付款視窗沿用前一個狀態、面板剩餘高度 < 80px 退讓、面板底部留白（6.7）；`COLLAPSE_MIN_H` 定案 200；F-20 診斷頁「記錄 N 分鐘」送時長（`durationMs`）。
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
 - **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）；頻道名稱可見優先、網路錯誤退避、`channelInfo`（F-03）；SC 金額原樣顯示、`scTiers`（10.3）。
-- **v52 調整**（`docs/review-2026-11-17.md` 第 33 節，T6.3）：自己送出的訊息的暫時節點規則再收緊（直播來源、文字、到達時間、30 秒）、id 先清空再設定時也能合併（F-14）。
+- **v52 調整**（`docs/review-2026-11-17.md` 第 33 節，T6.3）：自己送出的訊息的暫時節點規則再收緊（直播來源、文字、到達時間、30 秒）、id 先清空再設定時也能合併（F-14）；降落的資料正確性（videoId 綁定、導航後的 microdata、降落＝結束、`streamCompare`／`fixRaidLeak`／`fixStreamMeta`，F-14）；降落自動開彈出視窗、`studio` 彈出視窗（F-19）；投票卡結構記錄（6.8）。
 
 ---
 
@@ -566,6 +566,13 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 - 任務：T2 資料層；T3 讀取 `video.duration`（top frame 傳給 chat frame／background）；T4／T5 版本切換、剪掉段落呈現、連結影片同步與微調；T7 匯出選項。
 
 **F-19 彈出式聊天室視窗**（v28 新增，使用者 2026-11-15 提出）
+- （v52，T6.3，審查十一 32.12、33.1 第 6、7 點）
+  - **`studio.youtube.com` 的彈出視窗**：`content_scripts.matches` 與 `host_permissions` 只加 `https://studio.youtube.com/live_chat*`（不開放整個 studio 網域）；重新注入、斷線分頁檢查、meta 重新抓取的分頁清單同步加入。結構先以 P7 `popout-env` 記錄（主要元件是否存在、`#items` 節點數、F-12 選單項數；只有布林與數字），**確認前不假設與 www 相同**（dom-notes 2.10）。`FETCH_STREAM_META` 照舊抓 `www.youtube.com/watch`。
+  - **降落自動開彈出視窗**（使用者 2026-11-24 決定：要做、預設開啟、由使用者手動關閉）：
+    - 觸發：某分頁的聊天室出現降落橫幅（chat frame 送 `RAID_SEEN`，background 記下分頁）後 **3 分鐘內**，同一分頁導航到別的 videoId（`chrome.tabs.onUpdated` 的網址變化）→ `chrome.windows.create({ type: 'popup', focused: false, width: 420, height: 640 })` 開 `https://www.youtube.com/live_chat?is_popout=1&v=<原 videoId>`。
+    - 不開：設定 `raidAutoPopout`（`chrome.storage.sync`，預設 `true`；T7 前以 `await YTCAS_BG.setRaidAutoPopout(false)` 切換）關閉、同一 videoId 已有彈出視窗（`popoutTabs`）、這個 videoId 已自動開過、超過 3 分鐘、只是同一部影片的網址變化。
+    - 主分頁的面板顯示一行提示「已在彈出視窗繼續收錄原直播（降落後的聊天）」，可按 × 關閉（`RAID_POPOUT` → top content.js → 面板 `PANEL_NOTE { kind: 'raid-popout' }`；文字由面板決定）。P6 `raid-popout`。
+    - 彈出視窗**不自動關閉**（使用者決定）。彈出視窗的優化面板（保留原生輸入列、`$` 等底部互動區）屬 T6-c，自動開的彈出視窗也適用。
 - **背景**：聊天室選單「在彈出式視窗中開啟聊天室」會開獨立視窗（`https://www.youtube.com/live_chat?is_popout=1&v=<videoId>`），**不跟著主分頁走**：主播降落到別的直播、主分頁被導向新直播後，彈出視窗仍停在原直播，結束後的聊天也會繼續顯示。彈出視窗的聊天室是**頂層頁面**，原 `content.js` 的判斷（`!isTop && /live_chat`）會把它當成一般頁面而不擷取。
 - **規則**：
   1. **辨識**：`content.js` 環境判斷改為三種：top watch 頁／嵌入式 chat frame／**彈出式聊天室**（頂層頁面且路徑為 `/live_chat` 或 `/live_chat_replay`，不論有無 `is_popout`）。彈出式走與 chat frame 相同的擷取（F-02，含啟動時回溯擷取）、修剪（F-01）與 F-12。

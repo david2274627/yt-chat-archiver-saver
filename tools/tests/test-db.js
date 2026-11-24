@@ -1710,6 +1710,38 @@
     } finally { self.fetch = self.__blockedFetch; }
   });
 
+  test('T6.3（33.1 第 6 點）降落自動開彈出視窗：降落橫幅後同一分頁導航到別的影片 → 開一次（popup、不搶焦點、www）並通知分頁；重複導航不重開；設定關閉、已有彈出視窗、超過 3 分鐘都不開', async () => {
+    await resetAll();
+    const W = self.chrome.windows._created;
+    W.length = 0; self.chrome.tabs.sent.length = 0;
+    const tab = { id: 41, url: 'https://www.youtube.com/live_chat?continuation=x' };
+    await send({ type: 'RAID_SEEN', videoId: 'vidRAIDorg1' }, { id: 'testextid', url: tab.url, tab });
+    // 導航（tabs.onUpdated）
+    M.listeners.updated[0](41, { url: 'https://www.youtube.com/watch?v=vidTARGET01' });
+    await until(() => W.length === 1, 2000, '開彈出視窗');
+    eq([W[0].type, W[0].focused, W[0].url], ['popup', false, 'https://www.youtube.com/live_chat?is_popout=1&v=vidRAIDorg1']);
+    assert(W[0].width <= 480 && W[0].height <= 720, '小尺寸');
+    await until(() => self.chrome.tabs.sent.some((s) => s.tabId === 41 && s.msg.type === 'RAID_POPOUT'), 2000, '通知分頁');
+    // 同一場再降落＋導航 → 不重開
+    await send({ type: 'RAID_SEEN', videoId: 'vidRAIDorg1' }, { id: 'testextid', url: tab.url, tab });
+    eq(await BG._maybeRaidPopout(41, 'https://www.youtube.com/watch?v=vidTARGET02'), 'already-opened');
+    // 只是同一部影片的網址變化（例如 &t=）→ 不算導航
+    await send({ type: 'RAID_SEEN', videoId: 'vidRAIDorg2' }, { id: 'testextid', url: tab.url, tab });
+    eq(await BG._maybeRaidPopout(41, 'https://www.youtube.com/watch?v=vidRAIDorg2&t=5'), null);
+    // 設定關閉
+    await BG.setRaidAutoPopout(false);
+    eq(await BG._maybeRaidPopout(41, 'https://www.youtube.com/watch?v=vidTARGET03'), 'disabled');
+    await BG.setRaidAutoPopout(true);
+    // 已有同一 videoId 的彈出視窗
+    await chrome.storage.session.set({ [C_POP()]: { 77: { videoId: 'vidRAIDorg3', sid: 1, gen: 'g', notified: false } } });
+    await send({ type: 'RAID_SEEN', videoId: 'vidRAIDorg3' }, { id: 'testextid', url: tab.url, tab });
+    eq(await BG._maybeRaidPopout(41, 'https://www.youtube.com/watch?v=vidTARGET04'), 'has-popout');
+    eq(W.length, 1, '只開過一次');
+    // 沒有降落的分頁導航 → 不開
+    eq(await BG._maybeRaidPopout(99, 'https://www.youtube.com/watch?v=vidTARGET05'), null);
+  });
+  const C_POP = () => self.YTCAS_CONST.POPOUT_TABS_KEY;
+
   test('T6.3（33.6）暫時 id 的規則收緊：只限直播來源、一般文字、到達時間、時間差 ≤ 30 秒；重播來源、遷移資料、SC／會員、顯示時間的短 C 開頭 id 不是暫時；預覽列 tempShapes、pairShapes、pairDt', async () => {
     await resetAll();
     U._resetTwins();

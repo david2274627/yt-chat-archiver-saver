@@ -60,6 +60,8 @@
       captureExcludedChannels: { area: 'local', default: [] },
       storageWarnBytes: { area: 'sync', default: 2 * 1024 * 1024 * 1024 },
       popoutHandoff: { area: 'sync', default: true },
+      // v52（T6.3，審查十一 33.1 第 6 點，使用者 2026-11-24 決定）降落後自動開彈出視窗繼續收錄原直播（預設開啟；T7 前以 SW Console 切換）
+      raidAutoPopout: { area: 'sync', default: true },
     }),
     // chrome.storage.session：頻道名稱解析待辦佇列（SPEC 3.2）
     CHANNEL_QUEUE_KEY: 'channelQueue',
@@ -88,6 +90,9 @@
       DELETE_STREAM: 'DELETE_STREAM',
       EXPORT_STREAM: 'EXPORT_STREAM',
       RESOLVE_CHANNELS: 'RESOLVE_CHANNELS',
+      // v52（T6.3，33.1 第 6 點）chat frame → bg：這個分頁的聊天室出現降落橫幅；bg → 分頁（tabs.sendMessage）：已開彈出視窗繼續收錄原直播
+      RAID_SEEN: 'RAID_SEEN',
+      RAID_POPOUT: 'RAID_POPOUT',
       CHANNEL_RESOLVED: 'CHANNEL_RESOLVED',
       // v27
       CAPTURE_START: 'CAPTURE_START',
@@ -143,6 +148,8 @@
       // v50（T6.1，審查十一 30.4）面板 iframe → top：{ wallA: number|null } 直播的牆上時間錨點（採用／作廢）。
       // top 依影片記住，面板 iframe 重建（版面切換）後經 VOD_TIME 的 anchorA 交回
       LIVE_ANCHOR: 'LIVE_ANCHOR',
+      // v52（T6.3，33.1 第 6 點）top → 面板 iframe：{ kind: 'raid-popout' } 一行提示（固定文字由面板決定）
+      PANEL_NOTE: 'PANEL_NOTE',
     }),
     // v41（T5）優化面板（F-08、F-09、6.2）
     PANEL: Object.freeze({

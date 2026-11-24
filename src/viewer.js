@@ -1131,7 +1131,8 @@
     // ---------------- T5：收錄狀態與 F-12 說明
     let noteTimer = 0;
     function renderNote() {
-      const n = CORE.captureNote(S.capture);
+      // v52（33.1 第 6 點）降落彈出視窗的提示優先（按 × 關掉後回到收錄狀態的說明）
+      const n = S.extNote && S.noteDismissed !== S.extNote ? { text: S.extNote, tone: 'info', sticky: true } : CORE.captureNote(S.capture);
       clearTimeout(noteTimer);
       const key = n ? n.text : '';
       S.noteKey = key;
@@ -1470,6 +1471,8 @@
       else if (d.type === C.FM.THEME) S.diag.theme++;
       else if (d.type === C.FM.PANEL_STATE) S.hostPaused = !!d.paused;
       else if (d.type === C.FM.PANEL_INSET) setBottomInset(d.bottom); // v49（T6，6.2 第 5 點）
+      // v52（T6.3，33.1 第 6 點）降落後已自動開彈出視窗：一行提示（可關閉；只有固定文字，不帶任何頁面內容）
+      else if (d.type === C.FM.PANEL_NOTE && d.kind === 'raid-popout') { S.extNote = '已在彈出視窗繼續收錄原直播（降落後的聊天）'; renderNote(); }
       else if (d.type === C.FM.CAPTURE_STATUS) {
         S.diag.capture++;
         S.capture = { capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null };

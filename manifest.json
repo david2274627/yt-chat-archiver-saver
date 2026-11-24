@@ -15,6 +15,7 @@
   "permissions": ["storage", "unlimitedStorage", "tabs", "alarms", "downloads", "scripting"],
   "host_permissions": [
     "https://www.youtube.com/*",
+    "https://studio.youtube.com/live_chat*",
     "https://*.ggpht.com/*",
     "https://*.ytimg.com/*",
     "https://*.googleusercontent.com/*",
@@ -34,7 +35,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
+      "matches": ["https://www.youtube.com/*", "https://studio.youtube.com/live_chat*"],
       "js": ["src/constants.js", "src/selectors.js", "src/capture.js", "src/chat-input.js", "src/panel.js", "src/content.js"],
       "run_at": "document_idle",
       "all_frames": true

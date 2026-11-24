@@ -1507,6 +1507,21 @@
     assert(!pin.classList.contains('open'), '點提示 → 收合');
   });
 
+  test('T6.3（33.1 第 6 點）降落自動開彈出視窗後，面板顯示一行提示（固定文字）；按 × 關閉後回到收錄狀態的說明', async () => {
+    await resetDb();
+    const VR = 'vidRAIDNOTE';
+    await put({ videoId: VR, title: 'R', isLive: true, startedAt: Date.now() - 600e3, lastMessageAt: Date.now(), messageCount: 1, versions: [], linkedVideos: [] }, [mk({ id: 'rn1', videoId: VR })]);
+    await DB.close();
+    const c = V.mount(host, { embed: true, videoId: VR });
+    await c.ready; await frame();
+    c._onFrame({ source: window.parent, origin: 'https://www.youtube.com', data: { __ytcas: true, type: 'PANEL_NOTE', kind: 'raid-popout' } });
+    assert(!c.els.note.hidden && /彈出視窗繼續收錄原直播/.test(c.els.noteText.textContent), '提示 ' + c.els.noteText.textContent);
+    c._onFrame({ source: window.parent, origin: 'https://www.youtube.com', data: { __ytcas: true, type: 'PANEL_NOTE', kind: 'something-else' } });
+    assert(/彈出視窗/.test(c.els.noteText.textContent), '未知的 kind 不顯示任何文字');
+    c.els.note.querySelector('.note-x').click();
+    assert(c.els.note.hidden, '可關閉');
+  });
+
   test('T6.2（32.11）SC 金額原樣顯示（HK$170.00、US$5.00、¥500）：不裁切、不換行；名稱很長時由名稱讓位', async () => {
     await resetDb();
     const VS = 'vidSCAMT001';

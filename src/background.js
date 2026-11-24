@@ -422,6 +422,52 @@ async function channelStats() {
   r.consecutiveNetErrors = chStats.consecutiveNet;
   return r;
 }
+// ---------------------------------------------------------------- v52（T6.3，審查十一 33.1 第 6 點）降落自動開彈出視窗
+// 觸發：某分頁的聊天室出現降落橫幅（RAID_SEEN）後 RAID_POPOUT_WINDOW_MS 內，同一分頁導航到別的 videoId（tabs.onUpdated）
+// → 以 chrome.windows.create({ type: 'popup', focused: false }) 開 www 彈出式聊天室（小尺寸、不搶焦點），繼續收錄原直播的結束後聊天。
+// 不開的情況：設定 raidAutoPopout 關閉、同一 videoId 已有彈出視窗（popoutTabs）、這個 videoId 已自動開過。
+// 主分頁的面板顯示一行提示（RAID_POPOUT → top content.js → 面板）。彈出視窗由使用者手動關閉（使用者 2026-11-24 決定，不自動關）
+const RAID_KEY = 'raidSeenV52';
+const RAID_POPOUT_WINDOW_MS = 3 * 60 * 1000;
+async function readRaid() { try { return (await chrome.storage.session.get(RAID_KEY))[RAID_KEY] || { seen: {}, opened: {} }; } catch (_) { return { seen: {}, opened: {} }; } }
+const writeRaid = (r) => chrome.storage.session.set({ [RAID_KEY]: r });
+async function raidSeen(tabId, videoId) {
+  if (typeof tabId !== 'number' || tabId < 0 || !isVideoIdStr(videoId)) return;
+  const r = await readRaid();
+  r.seen[tabId] = { videoId, at: Date.now() };
+  await writeRaid(r);
+}
+const urlVideoId = (u) => { try { const x = new URL(u); return x.searchParams.get('v') || (/^\/live\/([\w-]{6,20})/.exec(x.pathname) || [])[1] || null; } catch (_) { return null; } };
+async function maybeRaidPopout(tabId, url) {
+  const r = await readRaid();
+  const s = r.seen[tabId];
+  if (!s) return null;
+  const to = urlVideoId(url);
+  if (!to || to === s.videoId) return null;
+  delete r.seen[tabId];
+  if (Date.now() - s.at > RAID_POPOUT_WINDOW_MS) { await writeRaid(r); return 'expired'; }
+  await loadSettings();
+  if (!settings.raidAutoPopout) { await writeRaid(r); return 'disabled'; }
+  if (r.opened[s.videoId]) { await writeRaid(r); return 'already-opened'; }
+  const pop = await readPopout();
+  if (Object.values(pop).some((x) => x && x.videoId === s.videoId)) { await writeRaid(r); return 'has-popout'; }
+  r.opened[s.videoId] = Date.now();
+  await writeRaid(r);
+  try {
+    await chrome.windows.create({ url: 'https://www.youtube.com/live_chat?is_popout=1&v=' + encodeURIComponent(s.videoId), type: 'popup', focused: false, width: 420, height: 640 });
+  } catch (e) { console.info('[ytcas] 降落：無法開彈出視窗', C.asciiOnly(String(e && e.message)).slice(0, 80)); return 'create-failed'; }
+  diagLog('P6', 'raid-popout', {}, { env: 'bg', videoId: s.videoId, tab: tabId });
+  try { const p = chrome.tabs.sendMessage(tabId, { type: RT.RAID_POPOUT, videoId: s.videoId }); if (p && p.catch) p.catch(() => {}); } catch (_) { /* ignore */ }
+  return 'opened';
+}
+if (chrome.tabs.onUpdated) {
+  chrome.tabs.onUpdated.addListener((tabId, info) => {
+    if (info && info.url) maybeRaidPopout(tabId, info.url).catch((e) => console.info('[ytcas] 降落彈出視窗判斷失敗', String(e && e.message)));
+  });
+}
+// SW Console：await YTCAS_BG.setRaidAutoPopout(false)
+async function setRaidAutoPopout(on) { await chrome.storage.sync.set({ raidAutoPopout: !!on }); settings.raidAutoPopout = !!on; return { raidAutoPopout: !!on }; }
+
 // ---------------------------------------------------------------- v52（T6.3，審查十一 33.1）降落時的資料正確性
 // streamCompare(a, b)：兩場的比對（只有數字、代碼、4 碼 videoId，不含標題、名稱、內容）
 const v4 = (v) => String(v || '').slice(0, 4);
@@ -1024,7 +1070,7 @@ const META_ALARM = 'ytcas-meta-poll';
 async function openVideoIds() {
   const out = new Set();
   try {
-    const tabs = await chrome.tabs.query({ url: ['https://www.youtube.com/watch*', 'https://www.youtube.com/live_chat*', 'https://www.youtube.com/live/*'] });
+    const tabs = await chrome.tabs.query({ url: ['https://www.youtube.com/watch*', 'https://www.youtube.com/live_chat*', 'https://www.youtube.com/live/*', 'https://studio.youtube.com/live_chat*'] });
     for (const t of tabs) {
       try {
         const u = new URL(t.url);
@@ -1240,6 +1286,12 @@ const handlers = {
     return {};
   },
 
+  // v52（T6.3，33.1 第 6 點）聊天室出現降落橫幅（content script 的 chat frame；分頁由 sender.tab 決定）
+  async [RT.RAID_SEEN](msg, sender) {
+    await raidSeen(sender && sender.tab && sender.tab.id, msg.videoId);
+    return {};
+  },
+
   // v51（T6.2，審查十一 32.10 第 2 點）面板畫面上還沒有頻道名稱的作者 handle → 排到解析佇列最前面（可見優先）
   async [RT.RESOLVE_CHANNELS](msg) {
     const r = await prioritizeHandles(Array.isArray(msg.handles) ? msg.handles : []);
@@ -1387,11 +1439,13 @@ try {
 // 與新的 background 斷線（只剩修剪、不再收錄）。update 時對所有 YouTube 分頁的所有 frame 重新注入 content script；
 // 新腳本會讓同一環境裡已斷線的舊實例退場（content.js 的 __ytcasRetire）。
 // PoC（src/poc/）的腳本依 frame 有不同的 matches，無法以 allFrames 正確重現，不重新注入（PoC 需要 F5；T9 移除）。
+// v52（T6.3，審查十一 33.1 第 7 點）studio.youtube.com 的彈出式聊天室（只限 /live_chat）
+const YT_TAB_URLS = ['https://www.youtube.com/*', 'https://studio.youtube.com/live_chat*'];
 const REINJECT_FILES = ['src/constants.js', 'src/selectors.js', 'src/capture.js', 'src/chat-input.js', 'src/panel.js', 'src/content.js']; // T5：加入 panel.js；v49（T6）chat-input.js
 async function reinjectYouTubeTabs(tabIds) {
   const out = { tabs: 0, ok: 0, failed: [] };
   let tabs = [];
-  try { tabs = await chrome.tabs.query({ url: 'https://www.youtube.com/*' }); } catch (_) { return out; }
+  try { tabs = await chrome.tabs.query({ url: YT_TAB_URLS }); } catch (_) { return out; }
   for (const t of tabs) {
     if (tabIds && !tabIds.includes(t.id)) continue;
     if (t.discarded) continue; // 被 Chrome 卸載的分頁：使用者切回時會重新載入，manifest 會自動注入
@@ -1412,7 +1466,7 @@ async function reinjectYouTubeTabs(tabIds) {
 //（例如注入失敗、在 T3.8 以前的版本更新後沒有重新整理）。回傳只有分頁 id、種類、videoId 前 4 碼
 async function findStaleTabs() {
   let tabs = [];
-  try { tabs = await chrome.tabs.query({ url: 'https://www.youtube.com/*' }); } catch (_) { return []; }
+  try { tabs = await chrome.tabs.query({ url: YT_TAB_URLS }); } catch (_) { return []; }
   const kindOf = (u) => { try { const x = new URL(u); return x.pathname.startsWith('/live_chat') ? 'popout' : (x.pathname === '/watch' || x.pathname.startsWith('/live/') ? 'watch' : 'other'); } catch (_) { return 'other'; } };
   const vid4 = (u) => { try { const v = new URL(u).searchParams.get('v'); return v ? v.slice(0, 4) + '…' : null; } catch (_) { return null; } };
   const checks = tabs.filter((t) => !t.discarded).map(async (t) => {
@@ -1437,7 +1491,7 @@ async function reconnectStaleTabs() {
   let ids = [];
   if (stale.length) {
     let loading = new Set();
-    try { loading = new Set((await chrome.tabs.query({ url: 'https://www.youtube.com/*' })).filter((t) => t.status === 'loading').map((t) => t.id)); } catch (_) {}
+    try { loading = new Set((await chrome.tabs.query({ url: YT_TAB_URLS })).filter((t) => t.status === 'loading').map((t) => t.id)); } catch (_) {}
     ids = stale.map((s) => s.tabId).filter((id) => !loading.has(id));
   }
   diagLog('P6', 'wake-check', { stale: stale.length, reinject: ids.length });
@@ -1468,4 +1522,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, _metaPollDue: metaPollDue, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, streamCompare, fixRaidLeak, fixStreamMeta, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, _metaPollDue: metaPollDue, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, streamCompare, fixRaidLeak, fixStreamMeta, setRaidAutoPopout, _maybeRaidPopout: maybeRaidPopout, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

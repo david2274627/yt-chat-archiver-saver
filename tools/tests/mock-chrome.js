@@ -15,7 +15,7 @@
   if (self.YTCAS_DB) self.YTCAS_DB.configure({ dbName: TEST_DB, legacyDbName: TEST_LEGACY });
   self.importScripts = function () { /* 已由 <script> 載入 */ };
 
-  const listeners = { message: [], changed: [], installed: [], startup: [], removed: [], alarm: [] };
+  const listeners = { message: [], changed: [], installed: [], startup: [], removed: [], alarm: [], updated: [] };
   function area(name) {
     let data = {};
     return {
@@ -78,10 +78,14 @@
         return undefined;
       },
       onRemoved: { addListener: (f) => listeners.removed.push(f) },
+      onUpdated: { addListener: (f) => listeners.updated.push(f) }, // v52（T6.3）
+
       // v43：create（只記錄）
       _created: [],
       create: async (o) => { self.chrome.tabs._created.push(JSON.parse(JSON.stringify(o))); return { id: 1000 + self.chrome.tabs._created.length }; },
     },
+    // v52（T6.3，33.1 第 6 點）windows.create（只記錄）
+    windows: { _created: [], create: async (o) => { self.chrome.windows._created.push(JSON.parse(JSON.stringify(o))); return { id: 2000 + self.chrome.windows._created.length, tabs: [{ id: 3000 + self.chrome.windows._created.length }] }; } },
     // T3.7：alarms（只記錄，不會自動觸發；測試以 __mock.fireAlarm 觸發）、action（徽章）、downloads（只記錄）
     alarms: {
       _list: new Map(),
