@@ -1262,7 +1262,13 @@ const handlers = {
         await writePopout(m);
       });
     }
-    return Object.assign({ allowed: true, stream: pickTimes(await DB.getStream(videoId)) }, r);
+    // v53（T6.3.1，審查十一 34 第 4 點）最新、還沒取消的置頂（擷取端比對置頂列上確定沒有它 → 取消置頂的漏網偵測）
+    let lastPin = null;
+    try {
+      const pins = (await DB.queryPinned(videoId)).filter((p) => p && p.unpinnedAt == null).sort((a, b) => C.pinnedTime(b) - C.pinnedTime(a));
+      if (pins[0]) lastPin = { id: pins[0].id, authorHandle: pins[0].authorHandle || '', authorName: pins[0].authorName || '', authorChannelId: pins[0].authorChannelId || '', runs: pins[0].runs || [] };
+    } catch (_) { /* ignore */ }
+    return Object.assign({ allowed: true, stream: pickTimes(await DB.getStream(videoId)), lastPin }, r);
   },
 
   async [RT.CAPTURE_END](msg, sender) {
@@ -1311,7 +1317,7 @@ const handlers = {
   // v52（T6.3，審查十一 33.3 第 1 點）取消置頂
   async [RT.UNPIN](msg) {
     const videoId = vid(msg);
-    const r = await DB.unpinPinned({ videoId, id: String(msg.id || ''), unpinnedAt: msg.unpinnedAt });
+    const r = await DB.unpinPinned({ videoId, id: String(msg.id || ''), unpinnedAt: msg.unpinnedAt, source: msg.unpinnedAtSource === 'absent' ? 'absent' : 'gone' });
     if (r.changed) broadcast({ type: RT.PINNED_CHANGED, videoId });
     return r;
   },

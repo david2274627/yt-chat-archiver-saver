@@ -272,6 +272,38 @@
     e.stop();
   });
 
+  test('T6.3.1（34 第 4 點）取消置頂的漏網：DB 最新置頂（lastPin）在置頂列上確定沒有、持續 10 秒 → UNPIN（absent，時間取開始看不到的時刻）；同作者同內容換了 id 不算；10 秒內出現不算', async () => {
+    const run = async (label, pinEl, expectUnpin) => {
+      const { banner } = buildChat();
+      const lastPin = { id: 'OLDPIN1', authorHandle: '@ch', authorName: '', authorChannelId: '', runs: [{ text: '舊的置頂公告' }] };
+      const send = mockSend((msg) => { const r = defaultReply(msg); if (msg.type === RT.CAPTURE_START) r.lastPin = lastPin; return r; });
+      let T = NOW;
+      const e = engine({ send, now: () => T });
+      e.start();
+      e.setInfo({ videoId: 'testVidAbsnt', startDate: NOW - 3600e3, channelHandle: '@ch' });
+      await until(() => e.state().mode === 'capturing');
+      if (pinEl) banner.append(h('yt-live-chat-banner-renderer', {}, [h('div', { id: 'contents' }, [pinEl])]));
+      await sleep(30);
+      T = NOW + 1000; e._tick();
+      T = NOW + 6000; e._tick();
+      eq(send.of(RT.UNPIN).length, 0, label + '：10 秒內不送');
+      T = NOW + 12000; e._tick();
+      await sleep(50);
+      if (expectUnpin) {
+        await until(() => send.of(RT.UNPIN).length === 1, 2000, label + '：UNPIN');
+        const u = send.of(RT.UNPIN)[0].msg;
+        eq([u.id, u.unpinnedAt, u.unpinnedAtSource], ['OLDPIN1', NOW, 'absent'], label + '（開始收錄時就看不到）');
+        eq(e.state().stats.unpinnedAbsent, 1);
+        T = NOW + 30000; e._tick(); await sleep(30);
+        eq(send.of(RT.UNPIN).length, 1, label + '：只送一次');
+      } else eq(send.of(RT.UNPIN).length, 0, label + '：不送');
+      e.stop();
+    };
+    await run('置頂列空的', null, true);
+    await run('換成別則', textMsg({ id: 'NEWPIN', author: '@ch', ts: '下午10:20', runs: [{ text: '新的公告' }] }), true);
+    await run('同一則換了 id', textMsg({ id: 'OTHERID', author: '@ch', ts: '下午10:20', runs: [{ text: '舊的置頂公告' }] }), false);
+  });
+
   // v53（34.2.1）降落橫幅（降落出去：「立即前往」連到別的影片）與進場卡（被降落：「打聲招呼吧／瞭解詳情」，可能連到降落方的頻道）
   // 是同一個元件。模擬頁的結構是推測（dom-notes 2.10 待驗證）：只驗證「連到其他 videoId 才是 out」的邏輯
   function raidOut(id, href) {

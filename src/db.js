@@ -627,7 +627,8 @@
         if (!rec) return;
         found = true;
         const at = num(p.unpinnedAt) ?? Date.now();
-        if (at >= C.pinnedTime(rec) && rec.unpinnedAt !== at && num(rec.unpinnedAt) === null) { rec.unpinnedAt = at; store.put(rec); changed = true; }
+        // v53（34 第 4 點）unpinnedAtSource：gone＝收錄中看到它從置頂列消失、absent＝開始收錄後置頂列確定沒有它（取消的實際時間更早）
+        if (at >= C.pinnedTime(rec) && rec.unpinnedAt !== at && num(rec.unpinnedAt) === null) { rec.unpinnedAt = at; rec.unpinnedAtSource = p.source === 'absent' ? 'absent' : 'gone'; store.put(rec); changed = true; }
       })();
       work.catch(() => { try { t.abort(); } catch (_) { /* */ } });
       await Promise.all([work, done(t)]);
@@ -667,7 +668,7 @@
             let timesChanged = rec.pinnedAt !== first || rec.pinnedLastAt !== last;
             rec.pinnedAt = first; rec.pinnedLastAt = last;
             // v52（T6.3，33.3）取消後又置頂 → 清掉 unpinnedAt
-            if (num(rec.unpinnedAt) !== null && inc.pinnedAt > rec.unpinnedAt) { delete rec.unpinnedAt; timesChanged = true; stats.repinned = (stats.repinned || 0) + 1; }
+            if (num(rec.unpinnedAt) !== null && inc.pinnedAt > rec.unpinnedAt) { delete rec.unpinnedAt; delete rec.unpinnedAtSource; timesChanged = true; stats.repinned = (stats.repinned || 0) + 1; }
             if (m.changed || timesChanged) store.put(rec);
             if (same) { const i = same.findIndex((q) => q.id === rec.id); if (i >= 0) same[i] = rec; }
             if (m.significant) stats.merged++; else stats.unchanged++;

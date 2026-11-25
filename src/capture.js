@@ -889,6 +889,29 @@
         sendWithRetry({ type: RT.UNPIN, videoId: st.videoId, id, unpinnedAt: t - UNPIN_GRACE_MS, source }).catch((e) => { if (e && e.disconnected) disconnect(); });
       }
     }
+    // v53（T6.3.1，審查十一 34 第 4 點）取消置頂的漏網：主播在分頁沒開（或聊天室重新載入）時取消置頂，新的擷取端不知道之前的置頂，
+    // DB 那筆一直沒有 unpinnedAt。開始收錄後：置頂列（banner manager）在、聊天室列表在，而且置頂列上**沒有**那則
+    //（id 不同、作者＋內容也不同：C.samePinned）持續 ABSENT_MS 以上 → UNPIN（unpinnedAtSource 'absent'，時間取開始看不到的時刻）
+    const ABSENT_MS = 10 * 1000;
+    function checkLastPinAbsent(cur) {
+      const lp = st.lastPin;
+      if (!lp || !st.banner || !st.items) return;
+      let present = cur.has(lp.id);
+      if (!present) {
+        st.banner.querySelectorAll(S.chat.bannerPinnedMessage).forEach((el) => {
+          if (present) return;
+          try { const m = parseMessage(el, ctxNow()); if (m && C.samePinned(m, lp)) present = true; } catch (_) { /* ignore */ }
+        });
+      }
+      if (present) { st.lastPin = null; st.lastPinAbsentSince = 0; return; } // 還在：之後交給一般的取消置頂偵測
+      const t = now();
+      if (!st.lastPinAbsentSince) { st.lastPinAbsentSince = t; return; }
+      if (t - st.lastPinAbsentSince < ABSENT_MS) return;
+      const at = st.lastPinAbsentSince;
+      st.lastPin = null; st.lastPinAbsentSince = 0;
+      st.stats.unpinnedAbsent++;
+      sendWithRetry({ type: RT.UNPIN, videoId: st.videoId, id: lp.id, unpinnedAt: at, unpinnedAtSource: 'absent', source }).catch((e) => { if (e && e.disconnected) disconnect(); });
+    }
     function capturePinned() {
       if (st.mode !== 'capturing') return;
       const cur = new Set();
@@ -896,6 +919,7 @@
       // 取消後又置頂（同一個 id 再出現）→ 重新送 SAVE_PINNED（background 清掉 unpinnedAt）
       for (const id of cur) if (st.unpinned.has(id)) { st.unpinned.delete(id); st.pinnedSent.delete(id); }
       checkUnpinned(cur);
+      checkLastPinAbsent(cur);
       if (!st.banner) return;
       st.banner.querySelectorAll(S.chat.bannerPinnedMessage).forEach((el) => {
         if (!el.id || st.pinnedSent.has(el.id)) return;
@@ -1114,6 +1138,8 @@
       st.session = { captureSessionId: r.captureSessionId, versionId: r.versionId };
       // background 已知的開播／結束時間（彈出視窗由 FETCH_STREAM_META 補齊）
       if (r.stream) adoptTimes(r.stream);
+      // v53（34 第 4 點）DB 中最新、還沒取消的置頂（分頁沒開時被取消的漏網偵測）
+      st.lastPin = r.lastPin && typeof r.lastPin.id === 'string' ? r.lastPin : null; st.lastPinAbsentSince = 0;
       setStatus('capturing');
       backfill('backfill');
       if (!st.f12) autoLiveMode(); // F-12（v30）：開始收錄時切到「即時聊天室」，同一頁只做一次

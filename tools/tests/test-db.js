@@ -1793,6 +1793,13 @@
     p = (await DB.queryPinned(V))[0];
     assert(!('unpinnedAt' in p), '再置頂 → 清掉 unpinnedAt');
     assert(M.broadcasts.some((b) => b.type === 'PINNED_CHANGED'), '再置頂 → PINNED_CHANGED');
+    // v53（34 第 4 點）CAPTURE_START 回傳最新、還沒取消的置頂（lastPin）；UNPIN 的 absent 來源
+    const cs = await send({ type: 'CAPTURE_START', videoId: V, source: 'live', stream: { channelHandle: '@ch' } });
+    eq([cs.allowed, cs.lastPin && cs.lastPin.id], [true, 'pinA']);
+    r = await send({ type: 'UNPIN', videoId: V, id: 'pinA', unpinnedAt: t0 + 200e3, unpinnedAtSource: 'absent' });
+    p = (await DB.queryPinned(V))[0];
+    eq([r.changed, p.unpinnedAt, p.unpinnedAtSource], [true, t0 + 200e3, 'absent']);
+    eq((await send({ type: 'CAPTURE_START', videoId: V, source: 'live', stream: { channelHandle: '@ch' } })).lastPin, null, '都取消了 → 沒有 lastPin');
   });
 
   test('T6.3（33.1 第 6 點）降落自動開彈出視窗：降落橫幅後同一分頁導航到別的影片 → 開一次（popup、不搶焦點、www）並通知分頁；重複導航不重開；設定關閉、已有彈出視窗、超過 3 分鐘都不開', async () => {
