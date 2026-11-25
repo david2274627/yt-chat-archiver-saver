@@ -212,6 +212,8 @@
       const inc = typeof meta[srcKey] === 'string' ? meta[srcKey] : null;
       if (v === null || inc === 'scheduled') continue;
       if (k === 'startedAt' && future && inc !== 'replay') continue;
+      // v53（34.2.1）撤銷過的降落暫定結束：擷取端（還沒收到撤銷）再送來同一個或更早的 raid 結束時間 → 不採用
+      if (k === 'endedAt' && inc === 'raid' && num(s.raidEndRevokedAt) !== null && v <= s.raidEndRevokedAt) continue;
       const suspect = k === 'startedAt' && s.startedAtSuspect;
       const curRank = s[k] == null || suspect ? -1 : C.startRank(s[srcKey]);
       if (C.startRank(inc) > curRank && (s[k] !== v || suspect)) {
@@ -253,7 +255,8 @@
       endedAtSource: s.endedAtSource ?? null, scheduledStartAt: s.scheduledStartAt ?? null, startPending: !!s.startPending,
       scheduledFuture: !!s.scheduledFuture, startedAtSuspect: !!s.startedAtSuspect, liveConfirmedAt: s.liveConfirmedAt ?? null,
       suspectSource: s.startedAt != null && eff == null ? s.startedAtSource ?? '(無)' : null, // 診斷：被降級的 startedAt 的來源
-      channelHandle: s.channelHandle || '', isLive: !!s.isLive };
+      channelHandle: s.channelHandle || '', isLive: !!s.isLive,
+      raidEndRevokedAt: s.raidEndRevokedAt ?? null }; // v53（34.2.1）擷取端據此撤銷本分頁的降落暫定結束
   }
 
   // F-18 版本偵測（會修改 versions）
@@ -1078,6 +1081,27 @@
       out.byTag[k] = (out.byTag[k] || 0) + 1;
     }
     return out;
+  }
+
+  // v53（T6.3.1，審查十一 34.2.1 第 3 點）撤銷降落暫定的結束時間（endedAtSource 'raid'）：重新抓取確認仍在直播（isLiveNow、
+  // 沒有 endDate）時呼叫。v52 把進場卡也當成降落橫幅，被降落的直播會被提前判為結束。只動來源是 raid 的結束時間；
+  // 撤銷後依時間重算 phase（post → live）。回傳 { revoked, changed }
+  async function revokeRaidEnd(videoId) {
+    return withLock(videoId, async () => {
+      const db = await open();
+      const t = db.transaction('streams', 'readwrite');
+      let revoked = false;
+      const work = (async () => {
+        const s = await req(t.objectStore('streams').get(videoId));
+        if (!s || s.endedAt == null || s.endedAtSource !== 'raid') return;
+        s.endedAt = null; s.endedAtSource = null; s.raidEndRevokedAt = Date.now();
+        t.objectStore('streams').put(s);
+        revoked = true;
+      })();
+      await Promise.all([work, done(t)]);
+      const changed = revoked ? await recomputePhasesUnlocked(videoId) : 0;
+      return { revoked, changed };
+    });
   }
 
   function recomputePhases(videoId) { return withLock(videoId, () => recomputePhasesUnlocked(videoId)); }
@@ -2128,7 +2152,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeAllPhases, systemTagStats, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, moveMessages, updateStream, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, moveMessages, updateStream, revokeRaidEnd, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,

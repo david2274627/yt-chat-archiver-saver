@@ -343,6 +343,11 @@
     eq(CORE.captureNote({ capturing: true, f12: 'failed:no-menu' }).tone, 'warn');
     eq(CORE.captureNote({ capturing: true, f12: 'already' }), null, '本來就是即時聊天室：不顯示');
     eq(CORE.captureNote({ capturing: false, reason: 'channel' }).sticky, true);
+    // v53（34.2.1）降落卡標籤：進場／降落到 @…／舊資料
+    eq(CORE.raidLabel({ raidDir: 'in', runs: [{ text: '@RaiderCh 和他們的觀眾剛剛加入' }] }), '✨ 降落進場');
+    eq(CORE.raidLabel({ raidDir: 'out', runs: [{ text: '千萬別錯過！和大家一起收看' }, { text: '@SugiyamaMairu' }] }), '✨ 降落到 @SugiyamaMairu');
+    eq(CORE.raidLabel({ raidDir: 'out', runs: [{ text: '千萬別錯過' }] }), '✨ 降落到其他直播');
+    eq(CORE.raidLabel({ runs: [{ text: '舊資料' }] }), '✨ 降落');
     // v52.1（34 第 1 點）videoId 不一致：30 秒內不顯示（不是使用者暫停）；超過 30 秒「聊天室切換中」
     eq(CORE.captureNote({ capturing: false, reason: 'paused', policy: 'video-mismatch' }), null);
     assert(/聊天室切換中/.test(CORE.captureNote({ capturing: false, reason: 'paused', policy: 'video-mismatch', switching: true }).text));

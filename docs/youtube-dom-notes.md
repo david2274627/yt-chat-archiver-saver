@@ -174,7 +174,9 @@ yt-live-chat-renderer
 - **待驗證**（v52 的 F-20 記錄；只有布林、數字）：
   - P7 `video-switch`：`mismatch`（同一個聊天室文件收到不同 videoId）→ `itemsSame`、`itemsNodes`、`seenNodes`（看過的 id 數）、`frameAgeSec`；`rebind`（`#items` 換成沒看過 id 的新列表）／`swap-same-chat`／`back`。看 iframe 是否重新載入（新的文件 → `frameAgeSec` 很小、沒有 `mismatch`）或沿用同一個文件。
   - P4 `meta-stale`／`meta-fresh`（`waitedMs`）：導航後 microdata 的 videoId（`meta[itemprop="identifier"]` 或 `link[rel="canonical"]`，哪一個存在**待驗證**）多久才與網址一致。
-  - 降落橫幅與「剛剛加入」（被降落方的進場卡）是否同一個元件：v52 把 `banner-redirect` 當成**原直播結束**（33.1 第 4 點）；若進場卡也是這個元件，目標直播會被誤判結束 → 以 P7 `raid` 結構確認。
+  - ~~降落橫幅與「剛剛加入」（被降落方的進場卡）是否同一個元件~~ → **已證實是同一個元件**（2026-11-25，審查十一 34.2.1）：杉山那場的 `raid 2` 是「@Robetta_Reverie 和他們的觀眾剛剛加入」（進場卡）＋漏進來的蘿貝塔降落橫幅；蘿貝塔那場 18:49 的 `raid` 推測是別人降落進來的進場卡。兩者都只可能來自 `S.chat.bannerRedirect`。
+  - **方向的結構差異（待驗證）**：降落出去的橫幅有「立即前往」，連到別的頻道或影片；進場卡是「打聲招呼吧／瞭解詳情」。v53 結構確認前的規則：**橫幅內有連到其他 videoId 的連結**（`/watch?v=`、`/live/`、`youtu.be`，含 `/redirect?q=` 包著的）才是 `raidDir: 'out'`（結束訊號），其他一律 `in`。只連到頻道的不算（進場卡可能連到降落方的頻道）。
+  - 確認方式：P7 `raid-dir`（每張卡一筆：`dir`、`otherVideo`／`sameVideo`／`channel`／`other` 連結數、`buttons` 數；只有代碼與次數）＋既有的 P7 `raid` 結構探針。兩種卡各錄到一筆後改為已驗證，必要時把規則換成結構（例如按鈕元件）。
 
 ### 2.5 輸入區 `#input-panel`（2026-11-15）
 ```

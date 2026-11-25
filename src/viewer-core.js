@@ -512,6 +512,17 @@
 
   // ---------------------------------------------------------------- F-12 面板說明（T5）
   // CAPTURE_STATUS { capturing, reason, f12, viewMode } → { text, tone: 'info'|'warn', sticky } 或 null
+  // v53（T6.3.1，審查十一 34.2.1）降落卡的標籤：進場卡（raidDir 'in'）「✨ 降落進場」；降落出去（'out'）「✨ 降落到 @…」
+  // （@handle 取自卡片文字的第一個 @…，取不到時只寫「✨ 降落到其他直播」）；v52 以前沒有方向的舊資料維持「✨ 降落」
+  function raidLabel(m) {
+    const dir = m && m.raidDir;
+    if (dir === 'in') return '✨ 降落進場';
+    if (dir !== 'out') return '✨ 降落';
+    const text = ((m && m.runs) || []).map((r) => (r && typeof r.text === 'string' ? r.text : '')).join('');
+    const h = /@[\w.\-·　-鿿가-힯]{1,40}/u.exec(text);
+    return h ? '✨ 降落到 ' + h[0] : '✨ 降落到其他直播';
+  }
+
   function captureNote(cs) {
     if (!cs) return null;
     if (!cs.capturing) {
@@ -612,6 +623,6 @@
     channelUrl, scColors,
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
     matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
-    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, sortByPhase, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote,
+    versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, sortByPhase, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote, raidLabel,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

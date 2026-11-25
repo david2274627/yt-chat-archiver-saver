@@ -548,6 +548,31 @@ async function fixRaidLeak(newVid, origVid, opts) {
   return out;
 }
 
+// v53（T6.3.1，審查十一 34.2.1 第 4 點）v52 期間誤設的「降落暫定結束」（endedAtSource 'raid'）。
+// meta 的 endDate 之後有到（等級較高）的場次會自動覆蓋並重算 phase，fixPhases 也照新的 endedAt 重算；
+// 但重新抓取期間（3 小時）沒拿到 endDate 的場次仍停在 raid 的時間 → 這裡逐場重新抓 watch 頁：
+//   有 endDate → 以 meta 的結束時間覆蓋（重算 phase）；isLiveNow true 且沒有 endDate → 撤銷；其他 → 不動。
+// 預覽只列場次數與 4 碼 videoId；{ dryRun: false } 才抓取與寫入（credentials: 'omit'，與平常的重新抓取相同）
+async function fixRaidEnds(opts) {
+  const dryRun = !(opts && opts.dryRun === false);
+  const list = (await DB.listStreams()).filter((s) => s.endedAt != null && s.endedAtSource === 'raid');
+  const out = { dryRun, streams: list.length, vids: list.slice(0, 30).map((s) => v4(s.videoId)), replaced: 0, revoked: 0, kept: 0, failed: 0, changed: 0 };
+  if (dryRun) return out;
+  for (const s of list) {
+    let meta;
+    try { meta = await fetchStreamMeta(s.videoId, s.scheduledStartAt); } catch (_) { out.failed++; continue; }
+    if (meta && meta.endedAt != null) {
+      const r = await DB.saveMessages({ videoId: s.videoId, source: 'live', stream: { endedAt: meta.endedAt, endedAtSource: meta.endedAtSource || 'meta-actual' }, messages: [] });
+      if (r && r.stream && r.stream.endedAtSource !== 'raid') out.replaced++; else out.kept++;
+    } else if (meta && meta.isLiveNow === true) {
+      const r = await DB.revokeRaidEnd(s.videoId);
+      if (r.revoked) { out.revoked++; out.changed += r.changed; } else out.kept++;
+    } else out.kept++;
+  }
+  console.info('[ytcas] 降落暫定的結束時間', out);
+  return out;
+}
+
 // fixStreamMeta(videoId)：重新抓 watch 頁，覆蓋標題與頻道（導航時存了上一場的標題）。不帶參數：列出同頻道同標題、
 // 開始時間相差 6 小時內的場次組（只有 4 碼與筆數）。預覽只比較是否相同；{ dryRun: false } 才寫入
 async function fixStreamMeta(videoId, opts) {
@@ -1043,7 +1068,8 @@ function metaPollDue(videoId, s, now) {
   }
   return null;
 }
-async function maybeRefetchMeta(videoId, times, source) {
+async function maybeRefetchMeta(videoId, timesIn, source) {
+  let times = timesIn;
   if (source !== 'live' && source !== 'popout') return null;
   const now = Date.now();
   const due = metaPollDue(videoId, times, now);
@@ -1055,6 +1081,16 @@ async function maybeRefetchMeta(videoId, times, source) {
   // v52（T6.3，審查十一 33.8.2）每次重新抓取的結果（只有代碼與布林）：liveConfirmed 晚到時，看是 isLiveNow 遲遲不是 true 還是間隔太長
   if (diagOn('P4')) diagLog('P4', 'meta-refetch', { kind: due.kind, isLiveNow: meta.isLiveNow ?? null, hasStart: meta.startedAt != null,
     startSrc: meta.startedAtSource || null, hasEnd: meta.endedAt != null, confirm: meta.liveConfirmedAt != null, cred: meta.credentialsUsed || 'omit' }, { env: 'bg', videoId });
+  // v53（T6.3.1，審查十一 34.2.1 第 3 點）降落暫定的結束：重新抓取確認仍在直播（isLiveNow true、沒有 endDate）→ 撤銷、重算 phase
+  // （v52 把進場卡也當成降落橫幅，被降落的直播會被提前判為結束）
+  if (due.kind === 'raid-end' && meta.isLiveNow === true && meta.endedAt == null) {
+    const rv = await DB.revokeRaidEnd(videoId);
+    if (rv.revoked) {
+      console.info('[ytcas] 重新抓取確認仍在直播：撤銷降落暫定的結束時間', { videoId, changed: rv.changed });
+      if (diagOn('P4')) diagLog('P4', 'raid-end-revoked', { changed: rv.changed }, { env: 'bg', videoId });
+      times = Object.assign({}, times, { endedAt: null, endedAtSource: null });
+    }
+  }
   const upd = {};
   for (const k of ['startedAt', 'startedAtSource', 'endedAt', 'endedAtSource', 'scheduledStartAt', 'startPending', 'scheduledFuture', 'liveConfirmedAt']) if (meta[k] != null) upd[k] = meta[k];
   if (!Object.keys(upd).length) return null;
@@ -1538,4 +1574,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, _metaPollDue: metaPollDue, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, streamCompare, fixRaidLeak, fixStreamMeta, setRaidAutoPopout, _maybeRaidPopout: maybeRaidPopout, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, _metaPollDue: metaPollDue, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, streamCompare, fixRaidLeak, fixStreamMeta, fixRaidEnds, setRaidAutoPopout, _maybeRaidPopout: maybeRaidPopout, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

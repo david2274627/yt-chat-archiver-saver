@@ -346,13 +346,32 @@
   }
   // 降落橫幅（取不到 id）：同一場同一段文字視為同一則，id 以內容雜湊產生（SPEC 4.3 補救 id）
   // v47（T5.6，審查十一 26.1）phase 與其他訊息同一規則（v46 以前一律 live：待機室的降落被放進「直播中」段）
+  // v53（T6.3.1，審查十一 34.2.1）降落橫幅與「剛剛加入」（被降落方的進場卡）是同一個元件（banner-redirect，實機證據）。
+  // 依結構分方向，不比對文字：結構確認前，只有「橫幅內有連到**其他** videoId 的連結」才是降落出去（out，原直播結束）；
+  // 其他一律是進場（in，照常收錄、不是結束訊號）。只連到頻道的連結（進場卡可能連到降落方的頻道）先不算，P7 raid-dir 記錄供確認
+  function raidLinks(el, videoId) {
+    const out = { otherVideo: 0, sameVideo: 0, channel: 0, other: 0, buttons: el.querySelectorAll('button, a[role="button"], yt-button-renderer, yt-button-view-model').length };
+    for (const a of el.querySelectorAll(S.chat.link.anchor)) {
+      let u;
+      try { u = new URL(a.getAttribute('href'), 'https://www.youtube.com/'); } catch (_) { out.other++; continue; }
+      if (u.pathname === S.chat.link.redirectPath) { try { u = new URL(u.searchParams.get(S.chat.link.redirectParam) || '', 'https://www.youtube.com/'); } catch (_) { out.other++; continue; } }
+      const yt = /(^|\.)youtube\.com$/.test(u.hostname) || u.hostname === 'youtu.be';
+      const v = !yt ? null : u.hostname === 'youtu.be' ? u.pathname.slice(1) : u.pathname === '/watch' ? u.searchParams.get('v') : (/^\/live\/([\w-]{6,20})/.exec(u.pathname) || [])[1] || null;
+      if (v) { if (v === videoId) out.sameVideo++; else out.otherVideo++; }
+      else if (yt && /^\/(@|channel\/|c\/|user\/)/.test(u.pathname)) out.channel++;
+      else out.other++;
+    }
+    return out;
+  }
   function parseRaid(el, ctx, videoId) {
     const runs = textRuns(clean(el.textContent).slice(0, 300));
     if (!runs.length) return null;
+    const links = raidLinks(el, videoId);
     return { id: 'ytcas-raid-' + hash(videoId + '\u0001' + runs[0].text), type: T.RAID, authorHandle: '', authorChannelId: '',
       authorUrl: '', authorAvatar: '', authorBadges: [], runs, timestampAbs: ctx.now,
       videoOffsetSec: ctx.startedAt != null ? Math.round((ctx.now - ctx.startedAt) / 100) / 10 : null,
-      phase: ctx.source === 'replay' ? 'live' : livePhase(ctx.now, ctx) };
+      phase: ctx.source === 'replay' ? 'live' : livePhase(ctx.now, ctx),
+      raidDir: links.otherVideo > 0 ? 'out' : 'in', _links: links };
   }
 
   // ---------------------------------------------------------------- F-20 結構探針（P7，同 docs/poc-clip-path.md 附錄 C／E）
@@ -894,10 +913,16 @@
         probeStructure('raid', el); // F-20 P7：降落橫幅結構（待實機確認的元件）
         const m = parseRaid(el, ctxNow(), st.videoId);
         el.dataset[SAVED] = m ? '1' : 'skip';
-        if (m) { st.stats.captured++; enqueue(m); }
+        if (m) {
+          const links = m._links; delete m._links;
+          diag('P7', 'raid-dir', Object.assign({ dir: m.raidDir }, links)); // v53（34.2.1）只有次數與代碼
+          if (m.raidDir === 'in') st.stats.raidIn++;
+          st.stats.captured++; enqueue(m);
+        }
         // v52（T6.3，審查十一 33.1 第 4 點）降落橫幅（yt-live-chat-banner-redirect-renderer，實機已驗證）＝原直播結束：
         // 以降落時間暫定結束時間（endedAtSource 'raid'），之後的訊息標 post；background 照常重新抓取，meta 的 endDate 覆蓋
-        if (m && source !== 'replay' && st.stream.startedAt != null && st.stream.endedAt == null) {
+        // v53（34.2.1）只有降落出去（raidDir 'out'）才是結束訊號；進場卡（in）不結束、不送 RAID_SEEN（不開彈出視窗）
+        if (m && m.raidDir === 'out' && source !== 'replay' && st.stream.startedAt != null && st.stream.endedAt == null) {
           if (adoptTimes({ endedAt: now(), endedAtSource: 'raid' }).end) {
             st.stats.raidEnd++;
             st.raidAt = now();
@@ -1041,6 +1066,11 @@
     function adoptTimes(t) {
       if (!t) return { start: false, end: false };
       const out = { start: false, end: false };
+      // v53（34.2.1 第 3 點）background 撤銷了降落暫定的結束（重新抓取確認仍在直播）→ 本分頁也撤銷，之後的訊息回到 live
+      if (typeof t.raidEndRevokedAt === 'number' && st.stream.endedAtSource === 'raid' && st.stream.endedAt != null && st.stream.endedAt <= t.raidEndRevokedAt) {
+        st.stream.endedAt = null; st.stream.endedAtSource = null; out.end = true;
+        console.info('[ytcas] 降落暫定的結束時間已撤銷（仍在直播）', { videoId: st.videoId });
+      }
       // v48（T5.7，審查十一 27 第 1 點）background 重新抓取確認正在直播（提早開播）→ 本分頁沒重新整理的舊 meta 說「在未來」不再當成待機室
       if (typeof t.liveConfirmedAt === 'number' && !st.stream.liveConfirmedAt) { st.stream.liveConfirmedAt = t.liveConfirmedAt; st.stream.scheduledFuture = false; }
       if (t.scheduledFuture === true && typeof t.scheduledStartAt === 'number' && !st.stream.liveConfirmedAt) {

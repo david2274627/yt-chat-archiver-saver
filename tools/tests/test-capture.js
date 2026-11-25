@@ -272,6 +272,67 @@
     e.stop();
   });
 
+  // v53（34.2.1）降落橫幅（降落出去：「立即前往」連到別的影片）與進場卡（被降落：「打聲招呼吧／瞭解詳情」，可能連到降落方的頻道）
+  // 是同一個元件。模擬頁的結構是推測（dom-notes 2.10 待驗證）：只驗證「連到其他 videoId 才是 out」的邏輯
+  function raidOut(id, href) {
+    return h('yt-live-chat-banner-redirect-renderer', { id }, [h('div', { text: '千萬別錯過！和大家一起收看@OtherCh' }),
+      h('a', { href: href || '/watch?v=OtherVid001' }, [h('button', { text: '立即前往' })])]);
+  }
+  function raidIn(id) {
+    return h('yt-live-chat-banner-redirect-renderer', { id }, [h('a', { href: '/@RaiderCh' }, [h('div', { text: '@RaiderCh 和他們的觀眾剛剛加入' })]),
+      h('button', { text: '打聲招呼吧' }), h('a', { href: 'https://support.google.com/youtube/answer/1' }, [h('span', { text: '瞭解詳情' })])]);
+  }
+  test('T6.3.1（34.2.1）進場卡（raidDir in）：照常收錄、不結束、不送 onRaid；之後降落出去（out）才結束、onRaid；連到同一部影片或 /redirect 包著的頻道不算 out；background 撤銷（raidEndRevokedAt）→ 本分頁撤銷，之後回到 live', async () => {
+    const { items, banner } = buildChat();
+    let revokedAt = null;
+    const send = mockSend((msg) => {
+      const r = defaultReply(msg);
+      if (msg.type === RT.SAVE_MESSAGES && revokedAt) r.stream = { raidEndRevokedAt: revokedAt };
+      return r;
+    });
+    const raids = [], recs = [];
+    let T = NOW;
+    const e = engine({ send, now: () => T, onRaid: (r) => raids.push(r), onDiag: (p, k, d) => recs.push({ p, k, d }) });
+    e.start();
+    e.setInfo({ videoId: 'testVidRdIn1', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    T = NOW + 5000;
+    banner.append(raidIn('in1'));
+    banner.append(h('yt-live-chat-banner-redirect-renderer', { id: 'in2' }, [h('div', { text: '同一部影片的連結' }), h('a', { href: '/watch?v=testVidRdIn1' })]));
+    banner.append(h('yt-live-chat-banner-redirect-renderer', { id: 'in3' }, [h('div', { text: '包著的頻道連結' }), h('a', { href: '/redirect?q=' + encodeURIComponent('https://www.youtube.com/@Some') })]));
+    await until(() => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).filter((m) => m.type === 'raid').length >= 3, 3000, '進場卡');
+    const ins = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).filter((m) => m.type === 'raid');
+    eq(ins.map((m) => m.raidDir), ['in', 'in', 'in']);
+    eq([e.state().stats.raidIn, e.state().stats.raidEnd, raids.length], [3, 0, 0], '不結束、不送 onRaid');
+    T = NOW + 6000;
+    items.append(textMsg({ id: 'RI-after-in', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('RI-after-in'), 3000);
+    eq(send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'RI-after-in').phase, 'live', '進場卡之後仍是直播中');
+    // P7 raid-dir：只有代碼與次數
+    const rd = recs.filter((r) => r.k === 'raid-dir');
+    assert(rd.length === 3 && rd.every((r) => Object.values(r.d).every((v) => typeof v === 'number' || v === 'in' || v === 'out')), 'P7 raid-dir ' + JSON.stringify(rd.map((r) => r.d)));
+    eq([rd[0].d.channel, rd[0].d.other, rd[0].d.otherVideo, rd[1].d.sameVideo, rd[2].d.channel], [1, 1, 0, 1, 1]);
+    // 之後降落出去
+    T = NOW + 10000;
+    banner.append(raidOut('out1'));
+    await until(() => raids.length === 1, 3000, 'onRaid');
+    eq([e.state().stats.raidEnd, raids[0].videoId], [1, 'testVidRdIn1']);
+    T = NOW + 12000;
+    items.append(textMsg({ id: 'RI-after-out', ts: '下午10:23' }));
+    await until(() => savedIds(send).includes('RI-after-out'), 3000);
+    eq(send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'RI-after-out').phase, 'post');
+    // background 撤銷（重新抓取確認仍在直播）→ 下一次回應帶 raidEndRevokedAt → 本分頁撤銷
+    revokedAt = NOW + 13000;
+    T = NOW + 14000;
+    items.append(textMsg({ id: 'RI-x1', ts: '下午10:24' }));
+    await until(() => savedIds(send).includes('RI-x1'), 3000);
+    await until(() => e.state().stream.endedAt == null, 3000, '撤銷');
+    items.append(textMsg({ id: 'RI-x2', ts: '下午10:24' }));
+    await until(() => savedIds(send).includes('RI-x2'), 3000);
+    eq(send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.id === 'RI-x2').phase, 'live', '撤銷後回到直播中');
+    e.stop();
+  });
+
   test('T6.3（33.1 第 4 點）降落橫幅＝原直播結束：暫定 endedAt（raid），之後的訊息標 post；SAVE_MESSAGES 帶 endedAtSource raid；待機室與重播不適用', async () => {
     const { items, banner } = buildChat();
     const send = mockSend();
@@ -283,10 +344,10 @@
     items.append(textMsg({ id: 'RD-before', ts: '下午10:23' }));
     await until(() => savedIds(send).includes('RD-before'), 3000);
     T = NOW + 10000;
-    banner.append(h('yt-live-chat-banner-redirect-renderer', { id: 'redir1' }, [h('div', { text: '千萬別錯過！和大家一起收看@OtherCh' })]));
+    banner.append(raidOut('redir1'));
     await until(() => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).some((m) => m.type === 'raid'), 3000, '降落');
     const raid = send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages).find((m) => m.type === 'raid');
-    eq(raid.phase, 'live', '降落橫幅本身在直播中');
+    eq([raid.phase, raid.raidDir, '_links' in raid], ['live', 'out', false], '降落橫幅本身在直播中、方向 out');
     T = NOW + 20000;
     items.append(textMsg({ id: 'RD-after', ts: '下午10:24' }));
     await until(() => savedIds(send).includes('RD-after'), 3000);

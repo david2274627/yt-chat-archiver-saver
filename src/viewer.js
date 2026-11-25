@@ -852,7 +852,7 @@
       } else if (m.type === T.RAID) {
         row = el('div', 'msg raid');
         const body = el('div', 'body');
-        body.append(tcNode(m), el('span', 'bdg raid', '✨ 降落'));
+        body.append(tcNode(m), el('span', 'bdg raid', CORE.raidLabel(m))); // v53（34.2.1）進場／降落到 @…
         const sub = el('div', 'sub content'); renderRuns(sub, m.runs, kw); body.appendChild(sub);
         const ic = el('span', 'av', '✨'); ic.setAttribute('aria-hidden', 'true');
         row.append(ic, body);

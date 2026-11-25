@@ -1660,6 +1660,53 @@
     } finally { self.fetch = self.__blockedFetch; }
   });
 
+  test('T6.3.1（34.2.1 第 3、4 點）降落暫定的結束：重新抓取確認 isLiveNow true、沒有 endDate → 撤銷並重算 phase（post → live）；擷取端再送同一個 raid 結束時間不採用；fixRaidEnds 預覽／執行（有 endDate → 覆蓋；仍在直播 → 撤銷）', async () => {
+    await resetAll();
+    U._resetTwins();
+    const V = 'vidRVKraid1', W = 'vidRVKend02', X = 'vidRVKlive3';
+    const t0 = Date.now() - 2 * 3600e3, rAt = Date.now() - 30 * 60e3;
+    const mm = (id, vid, ts) => ({ id, videoId: vid, type: 'text', authorHandle: '@u', runs: [{ text: id }], timestampAbs: ts, tsSource: 'arrival' });
+    for (const v of [V, W, X]) {
+      await DB.saveMessages({ videoId: v, source: 'live', stream: { startedAt: t0, startedAtSource: 'meta-actual', isLive: true }, messages: [mm(v + 'a', v, t0 + 60e3)] });
+      await DB.saveMessages({ videoId: v, source: 'live', stream: { endedAt: rAt, endedAtSource: 'raid' }, messages: [mm(v + 'b', v, rAt + 60e3)] });
+    }
+    eq((await DB.queryMessages(V)).find((m) => m.id === V + 'b').phase, 'post', '暫定結束後的訊息是 post');
+    const live = '<meta itemprop="startDate" content="' + new Date(t0).toISOString() + '"><script>var x={"liveBroadcastDetails":{"isLiveNow":true}}</script>';
+    self.fetch = async () => new Response(live, { status: 200 });
+    try {
+      BG._metaPoll.clear();
+      await BG.maybeRefetchMeta(V, DB.pickStreamTimes(await DB.getStream(V)), 'live');
+      const s = await DB.getStream(V);
+      eq([s.endedAt, s.endedAtSource, typeof s.raidEndRevokedAt], [null, null, 'number'], '撤銷');
+      eq((await DB.queryMessages(V)).find((m) => m.id === V + 'b').phase, 'live', '重算 post → live');
+      eq(DB.pickStreamTimes(s).raidEndRevokedAt, s.raidEndRevokedAt, '回應帶 raidEndRevokedAt（擷取端據此撤銷）');
+      // 還沒收到撤銷的擷取端再送同一個 raid 結束 → 不採用；之後新的降落出去（較晚）照常採用
+      await DB.saveMessages({ videoId: V, source: 'live', stream: { endedAt: rAt, endedAtSource: 'raid' }, messages: [] });
+      eq((await DB.getStream(V)).endedAt, null, '撤銷過的 raid 結束不再採用');
+      const later = Date.now() + 1000;
+      await DB.saveMessages({ videoId: V, source: 'live', stream: { endedAt: later, endedAtSource: 'raid' }, messages: [] });
+      eq((await DB.getStream(V)).endedAt, later, '之後的降落出去照常採用');
+    } finally { self.fetch = self.__blockedFetch; }
+    // fixRaidEnds：W 的 meta 已有 endDate、X 仍在直播
+    const pre = await BG.fixRaidEnds();
+    eq([pre.dryRun, pre.streams], [true, 3], 'V（新的降落）、W、X');
+    assert(pre.vids.every((x) => x.length === 4), '只有 4 碼');
+    const endAt = Date.now() - 20 * 60e3;
+    self.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes(W)) return new Response('<meta itemprop="startDate" content="' + new Date(t0).toISOString() + '"><meta itemprop="endDate" content="' + new Date(endAt).toISOString() + '">', { status: 200 });
+      if (u.includes(X)) return new Response(live, { status: 200 });
+      return new Response('<meta itemprop="startDate" content="' + new Date(t0).toISOString() + '">', { status: 200 });
+    };
+    try {
+      const ex = await BG.fixRaidEnds({ dryRun: false });
+      eq([ex.replaced, ex.revoked, ex.kept, ex.failed], [1, 1, 1, 0], ex);
+      const sw = await DB.getStream(W), sx = await DB.getStream(X);
+      eq([sw.endedAtSource, Math.abs(sw.endedAt - endAt) < 1000, sx.endedAt], ['meta-actual', true, null]);
+      eq((await DB.queryMessages(X)).find((m) => m.id === X + 'b').phase, 'live');
+    } finally { self.fetch = self.__blockedFetch; }
+  });
+
   test('T6.3（33.1）降落：streamCompare 只輸出數字與代碼；id 已在別的場次 → crossVideo 計數；fixRaidLeak 預覽／搬回原場次（post）；降落暫定結束時照常重新抓取；fixStreamMeta 覆蓋標題', async () => {
     await resetAll();
     U._resetTwins();
