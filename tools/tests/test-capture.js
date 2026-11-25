@@ -1728,6 +1728,52 @@
     e.stop();
   });
 
+  test('T6.4（35.3 第 2 點）列表被換掉（F-12 重點 → 即時）：兩筆都是正式 id 的同人同內容 → 不合併；舊 id 仍在新列表 → 不合併；舊的是暫時 id、新列表沒有它 → swap 合併', async () => {
+    let { items } = buildChat();
+    const send = mockSend();
+    let T = NOW;
+    const e = engine({ send, now: () => T });
+    e.start();
+    e.setInfo({ videoId: 'testVidSwp1', startDate: NOW - 3600e3, channelHandle: '@ch' });
+    await until(() => e.state().mode === 'capturing');
+    const all = () => send.of(RT.SAVE_MESSAGES).flatMap((c) => c.msg.messages);
+    const last = (id) => all().filter((x) => x.id === id).pop();
+    const flood = (id, ts) => textMsg({ id, author: '@spam', ts: ts || '下午10:24', runs: [{ text: 'ha-ha-ha' }] });
+    // 暫時 id 但不是到達時間（顯示時間與擷取時間差很多 → clock）：不走 30 秒的 temp 規則，只看 swap
+    const old = (id) => flood(id, '上午1:00');
+    const swap = async (kids) => {
+      const n = h('div', { id: 'items' });
+      n.append(...kids);
+      items.replaceWith(n); items = n;
+      await tick(); e._tick(); await sleep(30);
+    };
+    // 1. 洗版：重點模式的一則（正式 id）→ 換列表後同一人同內容、不同正式 id
+    items.append(flood('ChwKflood-a'));
+    await until(() => last('ChwKflood-a'), 3000);
+    T = NOW + 2100;
+    await swap([flood('ChwKflood-b')]);
+    await until(() => last('ChwKflood-b'), 3000);
+    assert(!last('ChwKflood-b').replacesId, '兩筆都是正式 id：不合併');
+    // 2. 舊 id（暫時格式）仍在新列表中 → 不同的兩則
+    T = NOW + 40e3;
+    items.append(old('CTMPAAAAAAAAAAAAAAAAflood-t1'));
+    await until(() => last('CTMPAAAAAAAAAAAAAAAAflood-t1'), 3000);
+    T = NOW + 50e3;
+    await swap([old('CTMPAAAAAAAAAAAAAAAAflood-t1'), flood('ChwKflood-c')]);
+    await until(() => last('ChwKflood-c'), 3000);
+    assert(!last('ChwKflood-c').replacesId, '舊 id 仍在新列表：不合併');
+    // 3. 舊的是暫時 id、新列表沒有它 → swap 合併
+    T = NOW + 120e3;
+    items.append(old('CTMPAAAAAAAAAAAAAAAAflood-t2'));
+    await until(() => last('CTMPAAAAAAAAAAAAAAAAflood-t2'), 3000);
+    T = NOW + 160e3;
+    await swap([flood('ChwKflood-d')]);
+    await until(() => last('ChwKflood-d'), 3000);
+    eq(last('ChwKflood-d').replacesId, 'CTMPAAAAAAAAAAAAAAAAflood-t2', '暫時 id 被換掉：合併');
+    eq(e.state().stats.ownReplacedSwap, 1);
+    e.stop();
+  });
+
   // ---------------------------------------------------------------- 執行
   async function run() {
     const out = [];

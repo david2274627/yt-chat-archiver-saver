@@ -742,7 +742,12 @@
     function tempRule(e) {
       if (isTempEntry(e)) return now() - e.at <= OWN_TEMP_WINDOW_MS ? 'temp' : '';
       if (e.removedAt != null) return !e.trimmed && !e.head && now() - e.removedAt <= OWN_REMOVE_WINDOW_MS ? 'removed' : '';
-      return !e.el.isConnected && e.list !== st.items && !e.reborn && !e.trimmed ? 'swap' : '';
+      // v54（T6.4，審查十一 35.3 第 2 點）列表被換掉（swap）只在舊的是暫時 id 時才算：
+      // 實機（彈出視窗 F-12 從重點聊天室切到即時聊天室）7 次 swap 合併，兩筆都是正式 id（ChwK|40）＝洗版中同一人的兩則相同內容。
+      // 模式切換時同一則訊息的 id 不變（以同 id 重新出現＝reborn），id 不同就是不同的訊息
+      if (!isTemp(e.id) || e.el.isConnected || e.list === st.items || e.reborn || e.trimmed) return '';
+      // 舊 id 仍在新列表中 → 兩則不同的訊息，絕不合併
+      return e.id && st.items && Array.prototype.some.call(st.items.children, (c) => c.id === e.id) ? '' : 'swap';
     }
     function ownAdopt(m, e) {
       m.timestampAbs = e.m.timestampAbs;
