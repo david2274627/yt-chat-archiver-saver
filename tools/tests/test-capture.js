@@ -189,7 +189,57 @@
     e.stop();
     const vs = recs.filter((r) => r.k === 'video-switch').map((r) => r.d.phase);
     eq(vs, ['mismatch', 'swap-same-chat', 'rebind']);
-    assert(recs.filter((r) => r.k === 'video-switch').every((r) => Object.values(r.d).every((v) => v === null || ['number', 'boolean'].includes(typeof v) || ['mismatch', 'swap-same-chat', 'rebind', 'back'].includes(v))), '只有數字、布林與代碼');
+    assert(recs.filter((r) => r.k === 'video-switch').every((r) => Object.values(r.d).every((v) => v === null || ['number', 'boolean'].includes(typeof v) || ['mismatch', 'swap-same-chat', 'rebind', 'back', 'stuck'].includes(v))), '只有數字、布林與代碼');
+  });
+
+  test('T6.3.1（34 第 1 點）重新綁定：舊聊天室持續送來（一次 60 則）不重新綁定；同一個 #items 先清空再填入 → 重新綁定；同一個 #items 一次換掉全部子節點 → 重新綁定；新列表混有一則看過的 id → 不重新綁定；超過 30 秒 → mismatchStuck、狀態 switching', async () => {
+    const run = async (label, mutate, expectRebind) => {
+      const { items } = buildChat();
+      const send = mockSend();
+      const recs = [], stats = [];
+      let T = NOW;
+      const e = engine({ send, bindVideo: true, now: () => T, onDiag: (p, k, d) => recs.push({ p, k, d }), onStatus: (s) => stats.push(s) });
+      e.start();
+      e.setInfo({ videoId: 'testVidRbA1', startDate: NOW - 3600e3 });
+      await until(() => e.state().mode === 'capturing');
+      for (let i = 0; i < 5; i++) items.append(textMsg({ id: 'RA' + label + i, ts: '下午10:23' }));
+      await until(() => savedIds(send).includes('RA' + label + '4'), 3000);
+      e.setInfo({ videoId: 'testVidRbB1', startDate: NOW - 60e3 });
+      eq(e.state().mode, 'paused', label + '：暫停');
+      await mutate(items);
+      await tick(); // MutationObserver
+      e._tick();
+      if (expectRebind) {
+        await until(() => e.state().videoId === 'testVidRbB1' && e.state().mode === 'capturing', 3000, label + '：重新綁定');
+      } else {
+        eq([e.state().mode, e.state().videoId], ['paused', 'testVidRbA1'], label + '：不重新綁定');
+        // 看門狗：30 秒後 → stuck
+        T = NOW + 31e3;
+        e._tick();
+        assert(recs.some((r) => r.k === 'video-switch' && r.d.phase === 'stuck'), label + '：P7 stuck');
+        const last = stats[stats.length - 1];
+        eq([last.policy, last.switching, last.wantVideoId], ['video-mismatch', true, 'testVidRbB1'], label + '：狀態 switching');
+        e._tick();
+        eq(recs.filter((r) => r.k === 'video-switch' && r.d.phase === 'stuck').length, 1, label + '：stuck 只記一次');
+      }
+      e.stop();
+    };
+    // 舊聊天室（原直播）持續：一次加入 60 則（超過修剪上限 45），延續標記不中斷
+    await run('cont', async (items) => {
+      for (let i = 0; i < 60; i++) items.append(textMsg({ id: 'Cx' + i + 'old', ts: '下午10:23' }));
+      await tick();
+      for (let i = 0; i < 10; i++) items.append(textMsg({ id: 'Cy' + i + 'old', ts: '下午10:23' }));
+    }, false);
+    // 先清空（空列表時不判斷）再填入
+    await run('empty', async (items) => {
+      items.replaceChildren();
+      await tick();
+      items.append(textMsg({ id: 'NB1', ts: '下午10:23' }), textMsg({ id: 'NB2', ts: '下午10:23' }));
+    }, true);
+    // 同一個 #items 一次換掉全部子節點
+    await run('swap', async (items) => { items.replaceChildren(textMsg({ id: 'NS1', ts: '下午10:23' }), textMsg({ id: 'NS2', ts: '下午10:23' })); }, true);
+    // 新列表混有一則看過的 id（不可重新綁定）
+    await run('mixed', async (items) => { items.replaceChildren(textMsg({ id: 'NM1', ts: '下午10:23' }), textMsg({ id: 'RAmixed2', ts: '下午10:23' })); }, false);
   });
 
   test('T6.3（33.3）取消置頂：置頂列的那則消失超過 3 秒 → UNPIN（3 秒內又出現不算）；之後同一則再置頂 → 重新送 SAVE_PINNED', async () => {

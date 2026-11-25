@@ -475,8 +475,26 @@
       if (e.data.type === FM.STREAM_INFO_REQUEST) sendInfo();
       else if (e.data.type === FM.CAPTURE_STATUS) {
         lastStatus = { videoId: e.data.videoId, capturing: !!e.data.capturing, reason: e.data.reason || null, at: Date.now() };
+        if (e.data.switching && e.data.policy === 'video-mismatch') maybeReloadChat(f, e.data.wantVideoId);
       }
     });
+
+    // v52.1（T6.3.1，審查十一 34 第 1 點）聊天室的 videoId 不一致超過 30 秒還沒重新綁定：
+    // 聊天室 iframe 的網址已經是目前影片（YouTube 要的是新聊天室，但文件沒換）→ 重新載入一次（6.4 重新初始化流程照常）。
+    // 網址仍是原影片 → 不重新載入（那是原直播的聊天室；降落後的原直播由自動彈出視窗收錄）。每個影片最多一次
+    const chatReloaded = new Set();
+    function maybeReloadChat(f, want) {
+      const vid = currentVideoId();
+      if (!f || !vid || want !== vid || chatReloaded.has(vid)) return;
+      let srcVid = null;
+      try { srcVid = new URL(f.src, location.href).searchParams.get('v'); } catch (_) { /* ignore */ }
+      const reload = srcVid === vid;
+      dlog('P4', 'chat-stuck', { srcMatches: reload, reloaded: reload }, { videoId: vid });
+      if (!reload) return;
+      chatReloaded.add(vid);
+      console.info('[ytcas] 聊天室切換逾時，重新載入聊天室', { videoId: vid });
+      try { f.contentWindow.location.reload(); } catch (_) { try { f.src = f.src; } catch (_e) { /* ignore */ } }
+    }
 
     // 影片長度（F-18）：重播的 video 長度可能稍晚才確定
     let boundVideo = null;

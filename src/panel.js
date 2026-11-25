@@ -543,7 +543,8 @@
       else if (d.type === FM.PANEL_STATE) { st.anchors.header = !!d.headerMounted; st.lastChatState = ''; postChatState(); }
       else if (d.type === FM.CAPTURE_STATUS) {
         if (d.headerMounted != null) st.anchors.header = !!d.headerMounted;
-        st.capture = { videoId: d.videoId || null, capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null };
+        st.capture = { videoId: d.videoId || null, capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null,
+          policy: d.policy || null, switching: !!d.switching }; // v52.1（34 第 1 點）聊天室切換中
         toViewer(Object.assign({ type: FM.CAPTURE_STATUS }, st.capture));
       }
     }

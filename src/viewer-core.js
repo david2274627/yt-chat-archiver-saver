@@ -515,6 +515,9 @@
   function captureNote(cs) {
     if (!cs) return null;
     if (!cs.capturing) {
+      // v52.1（T6.3.1，34 第 1 點）videoId 不一致（降落、換台後聊天室還是原直播的）：不是使用者暫停。
+      // 30 秒內等新聊天室（不顯示），超過 30 秒顯示「聊天室切換中」
+      if (cs.policy === 'video-mismatch') return cs.switching ? { text: '聊天室切換中…（等待新影片的聊天室，暫不收錄）', tone: 'warn', sticky: true } : null;
       if (cs.reason === 'paused' || cs.reason === 'global' || cs.reason === 'channel') return { text: '已暫停收錄（可在擴充功能選單恢復）', tone: 'info', sticky: true };
       if (cs.reason === 'disconnected') return { text: '擴充功能已重新載入，本頁暫停收錄', tone: 'warn', sticky: true };
       if (cs.reason === 'no-video-id') return { text: '無法取得影片資訊，本聊天室不收錄', tone: 'warn', sticky: true };

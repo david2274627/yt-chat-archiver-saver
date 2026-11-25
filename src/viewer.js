@@ -1547,7 +1547,7 @@
       else if (d.type === C.FM.PANEL_NOTE && d.kind === 'raid-popout') { S.extNote = '已在彈出視窗繼續收錄原直播（降落後的聊天）'; renderNote(); }
       else if (d.type === C.FM.CAPTURE_STATUS) {
         S.diag.capture++;
-        S.capture = { capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null };
+        S.capture = { capturing: !!d.capturing, reason: d.reason || null, f12: d.f12 || null, viewMode: d.viewMode || null, policy: d.policy || null, switching: !!d.switching };
         renderNote();
       }
     }

@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v52**（前版：v51；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v53**（前版：v52；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -52,6 +52,7 @@
 - **v50 調整**（`docs/review-2026-11-17.md` 第 29、30 節，T6.1）：**自己送出的訊息**暫時節點→正式節點合併為一筆、沿用到達時間、`fixOwnDuplicates` 兩段式（F-14）；**`$` 流程**：`#panel-pages`／`$` 選單／購買流程可見一律算有互動區、`purchase` 期間不退讓、P7 `zone-structure`（6.8）；**表符選單**展開時裁切頂端取彈窗與底部互動區的最上方 − 8（6.2、6.8）；**置頂選 A**：面板開啟時不露出原生置頂列、面板置頂卡可展開看完整內容且連結可點（6.2、6.5 AC 12、F-07）；**窄視窗**讀不到徽章時以本頁錨點判斷是否在最新、不直接當成倒轉，錨點存在 top frame（`LIVE_ANCHOR`、`VOD_TIME.anchorA`）（F-08、4.3）；T8 記憶體對照加入 T6 前後 chatframe 的 DOM 節點與 heap（第 8 節）。
 - **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）；頻道名稱可見優先、網路錯誤退避、`channelInfo`（F-03）；SC 金額原樣顯示、`scTiers`（10.3）。
 - **v52 調整**（`docs/review-2026-11-17.md` 第 33 節，T6.3）：自己送出的訊息的暫時節點規則再收緊（直播來源、文字、到達時間、30 秒）、id 先清空再設定時也能合併（F-14）；降落的資料正確性（videoId 綁定、導航後的 microdata、降落＝結束、`streamCompare`／`fixRaidLeak`／`fixStreamMeta`，F-14）；降落自動開彈出視窗、`studio` 彈出視窗（F-19）；投票卡結構記錄（6.8）；取消置頂、置頂卡 ✕、「📌 置頂」膠囊（F-07、F-05、10.4）；篩選／搜尋欄預設收起（F-06、10.4）；VOD 的「影片開頭之前」只用於 live、開播前顯示「開播前 …」（F-08）。
+- **v53 調整**（`docs/review-2026-11-17.md` 第 34 節，T6.3.1）：videoId 不一致期間每次定時檢查都判斷是否為新聊天室、30 秒看門狗與「聊天室切換中」、必要時重新載入聊天室 iframe（F-14）；降落橫幅與進場卡區分（`raidDir`），只有降落出去才是結束訊號，重新抓取確認仍在直播時撤銷暫定結束（F-14、F-19、10.4）；`fixOwnDuplicates` 的作者數、`streamCompare`／`fixRaidLeak` 改用降落出去的那則與新規則（F-14）；取消置頂的 `absent` 偵測（F-07）；投票卡露出的修正已備妥、未啟用（6.8）；T8 加頻道佇列合併寫入（第 8 節）。
 
 ---
 
@@ -452,6 +453,11 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   1. **證據**：`await YTCAS_BG.streamCompare('a', 'b')`（只有數字、代碼、4 碼 videoId）：兩場的筆數、phase／`tsSource`／類型分布、開播與結束時間及來源、各收錄紀錄（來源、時間、新增／合併）、收錄開始前就有的筆數、標題／頻道是否相同（布林）、作者數與共同作者數、b 中「同作者同內容也在 a」的筆數、`crossVideo`（id 已存在另一場而合併到那一筆的次數，寫入時記錄）、a 降落後 b 收到「作者只在 a 出現」的筆數。
      - 訊息 id 全域唯一：漏進新場次的訊息，之後原場次的彈出視窗再收到時會**合併到新場次那一筆**（場次不變）→ 原場次只拿到少數幾則。v52 起記下這種跨場次的次數（`streams.crossVideo`，只存次數）。
   2. **嵌入式聊天室的 videoId 綁定後不換場次**（`createEngine({ bindVideo: true })`）：同一個聊天室文件收到不同 videoId 的 `STREAM_INFO` → 送出剩下的、結束收錄紀錄、暫停（`video-mismatch`）；YouTube 把 `#items` 換成**沒有本頁看過 id 的新列表**才重新綁定；top 導航回原影片 → 恢復。P7 `video-switch`、P1 `videoMismatch`。彈出視窗的 videoId 來自網址，本來就固定。
+     - （v53，T6.3.1，審查十一 34 第 1 點）**不一致期間每次定時檢查（`tick`）都看目前的列表**（v52 只在 `#items` 被換掉的那一次檢查：YouTube 先放空列表再填入、或沿用同一個 `#items` 只換子節點時，永遠不會重新綁定，主分頁不收錄降落後的新直播）。
+       - 新聊天室＝列表有帶 id 的節點，而且**全部**不是本頁收錄過的 id、也不是「舊聊天室延續」。
+       - 舊聊天室延續：不一致開始時列表上的節點，以及之後加入時列表上還有延續節點的新節點（原直播的聊天室繼續送訊息；本套件修剪後仍留最新 45 則，延續不中斷）。清空再填入、一次換掉全部子節點、換成新的 `#items` → 新節點加入時沒有延續的鄰居 → 是新聊天室。只用 `WeakSet`，不改 YouTube 的 DOM。
+       - 新列表混有一則看過的 id → 不重新綁定。
+       - **看門狗**：不一致超過 30 秒還沒重新綁定 → P1 `mismatchStuck`、P7 `video-switch`（`stuck`）；收錄狀態帶 `switching`，面板顯示「聊天室切換中…（等待新影片的聊天室，暫不收錄）」（30 秒內不顯示，也不顯示成「已暫停收錄」）。top frame 收到後：聊天室 iframe 的網址已是目前影片 → 重新載入 iframe 一次（每個影片最多一次，6.4 的重新初始化流程照常）；網址仍是原影片 → 不重新載入（那是原直播的聊天室，降落後由自動彈出視窗收錄）。P4 `chat-stuck`（`srcMatches`、`reloaded`）。
   3. **導航後的場次資訊**（top frame）：microdata 自己的 videoId（`meta[itemprop="identifier"]` 或 `link[rel="canonical"]`）與網址不一致 → 只送 videoId 與播放器長度，標題、頻道、時間一律不送，每秒重試最多 10 秒（P4 `meta-stale`／`meta-fresh`）。嵌入式聊天室沒有標題時，background 在 `CAPTURE_START` 後抓 watch 頁補上（不阻擋收錄）。既有的錯誤標題：`YTCAS_BG.fixStreamMeta()`（列出同標題的場次組）→ `fixStreamMeta('videoId')`（預覽：標題／頻道是否會改變）→ `{ dryRun: false }`（重新抓 watch 頁覆蓋）。
   4. **降落橫幅＝原直播結束**：收錄中的直播出現 `yt-live-chat-banner-redirect-renderer` → 以降落時間暫定 `endedAt`（`endedAtSource: 'raid'`，與 `signal` 同級），之後的訊息標 `post`；background 照常重新抓取（每 60 秒，`metaPollDue` 的 `raid-end`），meta 的 `endDate` 覆蓋。彈出視窗收錄時同樣適用。P1 `raidEnd`。
   5. **既有資料**：`YTCAS_BG.fixRaidLeak('新', '原')`：新場次中「時間在原場次第一個降落橫幅前 1 分鐘之後、作者在原場次出現過、而且作者在新場次的其他時段（降落前、降落 10 分鐘後）都沒有出現」的訊息，加上與原場次降落橫幅同內容的那則 → 搬回原場次（phase 依原場次重算，結束後為 `post`；原場次沒有結束時間時以降落時間暫定）。預覽只列筆數、phase 分布、時間跨度。**規則依使用者 `streamCompare` 的結果確認後才執行**。

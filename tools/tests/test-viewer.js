@@ -343,6 +343,9 @@
     eq(CORE.captureNote({ capturing: true, f12: 'failed:no-menu' }).tone, 'warn');
     eq(CORE.captureNote({ capturing: true, f12: 'already' }), null, '本來就是即時聊天室：不顯示');
     eq(CORE.captureNote({ capturing: false, reason: 'channel' }).sticky, true);
+    // v52.1（34 第 1 點）videoId 不一致：30 秒內不顯示（不是使用者暫停）；超過 30 秒「聊天室切換中」
+    eq(CORE.captureNote({ capturing: false, reason: 'paused', policy: 'video-mismatch' }), null);
+    assert(/聊天室切換中/.test(CORE.captureNote({ capturing: false, reason: 'paused', policy: 'video-mismatch', switching: true }).text));
   });
 
   test('T5 內嵌面板：VOD 時間軸同步（目前訊息框、捲到可視範圍、使用者捲動暫停、回到播放位置）、時間碼跳轉、關閉按鈕、F-12 說明', async () => {
