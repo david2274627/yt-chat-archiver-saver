@@ -104,9 +104,9 @@ function report(data) {
     if (ownG.length) {
       L('### P1 自己送出的訊息與時間解析（v50／v51）');
       L();
-      L('**合併**＝真的把暫時節點與正式節點合成一筆的次數（暫時 id／頁面移除 10 秒內／列表被換掉／事後配對／同一個節點原地改 id）。**事件**＝觀察到的次數，大多不會合併（YouTube 重新設定 id、重新排版）。v50 的記錄只有 `replaced`／`inPlace`／`pageRemoved`（後兩者是事件次數）。clockFuture＝顯示時間以「今天」解讀會在未來、已往前推整天的筆數；clock-ambiguous＝依順序重建後早於擷取超過 24 小時。');
+      L('**合併**＝真的把暫時節點與正式節點合成一筆的次數（暫時 id／頁面移除 10 秒內／列表被換掉／事後配對／同一個節點原地改 id）。**事件**＝觀察到的次數，大多不會合併（YouTube 重新設定 id、重新排版）。v50 的記錄只有 `replaced`／`inPlace`／`pageRemoved`（後兩者是事件次數）。v54：原地的括號內＝其中暫時 id → 正式 id 的次數（tempAliased，正式 id 為主、暫時 id 記為別名）；事件的「離開頁面時改 id」＝插回時 id 已不同。clockFuture＝顯示時間以「今天」解讀會在未來、已往前推整天的筆數；clock-ambiguous＝依順序重建後早於擷取超過 24 小時。');
       L();
-      L('| videoId | 來源 | 暫時 id 出現 | 合併：暫時 id／頁面移除／換列表／事後／原地 | 事件：id 改變（從空白）／頁面移除 | 最近合併的 id 形狀 | clockFuture | clock-ambiguous |');
+      L('| videoId | 來源 | 暫時 id 出現 | 合併：暫時 id／頁面移除／換列表／事後／原地 | 事件：id 改變（從空白）／頁面移除／離開頁面時改 id | 最近合併的 id 形狀 | clockFuture | clock-ambiguous |');
       L('|---|---|---|---|---|---|---|---|');
       for (const [k, list] of ownG) {
         const [vidFull, src] = k.split('|');
@@ -114,8 +114,8 @@ function report(data) {
         const mg = o.merged || { temp: '—', removed: '—', swap: '—', late: o.late, inPlace: '—' };
         const ev = o.events || { idChanges: o.inPlace, idFromEmpty: '—', pageRemoved: o.pageRemoved };
         const recent = (o.recent || []).map((x) => (x.oldId ? x.oldId.p + '|' + x.oldId.len : '?') + '→' + (x.newId ? x.newId.p + '|' + x.newId.len : '?') + (x.rule ? '（' + x.rule + '）' : '')).join('、');
-        L('| ' + [vid4(vidFull), src, o.tempSeen + (o.tempStored != null ? '（存 ' + o.tempStored + '／等 ' + o.tempPending + '／沒等到 ' + o.tempDropped + '）' : ''), o.merged ? [mg.temp, mg.removed, mg.swap, mg.late, mg.inPlace].join('／') : 'v50：replaced ' + o.replaced + '、late ' + o.late,
-          ev.idChanges + '（' + ev.idFromEmpty + '）／' + ev.pageRemoved, recent || '—', d.clockFuture ?? '—', d.clockAmbiguous ?? '—'].map(esc).join(' | ') + ' |');
+        L('| ' + [vid4(vidFull), src, o.tempSeen + (o.tempStored != null ? '（存 ' + o.tempStored + '／等 ' + o.tempPending + '／沒等到 ' + o.tempDropped + '）' : ''), o.merged ? [mg.temp, mg.removed, mg.swap, mg.late, mg.inPlace + (o.tempAliased != null ? '（' + o.tempAliased + '）' : '')].join('／') : 'v50：replaced ' + o.replaced + '、late ' + o.late,
+          ev.idChanges + '（' + ev.idFromEmpty + '）／' + ev.pageRemoved + (ev.whileDetached != null ? '／' + ev.whileDetached : ''), recent || '—', d.clockFuture ?? '—', d.clockAmbiguous ?? '—'].map(esc).join(' | ') + ' |');
       }
       L();
     }

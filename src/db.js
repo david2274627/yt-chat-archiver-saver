@@ -1407,19 +1407,37 @@
       if (!k) continue;
       const g = m.videoId + '\u0002' + k;
       if (!realByKey.has(g)) realByKey.set(g, []);
-      realByKey.get(g).push(m.timestampAbs || 0);
+      realByKey.get(g).push(m);
     }
     const why = { noTwin: 0, twinFar: 0, twinUsed: 0, noKey: 0 };
+    // v54（T6.4，審查十一 34.3）twinFar 的時間差分布與另一筆（最近的正式紀錄）的 tsSource；
+    // sameMinute＝另一筆是顯示時間（clock，只到分鐘）、暫時節點的到達時間落在該筆顯示的同一分鐘內 → 另外配對的候選
+    const far = { s30to60: 0, s60to90: 0, over90: 0, otherTsSource: {}, sameMinute: 0 };
+    const minuteOf = (ts) => { const d = new Date(ts); d.setSeconds(0, 0); return d.getTime(); };
+    const usedReal = new Set(pairs.map((p) => p.real.id));
+    const minutePairs = [];
     for (const m of tempRecs) {
       if (pairedTemp.has(m.id)) continue;
       const k = C.ownKey(m);
       if (!k || m.videoId == null) { why.noKey++; continue; }
-      const ts = realByKey.get(m.videoId + '\u0002' + k);
-      if (!ts) { why.noTwin++; continue; }
-      const d = Math.min(...ts.map((x) => Math.abs(x - (m.timestampAbs || 0))));
-      if (d > TEMP_PAIR_MS) why.twinFar++; else why.twinUsed++;
+      const rs = realByKey.get(m.videoId + '\u0002' + k);
+      if (!rs) { why.noTwin++; continue; }
+      let best = null;
+      for (const r of rs) { const d = Math.abs((r.timestampAbs || 0) - (m.timestampAbs || 0)); if (!best || d < best.d) best = { r, d }; }
+      if (best.d <= TEMP_PAIR_MS) { why.twinUsed++; continue; }
+      why.twinFar++;
+      if (best.d <= 60000) far.s30to60++; else if (best.d <= 90000) far.s60to90++; else far.over90++;
+      const ts = best.r.tsSource || '(無)';
+      far.otherTsSource[ts] = (far.otherTsSource[ts] || 0) + 1;
+      const cand = rs.find((r) => r.tsSource === 'clock' && !usedReal.has(r.id) && !hasTempAlias(r) && minuteOf(r.timestampAbs || 0) === minuteOf(m.timestampAbs || 0));
+      if (cand) { far.sameMinute++; usedReal.add(cand.id); minutePairs.push({ real: cand, temp: m }); }
     }
     out.tempUnpaired = why;
+    out.twinFar = far;
+    // sameMinute 的配對只在明確指定時合併（{ dryRun: false, sameMinute: true }）：先看預覽的分布再決定
+    const useMinute = !!(opts && opts.sameMinute);
+    out.sameMinuteMerged = 0;
+    if (useMinute) for (const p of minutePairs) { if (!byVid.has(p.real.videoId)) byVid.set(p.real.videoId, []); byVid.get(p.real.videoId).push(Object.assign({ minute: true }, p)); }
     if (dryRun) return out;
     for (const [videoId, ps] of byVid) {
       await withLock(videoId, async () => {
@@ -1431,6 +1449,7 @@
           s.delete(temp.id);
           s.put(foldTwin(real, temp));
           out.merged++;
+          if (p.minute) out.sameMinuteMerged++;
         }
         await done(t);
       });

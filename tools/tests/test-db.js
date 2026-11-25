@@ -1389,6 +1389,39 @@
     eq((await BG.fixPhases()).changed, 0, '再跑一次沒有要改的');
   });
 
+  test('T6.4（35.3 第 1 點、34.3）暫時 id → 正式 id（原地）：正式 id 為主、暫時 id 記為別名 → 之後重播以 id 合併；fixOwnDuplicates 預覽 twinFar 分布與 sameMinute（明確指定才合併）', async () => {
+    await resetAll();
+    U._resetTwins();
+    const t0 = Math.floor(1_700_200_000_000 / MIN) * MIN;
+    const own = (o) => Object.assign({ type: 'text', authorHandle: '@me', runs: [{ text: '你好' }] }, o);
+    const TMP = 'CTMPAAAAAAAAAAAAAAAAalias1';
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: TMP, timestampAbs: t0 + 5000, tsSource: 'arrival', videoOffsetSec: 5, phase: 'live' })] });
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKalias1', timestampAbs: t0 + 5000, tsSource: 'arrival', videoOffsetSec: 5, phase: 'live', replacesId: TMP, replaceInPlace: true })] });
+    let list = await DB.queryMessages(V);
+    eq(list.map((m) => [m.id, m.aliasIds]), [['ChwKalias1', [TMP]]], '正式 id 為主、暫時 id 是別名');
+    const rp = await DB.saveMessages({ videoId: V, source: 'replay', messages: [own({ id: 'ChwKalias1', timestampAbs: t0 + 3000, videoOffsetSec: 3 })] });
+    eq([rp.added, (await DB.queryMessages(V)).length], [0, 1], '重播以 id 合併（不重複）');
+    // 34.3：沒有配對的暫時節點紀錄（twinFar）
+    await resetAll();
+    U._resetTwins();
+    const msgs = [
+      own({ id: 'CTMPAAAAAAAAAAAAAAAAfar-b1', runs: [{ text: 'b' }], timestampAbs: t0 + 10000, tsSource: 'arrival', videoOffsetSec: 10, phase: 'live' }),
+      own({ id: 'ChwKfar-b2', runs: [{ text: 'b' }], timestampAbs: t0 + 59999, tsSource: 'clock', videoOffsetSec: 60, phase: 'live' }), // 同一分鐘、差 50 秒
+      own({ id: 'CTMPAAAAAAAAAAAAAAAAfar-c1', runs: [{ text: 'c' }], timestampAbs: t0 + 200e3, tsSource: 'arrival', videoOffsetSec: 200, phase: 'live' }),
+      own({ id: 'ChwKfar-c2', runs: [{ text: 'c' }], timestampAbs: t0 + 300e3, tsSource: 'arrival', videoOffsetSec: 300, phase: 'live' })]; // 差 100 秒
+    for (const m of msgs) await DB.saveMessages({ videoId: V, source: 'live', messages: [m] });
+    eq((await DB.queryMessages(V)).length, 4, '前提：寫入時沒有合併（> 30 秒）');
+    const pre = await BG.fixOwnDuplicates();
+    eq([pre.pairs, pre.tempUnpaired.twinFar, pre.twinFar], [0, 2, { s30to60: 1, s60to90: 0, over90: 1, otherTsSource: { clock: 1, arrival: 1 }, sameMinute: 1 }]);
+    const r1 = await BG.fixOwnDuplicates({ dryRun: false });
+    eq([r1.merged, r1.sameMinuteMerged, (await DB.queryMessages(V)).length], [0, 0, 4], '沒指定 sameMinute：不合併');
+    const r2 = await BG.fixOwnDuplicates({ dryRun: false, sameMinute: true });
+    list = await DB.queryMessages(V);
+    eq([r2.merged, r2.sameMinuteMerged, list.length], [1, 1, 3]);
+    const b = list.find((m) => m.id === 'ChwKfar-b2');
+    eq([b.aliasIds, b.tsSource, b.timestampAbs], [['CTMPAAAAAAAAAAAAAAAAfar-b1'], 'arrival', t0 + 10000], '正式 id 為主、時間取到達時間');
+  });
+
   test('T6.4 phase（35.6）：重播 offset −3,300 秒 → pre；0:13 → live；live／replay 合併以 live 的絕對時間判斷；既有資料 fixPhases 列出重播來源的改動（replay／merged）', async () => {
     await resetAll();
     const S0 = 1_700_000_000_000;

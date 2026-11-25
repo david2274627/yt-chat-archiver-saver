@@ -422,6 +422,7 @@
     const now = opts.now || Date.now;
     const source = opts.source;
     const isConnected = opts.isConnected || (() => true);
+    const savedIdOf = new WeakMap(); // v54（35.3 第 1 點）已擷取節點 → 擷取（或最後一次改 id）時的 id
     const st = {
       videoId: null, info: null, stream: {}, session: null,
       mode: 'pending', // pending（等場次資訊）／capturing／paused／disconnected／no-video-id／stopped
@@ -437,6 +438,8 @@
         // v50（T6.1，30.5）自己送出的訊息：看到暫時 id、替換配對（新節點／原地改 id／事後配對）、頁面移除已存節點（非修剪、非開頭）
         // v51（32.2）合併次數依規則分開計（replacedTemp／Removed／Swap、late、inPlaceMerged）；idChanges、idFromEmpty、pageRemoved 是事件次數
         ownTempSeen: 0, ownTempStored: 0, ownTempDropped: 0, ownReplacedTemp: 0, ownReplacedRemoved: 0, ownReplacedSwap: 0, ownInPlaceMerged: 0, ownLate: 0, idChanges: 0, idFromEmpty: 0, pageRemoved: 0,
+        // v54（35.3 第 1 點）tempAliased：暫時 id → 正式 id（同一個節點）合併的次數；idWhileDetached：插回時 id 已不同的次數（事件）
+        tempAliased: 0, idWhileDetached: 0,
         // v51（T6.2，32.7）時間解析在未來而往前推、重建後早於擷取超過 24 小時
         clockFuture: 0, clockAmbiguous: 0,
         // v52（T6.3，33.1）videoId 不一致（不換場次、暫停）的次數；降落當成結束訊號的次數
@@ -672,6 +675,7 @@
       try { m = parseMessage(el, cx); } catch (e) { console.info('[ytcas] 訊息解析失敗', el.tagName.toLowerCase(), String(e && e.message)); }
       if (!m) { el.dataset[SAVED] = 'skip'; return; }
       el.dataset[SAVED] = '1';
+      savedIdOf.set(el, el.id || ''); // v54（35.3 第 1 點）擷取時的 id（插回時比對）
       // v51（32.7）P1 clockFuture：同一天的解讀在未來、往前推了的筆數；clockAmbiguous：重建後早於擷取超過 24 小時
       if (source !== 'replay' && m.tsSource !== 'arrival') {
         const ci = lastClock.info;
@@ -796,8 +800,13 @@
       remember(el, m, key);
     }
     // 已存的節點又被插回頁面（YouTube 重新排版）→ 不再當成「被移除」
+    // v54（T6.4，審查十一 35.3 第 1 點）插回時 id 已經不同：節點離開頁面期間 id 被改掉（暫時 → 空 → 正式），
+    // MutationObserver 看不到不在 #items 裡的節點的屬性變化 → 當成原地改 id 處理（onIdChanged，以擷取時的 id 為舊 id）。
+    // 實機：暫時 id 7～8 次全部「存了、沒等到」、原地合併 0、頁面移除 0，紀錄停在暫時 id
     function onReadded(n) {
       for (const e of st.recent) if (e.el === n) e.removedAt = null;
+      const old = savedIdOf.get(n);
+      if (old !== undefined && n.id && old !== n.id) { st.stats.idWhileDetached++; onIdChanged(n, old); }
     }
     // 頁面移除了已存的節點（不是本套件修剪）。之前已擷取、同作者同內容、仍在頁面上、沒配對過的正式節點 → 事後配對（暫時節點晚於正式節點才移除）。
     // 事後配對只限暫時 id，或正式節點在移除前 OWN_REMOVE_WINDOW_MS 內才出現
@@ -838,13 +847,18 @@
       if (e && e.id === el.id) { if (m.id) st.seenIds.add(m.id); return; } // 清空後設回同一個 id：同一則，不必重送
       const key = C.ownKey(m);
       if (e && (key ? key === e.key : C.ownKey(e.m) === '' && JSON.stringify(e.m.runs || []) === JSON.stringify(m.runs || []) && (e.m.authorHandle || '') === (m.authorHandle || ''))) {
+        const wasTemp = isTemp(e.id) && !isTemp(m.id);
         ownAdopt(m, e);
         m.replaceInPlace = true;
         e.matched = true; e.id = m.id; e.m = Object.assign({}, m);
         st.stats.ownInPlaceMerged++;
+        // v54（35.3 第 1 點）暫時 id → 正式 id（同一個節點）：background 合併成一筆，正式 id 為主、暫時 id 記入 aliasIds
+        // （F-14 別名機制）→ 之後重播送來正式 id 時以 id 合併
+        if (wasTemp) st.stats.tempAliased++;
         probeOwn('in-place', e, el, m, { rule: 'same-node', fromEmpty: !oldId });
       } else if (key) remember(el, m, key);
       if (m.id) st.seenIds.add(m.id);
+      savedIdOf.set(el, el.id);
       enqueue(m);
     }
 
@@ -1252,7 +1266,8 @@
         own: { tempSeen: s.ownTempSeen, tempStored: s.ownTempStored, tempDropped: s.ownTempDropped,
           tempPending: st.recent.filter((e) => isTempEntry(e) && !e.matched).length,
           merged: { temp: s.ownReplacedTemp, removed: s.ownReplacedRemoved, swap: s.ownReplacedSwap, late: s.ownLate, inPlace: s.ownInPlaceMerged },
-          events: { idChanges: s.idChanges, idFromEmpty: s.idFromEmpty, pageRemoved: s.pageRemoved },
+          tempAliased: s.tempAliased, // v54（35.3 第 1 點）
+          events: { idChanges: s.idChanges, idFromEmpty: s.idFromEmpty, pageRemoved: s.pageRemoved, whileDetached: s.idWhileDetached },
           recent: st.ownRecent.slice() } };
       if (s.captured || final) console.info('[ytcas] 收錄統計' + (final ? '（結束）' : ''), obj);
       // F-20 P1／P2：同一份統計寫入診斷記錄（只有筆數）；時間來源一併記錄，供開播判斷驗證

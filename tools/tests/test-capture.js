@@ -416,6 +416,20 @@
     await until(() => last('ChwK' + 'b'.repeat(36)), 3000);
     const r = last('ChwK' + 'b'.repeat(36));
     eq([r.replacesId, r.replaceInPlace, r.timestampAbs], ['CPfn' + 'a'.repeat(23), true, NOW + 20000], '暫時 id → 空 → 正式 id：合併');
+    eq(e.state().stats.tempAliased, 1, 'v54 tempAliased');
+    // 1b. v54（35.3 第 1 點）離開頁面期間改 id（暫時 → 空 → 正式）再插回：MutationObserver 看不到 → 插回時比對
+    const n1b = me('CPgx' + 'a'.repeat(23), '離開再回來');
+    items.append(n1b);
+    await until(() => last(n1b.id), 3000);
+    const nextB = n1b.nextSibling;
+    n1b.remove();
+    await sleep(20);
+    n1b.removeAttribute('id'); n1b.id = 'ChwK' + 'g'.repeat(36);
+    items.insertBefore(n1b, nextB);
+    await until(() => last('ChwK' + 'g'.repeat(36)), 3000, '插回時改 id');
+    const rb = last('ChwK' + 'g'.repeat(36));
+    eq([rb.replacesId, rb.replaceInPlace], ['CPgx' + 'a'.repeat(23), true]);
+    eq([e.state().stats.tempAliased, e.state().stats.idWhileDetached], [2, 1]);
     // 2. 清空後設回同一個 id：不重送、不合併
     const n2 = me('ChwK' + 'c'.repeat(36), '同一則');
     items.append(n2);
@@ -432,7 +446,7 @@
     await until(() => last('ChwK' + 'e'.repeat(36)), 3000);
     assert(!last('ChwK' + 'e'.repeat(36)).replacesId, '超過 30 秒：不配對');
     let st = e.state().stats;
-    eq([st.ownTempStored, st.ownInPlaceMerged, st.ownReplacedTemp], [2, 1, 0]);
+    eq([st.ownTempStored, st.ownInPlaceMerged, st.ownReplacedTemp], [3, 2, 0]);
     // 90 秒後還沒配對的暫時節點 → tempDropped
     T = NOW + 200000;
     items.append(me('ChwK' + 'f'.repeat(36), '觸發整理'));
@@ -441,7 +455,8 @@
     eq(st.ownTempDropped, 1, '沒等到正式節點的暫時節點');
     e.stop();
     const p1 = recs.filter((x) => x.p === 'P1').pop();
-    eq([p1.d.own.tempStored, p1.d.own.tempDropped, p1.d.own.tempPending], [2, 1, 0]);
+    eq([p1.d.own.tempStored, p1.d.own.tempDropped, p1.d.own.tempPending], [3, 1, 0]);
+    eq([p1.d.own.tempAliased, p1.d.own.events.whileDetached], [2, 1], 'v54 P1 tempAliased／whileDetached');
   });
 
   test('T6.2（32.11）SC／超級貼圖的金額存原生完整文字（含幣別前綴）：HK$170.00、US$5.00、¥500、€5,00、NT$1,500.00', () => {

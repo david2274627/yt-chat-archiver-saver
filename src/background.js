@@ -368,8 +368,10 @@ async function fixFutureTimes(opts) {
 }
 // v50（T6.1，審查十一 30.5 第 4 點）自己送出的訊息被存成兩筆（暫時 id＋正式 id）。
 // 用法：await YTCAS_BG.fixOwnDuplicates()（預覽：筆數、各場筆數，videoId 4 碼）→ await YTCAS_BG.fixOwnDuplicates({ dryRun: false })
+// v54（T6.4，34.3）預覽多了 twinFar（時間差分布、另一筆的 tsSource、sameMinute 候選數）；
+// sameMinute 的配對要明確指定才合併：fixOwnDuplicates({ dryRun: false, sameMinute: true })
 async function fixOwnDuplicates(opts) {
-  const r = await DB.fixOwnDuplicates({ dryRun: !(opts && opts.dryRun === false) });
+  const r = await DB.fixOwnDuplicates({ dryRun: !(opts && opts.dryRun === false), sameMinute: !!(opts && opts.sameMinute) });
   console.info('[ytcas] 自己送出的重複訊息' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
 }
