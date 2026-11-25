@@ -561,6 +561,9 @@
     msgs.push(mk({ id: 'qPre', videoId: VQ, phase: 'pre', videoOffsetSec: -3360, offsets: { v1: -3360 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 - 3360e3 }));
     msgs.push(mk({ id: 'qCut', videoId: VQ, videoOffsetSec: 30, offsets: { v1: 30 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 + 30e3 }));
     msgs.push(mk({ id: 'q13', videoId: VQ, videoOffsetSec: 91, offsets: { v1: 91 }, offsetSource: 'estimated', sources: ['live'], timestampAbs: T0 + 91e3 }));
+    // v54（T6.4，35.6）只來自重播：影片時間 −3,300 秒（開播前的聊天，寫入時 pre）、0:13（live）
+    msgs.push(mk({ id: 'qRp', videoId: VQ, phase: 'pre', videoOffsetSec: -3300, offsets: { v1: -3300 }, offsetSource: 'replay', sources: ['replay'], timestampAbs: T0 - 3300e3 }));
+    msgs.push(mk({ id: 'qR13', videoId: VQ, videoOffsetSec: 13, offsets: { v1: 13 }, offsetSource: 'replay', sources: ['replay'], timestampAbs: T0 + 13e3 }));
     await put({ videoId: VQ, title: 'Q', isLive: true, startedAt: T0, endedAt: T0 + 4000e3, lastMessageAt: T0 + 800e3, messageCount: msgs.length, versions: [{ id: 'v1', duration: 4000 }], linkedVideos: [] }, msgs);
     await DB.close();
     for (const embed of [true, false]) {
@@ -576,6 +579,8 @@
       assert(!/影片開頭之前/.test(tc('qPre').textContent), who + '：開播前不是「影片開頭之前」');
       assert(tc('qCut').textContent === '影片開頭之前' && /被剪掉/.test(tc('qCut').title), who + '：live 校正後 < 0 ' + tc('qCut').textContent);
       assert(tc('q13').textContent === '0:13' && tc('q13').tagName === 'BUTTON', who + '：live 0:13 可點 ' + tc('q13').textContent);
+      assert(tc('qRp').textContent === '開播前 55:00' && tc('qRp').tagName === 'SPAN', who + '：重播 −3,300 秒 → ' + tc('qRp').textContent);
+      assert(tc('qR13').textContent === '0:13' && tc('qR13').tagName === 'BUTTON', who + '：重播 0:13 → ' + tc('qR13').textContent);
       assert(Array.from(c.els.list.querySelectorAll('.phase')).some((n) => /開始前/.test(n.textContent)), who + '：有「直播開始前」段標題');
     }
   });

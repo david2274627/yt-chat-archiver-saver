@@ -1360,6 +1360,64 @@
     eq((await BG.fixPhases()).waiting.length, 0, 'meta-actual 的提早開播不列入');
   });
 
+  test('T6.4 phase（35.4 第 1 點）：待機室中自己送出（擷取端標 live）→ 寫入時改 pre（暫時節點、正式節點合併後也是 pre）；既有資料 fixPhases waitingLive 兩段式', async () => {
+    await resetAll();
+    U._resetTwins();
+    const now = Date.now();
+    const sch = Math.ceil((now + 80 * MIN) / MIN) * MIN; // 預定 80 分鐘後（待機室）
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: sch, scheduledFuture: true, isLive: true }, messages: [] });
+    const own = (o) => Object.assign({ type: 'text', authorHandle: '@me', runs: [{ text: '等你喔' }] }, o);
+    // 擷取端還不知道預定時間（livePhase 預設 live）：暫時節點 → 正式節點
+    const r0 = await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'CTMPAAAAAAAAAAAAAAAAtmp9', timestampAbs: now - 5000, tsSource: 'arrival', videoOffsetSec: null, phase: 'live' })] });
+    eq(r0.waitingFixed, 1, '寫入保底');
+    const r1 = await DB.saveMessages({ videoId: V, source: 'live', messages: [own({ id: 'ChwKwait1', timestampAbs: now - 2000, tsSource: 'arrival', videoOffsetSec: null, phase: 'live' })] });
+    let list = await DB.queryMessages(V);
+    eq([r1.ownMerged, list.map((m) => [m.id, m.phase])], [1, [['ChwKwait1', 'pre']]], '合併後仍是 pre');
+    // 提示不動；不是待機室（沒有任何預定時間）的場次不動
+    await DB.saveMessages({ videoId: V2, source: 'live', messages: [msg({ id: 'n1', phase: 'live', videoOffsetSec: null })] });
+    eq((await DB.queryMessages(V2))[0].phase, 'live', '沒有預定時間＝不能判斷，維持 live');
+    // 既有資料（v53 以前存成 live）
+    const db = await DB.open();
+    const t = db.transaction('messages', 'readwrite');
+    t.objectStore('messages').put(Object.assign({}, list[0], { phase: 'live' }));
+    await new Promise((r) => { t.oncomplete = r; });
+    const pre = await BG.fixPhases();
+    eq([pre.waitingLive, pre.changed], [[{ vid: V.slice(0, 4), changed: 1 }], 1]);
+    eq((await DB.queryMessages(V))[0].phase, 'live', '預覽不改資料');
+    const r = await BG.fixPhases({ dryRun: false });
+    eq([r.updated, (await DB.queryMessages(V))[0].phase], [1, 'pre']);
+    eq((await BG.fixPhases()).changed, 0, '再跑一次沒有要改的');
+  });
+
+  test('T6.4 phase（35.6）：重播 offset −3,300 秒 → pre；0:13 → live；live／replay 合併以 live 的絕對時間判斷；既有資料 fixPhases 列出重播來源的改動（replay／merged）', async () => {
+    await resetAll();
+    const S0 = 1_700_000_000_000;
+    await DB.saveMessages({ videoId: V, source: 'replay', stream: { startedAt: S0, startedAtSource: 'replay' }, messages: [
+      msg({ id: 'r1', videoOffsetSec: -3300, timestampAbs: S0 - 3300e3 }), msg({ id: 'r2', videoOffsetSec: 13, timestampAbs: S0 + 13e3 })] });
+    const get = async (id) => (await DB.queryMessages(V)).find((m) => m.id === id);
+    eq([(await get('r1')).phase, (await get('r2')).phase], ['pre', 'live'], '重播的負影片時間＝開播前');
+    // live 收錄（開播前 55 分鐘，pre）之後在重播出現 → 不再改成 live
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [msg({ id: 'l1', timestampAbs: S0 - 3290e3, videoOffsetSec: -3290, phase: 'pre' })] });
+    await DB.saveMessages({ videoId: V, source: 'replay', messages: [msg({ id: 'l1', timestampAbs: S0 - 3290e3, videoOffsetSec: -3288 })] });
+    const l1 = await get('l1');
+    eq([l1.sources, l1.offsetSource, l1.phase], [['live', 'replay'], 'replay', 'pre'], '合併：phase 以 live 的時間判斷');
+    // live 早 78 秒到（時間在開播後）→ live（面板 VOD 校正後 < 0 時顯示「影片開頭之前」，見 test-viewer）
+    await DB.saveMessages({ videoId: V, source: 'live', messages: [msg({ id: 'l2', timestampAbs: S0 + 40e3, videoOffsetSec: 40, phase: 'live' })] });
+    eq((await get('l2')).phase, 'live');
+    // 既有資料：v53 以前重播一律 live
+    const db = await DB.open();
+    const r1 = await get('r1');
+    const t = db.transaction('messages', 'readwrite');
+    t.objectStore('messages').put(Object.assign({}, r1, { phase: 'live' }));
+    t.objectStore('messages').put(Object.assign({}, l1, { phase: 'live' }));
+    await new Promise((r) => { t.oncomplete = r; });
+    const pre = await BG.fixPhases();
+    eq([pre.list.length, pre.list[0].changed, pre.list[0].replay, pre.list[0].merged, pre.list[0].moves], [1, 2, 1, 1, { 'live→pre': 2 }]);
+    await BG.fixPhases({ dryRun: false });
+    eq([(await get('r1')).phase, (await get('l1')).phase, (await get('r2')).phase], ['pre', 'pre', 'live']);
+    eq((await BG.fixPhases()).changed, 0, '再跑一次沒有要改的');
+  });
+
   test('T5.7 待機室→開播（27 第 1 點）：提早開播不重新整理 → 預定時間前 30 分鐘內每 2 分鐘重新抓取；isLiveNow＋實際時間 → 採用並 pre→live 重算；之後分頁的舊 meta（在未來）不得降級；之後送來的 pre 訊息依已知開播時間重算', async () => {
     await resetAll();
     const C = self.YTCAS_CONST;

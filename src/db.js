@@ -307,7 +307,8 @@
       r.firstSeenAt = ctx.now;
       r.lastSeenAt = ctx.now;
     }
-    r.phase = ctx.source === 'replay' ? 'live' : (PHASES.has(r.phase) ? r.phase : 'live');
+    // v54（35.6）重播：負的影片時間（開播前的聊天）→ pre
+    r.phase = ctx.source === 'replay' ? C.replayPhase(off) : (PHASES.has(r.phase) ? r.phase : 'live');
     r.deleted = !!r.deleted;
     if (!r.deleted) delete r.deletedAt;
     r.aliasIds = Array.isArray(m.aliasIds) ? m.aliasIds.filter((a) => typeof a === 'string' && a && a !== r.id) : [];
@@ -451,7 +452,10 @@
         if (num(r.videoOffsetSec) === null) {
           r.videoOffsetSec = o; r.offsets.v1 = o; r.offsetSource = inc.offsetSource || 'estimated';
         } else if (r.offsetSource !== 'replay' && inc.offsetSource === 'replay') {
-          r.videoOffsetSec = o; r.offsets.v1 = o; r.offsetSource = 'replay'; r.phase = 'live';
+          r.videoOffsetSec = o; r.offsets.v1 = o; r.offsetSource = 'replay';
+          // v54（35.6）live／replay 合併：本套件直播收錄過的那筆，phase 以 live 的絕對時間與開播時間判斷（寫入時已依此計算，不改）；
+          // 只有重播的才看影片時間正負（v53 以前一律改成 live → 開播前的訊息被放進「直播中」）
+          if (!(existing.sources || []).includes('live')) r.phase = C.replayPhase(o);
         }
       } else if (num(r.offsets[vid]) === null) {
         r.offsets[vid] = o;
@@ -545,6 +549,14 @@
           // v48（T5.7，審查十一 27 第 1 點）擷取端還不知道開播時間（待機室→開播、不重新整理），background 已經知道：
           // 送來的 pre／offset 空的直播訊息依已知的開播時間重算（pre→live），不必等下一次 startedAt 變動
           const fix = (r) => {
+            // v54（T6.4，審查十一 35.4 第 1 點）待機室保底：擷取端還不知道預定時間（例：頁面 meta 沒有 startDate、
+            // 預定時間由 background 重新抓取才得知）時，livePhase 的預設是 live → 待機室中自己送出的訊息被放進「直播中」。
+            // background 的場次在待機室（C.isWaitingAt）→ 直播來源的 live 一律改 pre（自己送出、暫時節點、合併都經過這裡）
+            if (effStart == null && ctx.source !== 'replay') {
+              const w = waitingLiveFix(r, stream, now);
+              if (w) { stats.waitingFixed = (stats.waitingFixed || 0) + 1; return w; }
+              return r;
+            }
             if (effStart == null || ctx.source === 'replay' || !(r.phase === 'pre' || num(r.videoOffsetSec) === null)) return r;
             const nv = recomputeRecord(r, stream);
             if (nv) stats.phaseFixed = (stats.phaseFixed || 0) + 1;
@@ -867,12 +879,31 @@
   //   T3.6（追加五 E-2）本套件直播收錄的推算值（sources 含 live、estimated）一律以新的零點重算；
   //   遷移／匯入的 offset（不是由本套件的 startedAt 推算）只在為空時補上。
   // 回傳更新後的紀錄（複本），沒有變動回傳 null
+  // v54（T6.4，審查十一 35.6）重播來源也重算 phase（offset 不動）：
+  //   只來自重播 → 依影片時間正負（C.replayPhase：負的＝開播前的聊天 → pre）；
+  //   live／replay 合併（offsetSource replay、sources 含 live）→ 依 live 的絕對時間與開播時間
+  //   （v53 以前重播合併時一律改成 live，fixPhases 也跳過重播 → 開播前的訊息留在「直播中」段）
   function recomputeRecord(rec, s) {
-    const st0 = C.effectiveStart(s); // v47（26.1）待機室或已降級的 startedAt 不重算
-    if (st0 == null) return null;
     if (C.isNotice(rec)) return null; // v45（21.3）頁面狀態提示不參與 phase
     const fromLive = (rec.sources || []).some((x) => x === 'live' || x === 'legacy' || x === 'import');
-    if (rec.offsetSource === 'replay' || !fromLive) return null;
+    const hasReplay = (rec.sources || []).includes('replay');
+    if (!fromLive && hasReplay) {
+      const ph = C.replayPhase(num(rec.videoOffsetSec));
+      if (num(rec.videoOffsetSec) === null || ph === rec.phase) return null;
+      const v = clone(rec); v.phase = ph; v.fp = makeFp(v);
+      return v;
+    }
+    const st0 = C.effectiveStart(s); // v47（26.1）待機室或已降級的 startedAt 不重算
+    if (st0 == null) return null;
+    if (!fromLive) return null;
+    if (rec.offsetSource === 'replay') {
+      const ts = num(rec.timestampAbs);
+      if (ts === null || !(rec.sources || []).includes('live')) return null;
+      const ph = ts < st0 ? 'pre' : (s.endedAt != null && ts > s.endedAt ? 'post' : 'live');
+      if (ph === rec.phase) return null;
+      const v = clone(rec); v.phase = ph; v.fp = makeFp(v);
+      return v;
+    }
     const v = clone(rec);
     const ts = v.timestampAbs;
     v.phase = ts < st0 ? 'pre' : (s.endedAt != null && ts > s.endedAt ? 'post' : 'live');
@@ -1054,19 +1085,56 @@
     for (const s of streams) {
       const msgs = await req(db.transaction('messages').objectStore('messages').index('videoId').getAll(s.videoId));
       const moves = {};
-      let n = 0;
+      let n = 0, replay = 0, merged = 0;
       for (const m of msgs) {
         const nv = recomputeRecord(m, s);
         if (!nv) continue;
         n++;
+        // v54（35.6）重播來源的改動：只來自重播（replay）／live 與 replay 合併（merged）
+        const src = m.sources || [];
+        if (src.includes('replay')) { if (src.includes('live')) merged++; else replay++; }
         if (nv.phase !== m.phase) { const k = (m.phase || '(無)') + '→' + nv.phase; moves[k] = (moves[k] || 0) + 1; }
       }
       if (!n) continue;
       out.streams++; out.changed += n;
-      out.list.push({ vid: String(s.videoId).slice(0, 4), ended: s.endedAt != null, changed: n, moves });
+      out.list.push({ vid: String(s.videoId).slice(0, 4), ended: s.endedAt != null, changed: n, replay, merged, moves });
       if (!dryRun) out.updated += await recomputePhases(s.videoId);
     }
+    // v54（T6.4，審查十一 35.4 第 1 點）待機室中（還沒有開播時間）被存成 live 的直播訊息 → pre（waitingLive）。
+    // 已開播的場次由上面依開播時間重算（早於開播 → pre），這裡只處理還在待機室的
+    out.waitingLive = [];
+    for (const s of all.filter((x) => C.effectiveStart(x, now) == null && x.endedAt == null && !waitingWrongStart(x, now))) {
+      const msgs = await req(db.transaction('messages').objectStore('messages').index('videoId').getAll(s.videoId));
+      const ids = msgs.filter((m) => waitingLiveFix(m, s, now)).map((m) => m.id);
+      if (!ids.length) continue;
+      out.waitingLive.push({ vid: String(s.videoId).slice(0, 4), changed: ids.length });
+      out.changed += ids.length;
+      if (dryRun) continue;
+      await withLock(s.videoId, async () => {
+        const t = db.transaction(['messages', 'streams'], 'readwrite');
+        const work = (async () => {
+          const cur = await req(t.objectStore('streams').get(s.videoId));
+          for (const id of ids) {
+            const m = await req(t.objectStore('messages').get(id));
+            const nv = m && waitingLiveFix(m, cur, now);
+            if (nv) { t.objectStore('messages').put(nv); out.updated++; }
+          }
+        })();
+        await Promise.all([work, done(t)]);
+      });
+    }
     return out;
+  }
+  // v54（35.4 第 1 點）待機室保底：直播來源、不是提示、phase live、場次在待機室（C.isWaitingAt）→ pre（複本）；否則 null
+  function waitingLiveFix(rec, s, now) {
+    if (!rec || rec.phase !== 'live' || C.isNotice(rec) || rec.offsetSource === 'replay') return null;
+    const src = rec.sources || [];
+    if (!src.length || !src.every((x) => x === 'live' || x === 'popout')) return null;
+    if (!C.isWaitingAt(s, num(rec.timestampAbs), now)) return null;
+    const v = clone(rec);
+    v.phase = 'pre';
+    v.fp = makeFp(v);
+    return v;
   }
 
   // v45（21.3）system 紀錄的元件標籤統計（只有標籤與筆數，不含文字）：找出「頁面狀態提示」用的是哪個元件

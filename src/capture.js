@@ -304,7 +304,7 @@
       const off = parseOffset(tsText);
       m.videoOffsetSec = off;
       m.timestampAbs = ctx.startedAt != null && off != null ? ctx.startedAt + off * 1000 : ctx.now;
-      m.phase = 'live';
+      m.phase = C.replayPhase(off); // v54（35.6）負的影片時間＝開播前的聊天 → pre
     } else {
       // T5.1（審查十一 13.1 (C)）聊天室顯示的時間只到分鐘：parseClock 只有在擷取時間落在該分鐘內才有秒數，
       // 其餘一律落在分鐘的開頭或最後一刻 → 同一分鐘的訊息時間相同、offset 的秒數全部一樣。

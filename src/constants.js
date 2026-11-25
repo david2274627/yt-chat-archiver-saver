@@ -335,6 +335,18 @@
     if (!s || s.endedAt != null || !s.scheduledFuture || s.liveConfirmedAt) return false;
     return typeof s.scheduledStartAt === 'number' && s.scheduledStartAt > (typeof now === 'number' ? now : Date.now());
   };
+  // v54（T6.4，審查十一 35.6）重播來源的 phase：YouTube 重播聊天室以**負的影片時間**列出開播前的聊天（例「-56:00」）→ pre；
+  // 其餘（0 以後、讀不到）→ live（重播不會有結束後的聊天）。v53 以前一律 live → 面板「直播中」段出現「影片開頭之前」
+  C.replayPhase = function (off) {
+    return typeof off === 'number' && Number.isFinite(off) && off < 0 ? 'pre' : 'live';
+  };
+  // v54（T6.4，審查十一 35.4 第 1 點）待機室判斷（寫入保底與 fixPhases 共用）：還沒有採用的開播時間，而且
+  // 頁面 meta 說預定時間在未來、或等待開播確認、或訊息早於預定時間 → 直播來源的訊息應為 pre
+  C.isWaitingAt = function (s, ts, now) {
+    if (!s || C.effectiveStart(s, now) != null || s.endedAt != null) return false;
+    if (C.isFutureScheduled(s, now) || s.startPending) return true;
+    return typeof s.scheduledStartAt === 'number' && typeof ts === 'number' && ts < s.scheduledStartAt;
+  };
   // 實際採用的開播時間：待機室（上一條）或已降級 → null
   C.effectiveStart = function (s, now) {
     if (!s || s.startedAt == null) return null;

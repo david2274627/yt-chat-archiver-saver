@@ -536,6 +536,10 @@
     eq(m.videoOffsetSec, 3723);
     eq(m.timestampAbs, 1_700_000_000_000 + 3723000);
     eq(m.phase, 'live');
+    // v54（T6.4，35.6）負的影片時間＝重播列出的開播前聊天 → pre；0:13 → live
+    const p = CAP.parseMessage(textMsg({ ts: '-55:00' }), { source: 'replay', now: NOW, startedAt: 1_700_000_000_000 });
+    eq([p.videoOffsetSec, p.phase], [-3300, 'pre']);
+    eq(CAP.parseMessage(textMsg({ ts: '0:13' }), { source: 'replay', now: NOW, startedAt: 1_700_000_000_000 }).phase, 'live');
   });
 
   test('parseMessage：會員訊息（標題與副標放在 runs 開頭）、超級貼圖（金額、貼圖）', () => {

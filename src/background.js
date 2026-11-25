@@ -331,6 +331,8 @@ async function fillAvatars(opts) {
 }
 // v45（T5.4，審查十一 21.2）既有資料的 phase 重算。用法：await YTCAS_BG.fixPhases()（預覽，只有筆數）→ { dryRun: false }
 // v47（T5.6，審查十一 26.1）waiting：待機室被記了開播時間的場次（清除 startedAt、訊息改回 pre）
+// v54（T6.4，審查十一 35.4／35.6）list 每場加 replay（只來自重播）／merged（live 與 replay 合併）的改動筆數；
+// waitingLive：還在待機室、被存成 live 的直播訊息 → pre
 async function fixPhases(opts) {
   const r = await DB.recomputeAllPhases({ dryRun: !(opts && opts.dryRun === false) });
   console.info('[ytcas] phase 重算' + (r.dryRun ? '（預覽）' : ''), r);
