@@ -263,6 +263,12 @@
 | T6.3 實機【任何直播】取消置頂後置頂卡消失、✕ 只隱藏、📌 膠囊；篩選／搜尋欄預設收起、點名稱自動展開 | ⬜ | |
 | T6.3 實機【VOD】開播前的訊息顯示「開播前 …」，只有直播開頭被剪掉的才是「影片開頭之前」 | ⬜ | |
 | T6.3 實機【不限】studio.youtube.com 的彈出式聊天室：P7 `popout-env` | ⬜ | |
+| T6.3.1 自動 (34 第 1 點) | 舊聊天室延續（一次 60 則）不重新綁定、清空再填入／一次換掉全部子節點 → 重新綁定、混有一則看過的 id 不綁定、30 秒 stuck 只記一次（`test-capture.html`）；「聊天室切換中」（`test-viewer.html`）。top frame 的重新載入沒有測試頁 | ✅ | 2026-11-25 |
+| T6.3.1 自動 (34.2.1、34.2.2、34.1) | 進場卡不結束、不送 onRaid，之後降落出去才結束；同一部影片或包著的頻道連結不算 out；撤銷後回到 live（`test-capture.html`）；撤銷與重算、不再採用舊的 raid 結束、`fixRaidEnds`、`streamCompare`／`fixRaidLeak` 新規則、`fixOwnDuplicates` 作者數（`test-db.html`）；降落卡標籤（`test-viewer.html`） | ✅ | 2026-11-25 |
+| T6.3.1 自動 (34 第 3、4 點) | 取消置頂 `absent`（置頂列空的、換成別則、同一則換了 id 不算、只送一次）（`test-capture.html`、`test-db.html`）；`pollCard` 未啟用／啟用（`test-chat-input.html`） | ✅ | 2026-11-25 |
+| T6.3.1 實機【不限】`fixOwnDuplicates()` 看 `tempAuthors`／`pairAuthors`／`tempUnpaired`；`streamCompare('LjiGAfrnSlM','mb9I…')`、`fixRaidLeak` 預覽；`fixRaidEnds()` 預覽 | ⬜ | |
+| T6.3.1 實機【任何直播】有人降落進來：不判為結束、不開彈出視窗、面板「✨ 降落進場」；降落出去：「✨ 降落到 @…」、自動彈出視窗、主分頁收錄新直播（不卡在「聊天室切換中」） | ⬜ | |
+| T6.3.1 實機【不限】重新開分頁後，分頁沒開時被取消的置頂 10 秒後從置頂卡消失 | ⬜ | |
 
 ## UI 設計（SPEC 第 10 節）
 | 項目 | 狀態 | 備註 |

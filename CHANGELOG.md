@@ -226,6 +226,23 @@
   - 直播 30 分鐘 P95 上升的來源（`b3d8890` 的佇列項目 `addedAt`）與修正（第 33 節漏掉的第 2 點，commit `6eaf27f`）。
   - CHANGELOG、測試清單、報告（本段落所在的 commit）。
 
+- v53／T6.3.1（`docs/review-2026-11-17.md` 第 34～34.2 節；報告為 `docs/reports/2026-11-22-t6-f10.md` 的「T6.3.1」一節）：
+  - 審查十一第 34～34.2 節（commit `7ce68e1`）。
+  - videoId 不一致期間每次定時檢查都判斷新聊天室、30 秒看門狗、「聊天室切換中」、必要時重新載入聊天室（34 第 1 點，commit `a14edf2`）。
+  - 降落出去與進場卡區分（`raidDir`）、只有降落出去才是結束訊號、撤銷暫定結束、`fixRaidEnds`（34.2.1，commit `2120e10`）。
+  - `fixOwnDuplicates` 預覽的作者數與沒配對的原因（34.1，commit `dd2e223`）。
+  - `streamCompare`／`fixRaidLeak` 改用降落出去的那則與新規則（34.2.2，commit `f88b743`）。
+  - 取消置頂的漏網偵測（`absent`）（34 第 4 點，commit `ca8e32a`）。
+  - 投票卡露出的修正已備妥、未啟用（34 第 3 點，commit `9d98b4f`）。
+  - SPEC 第 8 節 T8 頻道佇列合併寫入（34 第 5 點，commit `0555756`）。
+  - CHANGELOG、測試清單、報告（本段落所在的 commit）。
+
+### 規格 v53（2026-11-25，T6.3.1）
+- F-14：videoId 不一致期間每次定時檢查、舊聊天室延續的判斷、30 秒看門狗（P1 `mismatchStuck`、P4 `chat-stuck`）、「聊天室切換中」；降落出去／進場卡（`raidDir`、P1 `raidIn`、P7 `raid-dir`）、撤銷暫定結束（`raidEndRevokedAt`、P4 `raid-end-revoked`）、`fixRaidEnds`；`fixOwnDuplicates` 的 `tempAuthors`／`pairAuthors`／`tempUnpaired`；`fixRaidLeak` 新規則（刪除 120 秒內同作者同內容的重複與同內容的降落橫幅）。
+- F-07：取消置頂的 `absent` 偵測（`lastPin`、`unpinnedAtSource`、P1 `unpinnedAbsent`）。
+- 10.4：「✨ 降落進場」／「✨ 降落到 @…」。
+- 6.8：`chat.pollCard`（留空＝不啟用）。第 8 節 T8：頻道佇列合併寫入。
+
 ### 規格 v52（2026-11-24，T6.3）
 - F-14：暫時節點規則（直播來源、文字、到達時間、30 秒）、id 先清空再設定；降落的 videoId 綁定、microdata 一致、降落＝結束訊號、`streams.crossVideo`、`streamCompare`／`fixRaidLeak`／`fixStreamMeta`；延遲表「10～20 秒，看哪條路徑先到」、P4 `meta-refetch`。
 - F-19：降落自動開彈出視窗（`raidAutoPopout`，預設開啟、手動關閉、面板一行提示）；`studio.youtube.com/live_chat*`。
