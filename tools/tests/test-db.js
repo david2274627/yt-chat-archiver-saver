@@ -1840,6 +1840,19 @@
     const ts = pre.tempShapes.map((x) => x.k).join('｜');
     assert(/replay · text · arrival(?! ✓)/.test(ts) && /legacy/.test(ts) && /superchat/.test(ts) && /· clock/.test(ts) && /✓/.test(ts), 'tempShapes 依來源、類型、時間來源分組 ' + ts);
     assert(!JSON.stringify(pre).includes('同一句') && !JSON.stringify(pre).includes('@me'), '不含內容與作者');
+    // v53（34.1）作者數：都是 @me → 1、不列分布；沒配對的 1 筆（超過 30 秒）→ twinFar
+    eq([pre.tempAuthors, pre.pairAuthors, 'tempAuthorDist' in pre, 'pairAuthorDist' in pre], [1, 1, false, false]);
+    eq(pre.tempUnpaired, { noTwin: 0, twinFar: 1, twinUsed: 0, noKey: 0 });
+    // 別的作者也有暫時節點形狀（含一筆沒有正式紀錄的）→ 作者數 > 1、列分布（只有數字）
+    await DB.saveMessages({ videoId: V, source: 'live', preserve: true, messages: [
+      base({ id: C28('o1'), authorHandle: '@other', timestampAbs: t0 + 200000, runs: [{ text: '別人' }] }),
+      base({ id: C28('o2'), authorHandle: '@other', timestampAbs: t0 + 300000, runs: [{ text: '只有暫時' }] }),
+      base({ id: 'ChwK' + 'z'.repeat(36), authorHandle: '@other', tsSource: 'clock', timestampAbs: t0 + 205000, runs: [{ text: '別人' }] }),
+    ] });
+    const pre2 = await BG.fixOwnDuplicates();
+    eq([pre2.pairs, pre2.tempIds, pre2.tempAuthors, pre2.pairAuthors, pre2.tempAuthorDist, pre2.pairAuthorDist], [2, 4, 2, 2, [2, 2], [1, 1]]);
+    eq(pre2.tempUnpaired, { noTwin: 1, twinFar: 1, twinUsed: 0, noKey: 0 });
+    assert(!JSON.stringify(pre2).includes('@other'), '不含 handle');
     // 寫入時：重播來源的短 C 開頭 id 不合併；直播文字、到達時間、30 秒內才合併
     U._resetTwins();
     await DB.saveMessages({ videoId: V2, source: 'replay', messages: [base({ id: C28('r2'), runs: [{ text: 'R' }], timestampAbs: t0, videoOffsetSec: 1 })] });

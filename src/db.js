@@ -1320,6 +1320,37 @@
       streams: Array.from(byVid, ([v, ps]) => ({ v: String(v).slice(0, 4), n: ps.length })),
       sameTextBothReal: { pairs: suspects.length, idShapes: Array.from(shapes, ([k, n]) => ({ k, n })).sort((a, b) => b.n - a.n).slice(0, 5) },
       merged: 0 };
+    // v53（T6.3.1，審查十一 34.1）作者數（只有數字，不含 handle）：tempAuthors＝符合條件的暫時節點紀錄的作者數、
+    // pairAuthors＝配對的作者數；大於 1 時列各作者的筆數分布（多到少，最多 20 個）。
+    // 沒有配對的暫時節點紀錄為什麼沒配對：noTwin＝同場次沒有同作者同內容的正式紀錄（大多是正式節點只改 id、沒有另存一筆）、
+    // twinFar＝有但時間差 > 30 秒、twinUsed＝30 秒內的正式紀錄已配給別筆（或已合併過）、noKey＝沒有作者或內容
+    const authorOf = (m) => (m.authorHandle || '').toLowerCase() || m.authorChannelId || m.authorName || '';
+    const dist = (arr) => { const m = new Map(); for (const a of arr) m.set(a, (m.get(a) || 0) + 1); return Array.from(m.values()).sort((x, y) => y - x); };
+    const tA = dist(tempRecs.map(authorOf)), pA = dist(pairs.map((p) => authorOf(p.temp)));
+    out.tempAuthors = tA.length; out.pairAuthors = pA.length;
+    if (tA.length > 1) out.tempAuthorDist = tA.slice(0, 20);
+    if (pA.length > 1) out.pairAuthorDist = pA.slice(0, 20);
+    const pairedTemp = new Set(pairs.map((p) => p.temp.id));
+    const realByKey = new Map();
+    for (const m of all) {
+      if (isTempRec(m) || m.videoId == null) continue;
+      const k = C.ownKey(m);
+      if (!k) continue;
+      const g = m.videoId + '\u0002' + k;
+      if (!realByKey.has(g)) realByKey.set(g, []);
+      realByKey.get(g).push(m.timestampAbs || 0);
+    }
+    const why = { noTwin: 0, twinFar: 0, twinUsed: 0, noKey: 0 };
+    for (const m of tempRecs) {
+      if (pairedTemp.has(m.id)) continue;
+      const k = C.ownKey(m);
+      if (!k || m.videoId == null) { why.noKey++; continue; }
+      const ts = realByKey.get(m.videoId + '\u0002' + k);
+      if (!ts) { why.noTwin++; continue; }
+      const d = Math.min(...ts.map((x) => Math.abs(x - (m.timestampAbs || 0))));
+      if (d > TEMP_PAIR_MS) why.twinFar++; else why.twinUsed++;
+    }
+    out.tempUnpaired = why;
     if (dryRun) return out;
     for (const [videoId, ps] of byVid) {
       await withLock(videoId, async () => {
