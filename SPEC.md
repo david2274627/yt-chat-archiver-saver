@@ -896,6 +896,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - F-20 P7 `poll-structure`（`chat-input.js` `watchPolls`，嵌入式與彈出視窗都記，只在 P7 記錄中運作）：聊天室文件中標籤或 id 含 `poll`／`action-panel` 的元素出現、大小改變時記一筆——祖先鏈（標籤＋靜態 id，到 `yt-live-chat-app`）、位置高度、computed `visibility`／`overflow`／`max-height`／`clip-path`、祖先是否有本套件的屬性、是否在面板隱藏範圍內（`underHidden`）、是否在 `#items` 內（`inItems`）；不記文字；每頁最多 20 筆。
   - 結構確認後的修正方向：在列表範圍內 → 隱藏樣式改為「列表 `visibility: hidden`、投票卡 `visibility: visible`」並算進露出區域；面板關閉與彈出視窗時本套件樣式不得影響它。另一個可能是 F-12 切到「即時聊天室」後 YouTube 本身以收合狀態顯示（dom-notes 2.11）。
   - 確認：`chat-input.js` 只在嵌入式聊天室啟動（彈出視窗不啟動），隱藏樣式只在面板開啟且未退讓時存在；擷取引擎只處理 `#items` 的直接子節點。
+  - （v53，T6.3.1，審查十一 34 第 3 點）面板開啟時「完全看不到」很可能是原生列表的 `visibility: hidden` 連它一起隱藏。修正**已備妥、未啟用**：`selectors.js` 的 `chat.pollCard`（留空＝不啟用）。填入後，隱藏樣式多一條「`pollCard { visibility: visible }`」，量測時 `pollCard` 算進底部互動區（白名單）。`poll-structure` 確認位置（在列表範圍內、不在 `#items` 內）後只需填入元件標籤，不必再多一輪。
 - **表符選單（30.1）**：實機選單出現在底部，輸入列（打字的那一列與表符按鈕）不見了，看不到選了什麼、也無法再按表符按鈕關閉。推測選單長在輸入列**下方**、輸入列被往上推，v49 的 `popup` 只取 `popupTop − 8`，輸入列落在裁切範圍外。
   - 規則：`popup` 的裁切頂端＝`min(popupTop, iframe 高度 − bottomZoneHeight) − PANEL.POPUP_GAP_PX`。`bottomZoneHeight` 本來就取底部互動區所有白名單元素的最上方，所以等於「彈窗與底部互動區所有元素的最上方 − 8」。選單在輸入列上方或下方都完整露出輸入列。
   - 上下關係待實機確認（dom-notes 2.5c）：P7 `zone-structure` 在表符選單開關時記錄選單、輸入列 `#top`、`#input-panel`、`#panel-pages` 的頂端與高度。（v51：**已驗證**，選單在 `#input-panel` 內、輸入列之下，`#input-panel` 56 → 252px。）

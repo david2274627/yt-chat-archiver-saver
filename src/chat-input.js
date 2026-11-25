@@ -43,7 +43,8 @@
     out.inputH = ir ? Math.round(ir.height) : 0;
     // 1. 白名單
     let wlTop = null;
-    for (const sel of S.chat.bottomZone) {
+    // v53（34 第 3 點）投票卡（S.chat.pollCard，確認位置後才填）也算進底部互動區
+    for (const sel of S.chat.bottomZone.concat(S.chat.pollCard ? [S.chat.pollCard] : [])) {
       rootEl.querySelectorAll(sel).forEach((el) => {
         const r = visibleRect(el, win);
         if (r && r.top < vh) wlTop = wlTop == null ? r.top : Math.min(wlTop, r.top);
@@ -190,7 +191,9 @@
       if (on && !s) {
         s = doc.createElement('style');
         s.id = HIDE_STYLE_ID;
-        s.textContent = [S.chat.itemList, S.chat.header, S.chat.bannerContainer].join(', ') + ' { visibility: hidden !important; }';
+        s.textContent = [S.chat.itemList, S.chat.header, S.chat.bannerContainer].join(', ') + ' { visibility: hidden !important; }'
+          // v53（34 第 3 點）投票卡在列表範圍內：列表隱藏、投票卡照樣露出（visibility 子元素可覆蓋）。S.chat.pollCard 留空＝不啟用
+          + (S.chat.pollCard ? '\n' + S.chat.pollCard + ' { visibility: visible !important; }' : '');
         (doc.head || doc.documentElement).appendChild(s);
       } else if (!on && s) s.remove();
       if (st.started) schedule(false); // 置頂列顯示與否會改變底部互動區（stop 之後不再回報）

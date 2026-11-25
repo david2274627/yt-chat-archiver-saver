@@ -165,6 +165,7 @@ yt-live-chat-renderer
   2. **F-12 的「即時聊天室」模式**：無痕視窗是預設的「重點聊天室」，本套件會切到「即時」。投票卡在「即時」模式下可能本來就以收合狀態顯示。請在無痕視窗手動切到「即時聊天室」比較。
   3. 在 `#items` 內（會被擷取當成訊息、被修剪）：`poll-structure` 的 `inItems` 會顯示。
 - 確認方式：開 F-20 P7，投票卡出現時與點開後各等幾秒，匯出。`poll-structure` 記錄祖先鏈（標籤、id、高度、visibility／overflow／max-height／clip-path、是否有本套件屬性）、`underHidden`、`inItems`。
+- v53（審查十一 34 第 3 點）修正已備妥、**未啟用**：`selectors.js` 的 `chat.pollCard` 留空。`poll-structure` 確認投票卡在列表範圍內（`underHidden: true`、`inItems: false`）後，把它的元件標籤填進 `chat.pollCard` 即可：面板開啟時列表照樣 `visibility: hidden`，投票卡 `visibility: visible`，並算進底部互動區。在 `#items` 內（推測 3）則不適用，要另外處理（擷取與修剪要跳過它）。
 
 ### 2.10 降落（**部分已驗證**，審查十一 32.12、33.1）
 - **已驗證**（2026-11-23，32.12 圖 1、2）：降落橫幅是置頂列（`yt-live-chat-banner-manager`）內的 `yt-live-chat-banner-redirect-renderer`，文字如「千萬別錯過！和大家一起收看@…」；本套件收錄為「✨ 降落」卡。降落後主分頁被導向新直播，**彈出視窗不會**跟著導向（至少 `studio` 網域那次）。

@@ -102,6 +102,10 @@
       ],
       // 蓋在訊息列表上的透明覆蓋層（YouTube 原生，投票卡推測掛在此）：容器本身不計，只計其「可見」子元素
       bottomZoneOverlay: 'ytls-widget-overlay-manager',
+      // v53（T6.3.1，審查十一 34 第 3 點）投票卡（另一種，不在 #chat > #action-panel）：**位置未確認前留空＝不啟用**。
+      // 由 P7 poll-structure 確認它在訊息列表（#item-list）範圍內之後填入選擇器：面板開啟時列表 visibility:hidden，
+      // 投票卡改為 visibility:visible，並算進底部互動區（chat-input.js）。不猜選擇器（dom-notes 2.11）
+      pollCard: '',
       // 量測時一律排除（含診斷清單標示原因）
       bottomZoneExclude: [
         '#item-list',

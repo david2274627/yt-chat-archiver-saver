@@ -177,6 +177,36 @@
     ci.stop();
   });
 
+  test('T6.3.1（34 第 3 點）投票卡在列表範圍內（修正已備妥、未啟用）：S.chat.pollCard 留空 → 列表隱藏時投票卡也看不到、不算互動區（目前行為）；填入選擇器 → 投票卡 visibility:visible、算進底部互動區；關閉面板 → 還原', async () => {
+    reset();
+    eq(W().YTCAS_SEL.chat.pollCard, '', '預設不啟用（位置未確認，不猜選擇器）');
+    const list = q('#item-list');
+    assert(list, 'fixture 有 #item-list');
+    const poll = D().createElement('x-test-poll');
+    poll.style.cssText = 'display:block;position:fixed;left:0;top:300px;height:80px;width:200px';
+    list.appendChild(poll);
+    const vis = (el) => W().getComputedStyle(el).visibility;
+    const run = async (S) => {
+      const sent = [];
+      const ci = W().YTCAS_CHAT_INPUT.create({ doc: D(), win: W(), S, C: W().YTCAS_CONST, post: (type, d) => sent.push(d),
+        accept: (e) => e.source === W().parent && !!e.data && e.data.__ytcas === true });
+      ci.start();
+      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
+      await until(() => vis(list) === 'hidden', 2000, '列表隱藏');
+      await sleep(400);
+      const r = { vis: vis(poll), bz: sent[sent.length - 1].bottomZoneHeight };
+      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: false }, location.origin);
+      await until(() => vis(list) === 'visible', 2000, '關閉 → 還原');
+      ci.stop();
+      return r;
+    };
+    try {
+      eq(await run(W().YTCAS_SEL), { vis: 'hidden', bz: 62 }, '未啟用：跟著列表隱藏（實機「面板開啟時完全看不到」）');
+      const S2 = Object.assign({}, W().YTCAS_SEL, { chat: Object.assign({}, W().YTCAS_SEL.chat, { pollCard: 'x-test-poll' }) });
+      eq(await run(S2), { vis: 'visible', bz: 300 }, '啟用：露出並算進互動區（600 − 300）');
+    } finally { poll.remove(); }
+  });
+
   test('T6.3（33.8.4）P7 poll-structure：找到標籤或 id 含 poll／action-panel 的元素 → 記祖先鏈、位置、visibility、是否在面板隱藏範圍內；大小改變再記；只在記錄中運作；沒有文字', async () => {
     reset();
     const logs = [];
