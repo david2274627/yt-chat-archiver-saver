@@ -31,6 +31,9 @@
     return out;
   }
 
+  // v54（35.1）投票卡選擇器（空字串＝不啟用）
+  const pollSels = (S) => [S.chat.pollBanner, S.chat.pollCard].filter((x) => typeof x === 'string' && x);
+
   // 純量測（測試頁直接呼叫）。回傳 { vh, hasInput, bottomZoneHeight, src, inputH, popupOpen, popupTop, overlayIgnored }
   function measure(doc, win, S, C) {
     const P = C.PANEL;
@@ -43,8 +46,8 @@
     out.inputH = ir ? Math.round(ir.height) : 0;
     // 1. 白名單
     let wlTop = null;
-    // v53（34 第 3 點）投票卡（S.chat.pollCard，確認位置後才填）也算進底部互動區
-    for (const sel of S.chat.bottomZone.concat(S.chat.pollCard ? [S.chat.pollCard] : [])) {
+    // v53（34 第 3 點）／v54（35.1）投票卡也算進底部互動區：置頂列裡含投票的橫幅（S.chat.pollBanner，含收合時的外框）與投票卡本身
+    for (const sel of S.chat.bottomZone.concat(pollSels(S))) {
       rootEl.querySelectorAll(sel).forEach((el) => {
         const r = visibleRect(el, win);
         if (r && r.top < vh) wlTop = wlTop == null ? r.top : Math.min(wlTop, r.top);
@@ -118,6 +121,7 @@
     doc.querySelectorAll(S.chat.emojiPicker).forEach((el) => add(el, 'emoji'));
     doc.querySelectorAll(S.chat.buyFlowInChat).forEach((el) => add(el, 'buy-flow'));
     add(rootEl.querySelector(S.chat.bannerContainer), 'banner');
+    if (S.chat.pollBanner) rootEl.querySelectorAll(S.chat.pollBanner).forEach((el) => add(el, 'poll-banner')); // v54（35.1）
     const ap = rootEl.querySelector(Z.actionPanel);
     add(ap, 'action-panel');
     // v51（32.6）投票卡：#action-panel 內的元件標籤（兩層，只有標籤與尺寸）
@@ -137,14 +141,16 @@
     function logZone(m) {
       // v51（32.6）投票卡（#action-panel）出現也記（實際元件標籤待記錄）
       const apVis = !!visibleRect(doc.querySelector(S.chat.zoneStructure.actionPanel), win);
-      const active = m.purchase || m.popupOpen || apVis;
+      // v54（35.1）置頂列裡的投票橫幅露出（收合／展開時高度改變也記）
+      const pollVis = !!S.chat.pollBanner && Array.from(doc.querySelectorAll(S.chat.pollBanner)).some((el) => !!visibleRect(el, win));
+      const active = m.purchase || m.popupOpen || apVis || pollVis;
       if (opts.onLog && (active || st.zoneActive) && st.zoneLogs < P.ZONE_LOG_MAX) {
         const els = zoneStructure(doc, win, S);
-        const sig = JSON.stringify([m.purchase, m.popupOpen, apVis, els.map((x) => [x.t, x.v, x.h, x.top])]);
+        const sig = JSON.stringify([m.purchase, m.popupOpen, apVis, pollVis, els.map((x) => [x.t, x.v, x.h, x.top])]);
         if (sig !== st.zoneSig) {
           st.zoneSig = sig;
           st.zoneLogs++;
-          try { opts.onLog('zone-structure', { reason: m.purchase ? 'purchase' : m.popupOpen ? 'popup' : apVis ? 'action-panel' : 'closed',
+          try { opts.onLog('zone-structure', { reason: m.purchase ? 'purchase' : m.popupOpen ? 'popup' : apVis ? 'action-panel' : pollVis ? 'poll-banner' : 'closed',
             m: { vh: m.vh, hasInput: m.hasInput, bottomZoneHeight: m.bottomZoneHeight, src: m.src, popupOpen: m.popupOpen, popupTop: m.popupTop, purchase: m.purchase }, els }); } catch (_) { /* ignore */ }
         }
       }
@@ -173,6 +179,8 @@
       if (!win.ResizeObserver) return;
       const want = [doc.documentElement];
       for (const sel of S.chat.bottomZone) doc.querySelectorAll(sel).forEach((el) => { want.push(el); if (el.parentElement) want.push(el.parentElement); });
+      // v54（35.1）投票橫幅收合（約 40px）／展開：直接監看含投票的 banner-renderer，高度一變就重新量測、更新裁切
+      for (const sel of pollSels(S)) doc.querySelectorAll(sel).forEach((el) => want.push(el));
       const same = want.length === st.observed.length && want.every((el, i) => el === st.observed[i]);
       if (same) return;
       if (st.ro) st.ro.disconnect();
@@ -192,8 +200,9 @@
         s = doc.createElement('style');
         s.id = HIDE_STYLE_ID;
         s.textContent = [S.chat.itemList, S.chat.header, S.chat.bannerContainer].join(', ') + ' { visibility: hidden !important; }'
-          // v53（34 第 3 點）投票卡在列表範圍內：列表隱藏、投票卡照樣露出（visibility 子元素可覆蓋）。S.chat.pollCard 留空＝不啟用
-          + (S.chat.pollCard ? '\n' + S.chat.pollCard + ' { visibility: visible !important; }' : '');
+          // v54（35.1）投票卡在置頂列裡：置頂列整體隱藏，含投票的那個橫幅露出（visibility 子元素可覆蓋；:has，Chrome 105+）。
+          // 同一層的置頂訊息、降落橫幅維持隱藏。選擇器留空＝不啟用
+          + pollSels(S).map((sel) => '\n' + sel + ' { visibility: visible !important; }').join('');
         (doc.head || doc.documentElement).appendChild(s);
       } else if (!on && s) s.remove();
       if (st.started) schedule(false); // 置頂列顯示與否會改變底部互動區（stop 之後不再回報）

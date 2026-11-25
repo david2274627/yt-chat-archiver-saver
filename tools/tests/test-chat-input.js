@@ -177,34 +177,45 @@
     ci.stop();
   });
 
-  test('T6.3.1（34 第 3 點）投票卡在列表範圍內（修正已備妥、未啟用）：S.chat.pollCard 留空 → 列表隱藏時投票卡也看不到、不算互動區（目前行為）；填入選擇器 → 投票卡 visibility:visible、算進底部互動區；關閉面板 → 還原', async () => {
+  test('T6.4（35.1）置頂列裡的投票橫幅：面板開啟時置頂列隱藏、只露出含投票的 banner-renderer（置頂訊息維持隱藏）並算進底部互動區；收合 40px → 展開時 ResizeObserver 更新；#action-panel 投票卡照舊；關閉面板 → 還原', async () => {
     reset();
-    eq(W().YTCAS_SEL.chat.pollCard, '', '預設不啟用（位置未確認，不猜選擇器）');
-    const list = q('#item-list');
-    assert(list, 'fixture 有 #item-list');
-    const poll = D().createElement('x-test-poll');
-    poll.style.cssText = 'display:block;position:fixed;left:0;top:300px;height:80px;width:200px';
-    list.appendChild(poll);
+    const S = W().YTCAS_SEL;
+    eq([S.chat.pollCard, S.chat.pollBanner], ['yt-live-chat-banner-poll-renderer', 'yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer)'], '已驗證的選擇器（dom-notes 2.11）');
+    // 實機結構（35.1）：banner-manager > div#visible-banners > banner-renderer > div#banner-container > div#contents > banner-poll-renderer
+    const mk = (tag, attrs, kids) => { const e = D().createElement(tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); for (const k of kids || []) e.append(k); return e; };
+    const mgr = q('yt-live-chat-banner-manager');
+    mgr.style.top = ''; mgr.style.height = ''; mgr.style.bottom = '62px'; // 底邊貼著輸入列（#panel-pages 538～600）
+    const pinned = mk('yt-live-chat-banner-renderer', { style: 'display:block;height:40px;overflow:hidden' }, [mk('div', { id: 'banner-container' }, [mk('div', { id: 'contents' }, [mk('yt-live-chat-banner-header-renderer')])])]);
+    const pollR = mk('yt-live-chat-banner-poll-renderer', { style: 'display:block;height:32px' });
+    const pollB = mk('yt-live-chat-banner-renderer', { style: 'display:block;height:40px;overflow:hidden' }, [mk('div', { id: 'banner-container' }, [mk('div', { id: 'contents' }, [pollR])])]);
+    const vb = mk('div', { id: 'visible-banners' }, [pinned, pollB]);
+    mgr.append(vb);
     const vis = (el) => W().getComputedStyle(el).visibility;
-    const run = async (S) => {
-      const sent = [];
-      const ci = W().YTCAS_CHAT_INPUT.create({ doc: D(), win: W(), S, C: W().YTCAS_CONST, post: (type, d) => sent.push(d),
-        accept: (e) => e.source === W().parent && !!e.data && e.data.__ytcas === true });
-      ci.start();
-      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
-      await until(() => vis(list) === 'hidden', 2000, '列表隱藏');
-      await sleep(400);
-      const r = { vis: vis(poll), bz: sent[sent.length - 1].bottomZoneHeight };
-      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: false }, location.origin);
-      await until(() => vis(list) === 'visible', 2000, '關閉 → 還原');
-      ci.stop();
-      return r;
-    };
+    const sent = [];
+    const ci = W().YTCAS_CHAT_INPUT.create({ doc: D(), win: W(), S, C: W().YTCAS_CONST, post: (type, d) => sent.push(d),
+      accept: (e) => e.source === W().parent && !!e.data && e.data.__ytcas === true });
+    const bz = () => sent[sent.length - 1].bottomZoneHeight;
     try {
-      eq(await run(W().YTCAS_SEL), { vis: 'hidden', bz: 62 }, '未啟用：跟著列表隱藏（實機「面板開啟時完全看不到」）');
-      const S2 = Object.assign({}, W().YTCAS_SEL, { chat: Object.assign({}, W().YTCAS_SEL.chat, { pollCard: 'x-test-poll' }) });
-      eq(await run(S2), { vis: 'visible', bz: 300 }, '啟用：露出並算進互動區（600 − 300）');
-    } finally { poll.remove(); }
+      ci.start();
+      eq(bz(), 142, '面板關閉：置頂列整體（置頂訊息＋投票，600 − 458）');
+      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
+      await until(() => bz() === 102, 2000, '只露出投票橫幅（600 − 498）');
+      eq([vis(mgr), vis(pinned), vis(pollB), vis(pollR)], ['hidden', 'hidden', 'visible', 'visible'], '置頂訊息維持隱藏、投票露出');
+      // 展開（使用者點開）：banner-renderer 40 → 120px，置頂列往上長
+      pollB.style.height = '120px';
+      await until(() => bz() === 182, 2000, '展開 → ResizeObserver 更新（600 − 418）');
+      pollB.style.height = '40px';
+      await until(() => bz() === 102, 2000, '收合 → 回到 102');
+      // 投票結束（投票橫幅移除）→ 只剩輸入列
+      pollB.remove();
+      await until(() => bz() === 62, 2000, '沒有投票：置頂訊息照 30.2 選 A 隱藏');
+      // #action-panel 那種投票卡維持原白名單
+      place(q('#action-panel'), 355, 130);
+      await until(() => bz() === 245, 2000, '#action-panel 投票卡');
+      q('#action-panel').hidden = true;
+      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: false }, location.origin);
+      await until(() => vis(mgr) === 'visible', 2000, '關閉 → 還原');
+    } finally { ci.stop(); vb.remove(); mgr.style.bottom = ''; }
   });
 
   test('T6.3（33.8.4）P7 poll-structure：找到標籤或 id 含 poll／action-panel 的元素 → 記祖先鏈、位置、visibility、是否在面板隱藏範圍內；大小改變再記；只在記錄中運作；沒有文字', async () => {

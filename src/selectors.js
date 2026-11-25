@@ -102,10 +102,15 @@
       ],
       // 蓋在訊息列表上的透明覆蓋層（YouTube 原生，投票卡推測掛在此）：容器本身不計，只計其「可見」子元素
       bottomZoneOverlay: 'ytls-widget-overlay-manager',
-      // v53（T6.3.1，審查十一 34 第 3 點）投票卡（另一種，不在 #chat > #action-panel）：**位置未確認前留空＝不啟用**。
-      // 由 P7 poll-structure 確認它在訊息列表（#item-list）範圍內之後填入選擇器：面板開啟時列表 visibility:hidden，
-      // 投票卡改為 visibility:visible，並算進底部互動區（chat-input.js）。不猜選擇器（dom-notes 2.11）
-      pollCard: '',
+      // v54（T6.4，審查十一 35.1）投票卡（另一種，不在 #chat > #action-panel）：**置頂列裡的一種橫幅**（確認，2026-11-25 Chrome 158，
+      // P7 poll-structure；dom-notes 2.11）：
+      //   yt-live-chat-banner-manager#live-chat-banner > div#visible-banners > yt-live-chat-banner-renderer
+      //     > div#banner-container > div#contents > yt-live-chat-banner-poll-renderer
+      //       > div#main-content > yt-formatted-string#poll-question、div#poll-choices-container > yt-live-chat-banner-poll-choice × N
+      // 面板開啟時置頂列整體 visibility:hidden（30.2 選 A），**含投票的那個 banner-renderer** 改 visible，並算進底部互動區（chat-input.js）。
+      // 置頂訊息、降落橫幅（同一層的其他 banner-renderer）維持隱藏。收合時 banner-renderer 高 40px（overflow:hidden），展開後變高
+      pollCard: 'yt-live-chat-banner-poll-renderer',
+      pollBanner: 'yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer)',
       // 量測時一律排除（含診斷清單標示原因）
       bottomZoneExclude: [
         '#item-list',
