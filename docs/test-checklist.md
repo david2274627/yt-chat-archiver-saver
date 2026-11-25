@@ -269,6 +269,14 @@
 | T6.3.1 實機【不限】`fixOwnDuplicates()` 看 `tempAuthors`／`pairAuthors`／`tempUnpaired`；`streamCompare('LjiGAfrnSlM','mb9I…')`、`fixRaidLeak` 預覽；`fixRaidEnds()` 預覽 | ⬜ | |
 | T6.3.1 實機【任何直播】有人降落進來：不判為結束、不開彈出視窗、面板「✨ 降落進場」；降落出去：「✨ 降落到 @…」、自動彈出視窗、主分頁收錄新直播（不卡在「聊天室切換中」） | ⬜ | |
 | T6.3.1 實機【不限】重新開分頁後，分頁沒開時被取消的置頂 10 秒後從置頂卡消失 | ⬜ | |
+| T6.4 自動 (35.4、35.6) | 待機室中自己送出（擷取端標 live）→ 寫入時 pre、暫時 → 正式合併後仍 pre、沒有預定時間的不動、`fixPhases` `waitingLive`；重播 −3,300 秒 → pre、0:13 → live、live／replay 合併以 live 時間判斷、`fixPhases` `replay`／`merged`（`test-db.html`）；擷取端重播負時間 → pre（`test-capture.html`）；「開播前 55:00」、重播 0:13 可點（`test-viewer.html`） | ✅ | 2026-11-26 |
+| T6.4 自動 (35.3) | 換列表時兩筆正式 id 不合併、舊 id 仍在新列表不合併、暫時 id 被換掉才 swap；離開頁面期間改 id 插回 → 原地合併、`tempAliased`／`whileDetached`（`test-capture.html`）；別名 → 重播以 id 合併、`twinFar` 分布、`sameMinute` 明確指定才合併（`test-db.html`） | ✅ | 2026-11-26 |
+| T6.4 自動 (35.1) | 投票橫幅與置頂訊息同時存在只露投票、收合 40 → 展開 120 → 收合即時更新、投票結束、`#action-panel` 投票卡、關閉面板還原（`test-chat-input.html`） | ✅ | 2026-11-26 |
+| T6.4 實機【待機室】自己送出的留言在「直播開始前（待機室）」段（不是「直播中」） | ⬜ | |
+| T6.4 實機【VOD】`fixPhases()` 預覽看 `G1Ov` 的 `replay`／`merged`，執行後「直播中」段開頭不再有一串「影片開頭之前」，改在「直播開始前」段顯示「開播前 …」 | ⬜ | |
+| T6.4 實機【任何直播】投票卡：面板開啟時露出（只有投票、沒有置頂訊息）、點開展開時面板跟著讓出空間、收合後回來 | ⬜ | |
+| T6.4 實機【任何直播】自己送出：P1 `tempAliased` ≥ 1、`whileDetached`；`fixOwnDuplicates()` 預覽 `twinFar` | ⬜ | |
+| T6.4 實機【任何直播】彈出視窗開啟（F-12 切換）時 P1 換列表合併為 0（除非是暫時 id） | ⬜ | |
 
 ## UI 設計（SPEC 第 10 節）
 | 項目 | 狀態 | 備註 |

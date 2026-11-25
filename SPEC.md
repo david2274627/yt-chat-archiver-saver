@@ -2,7 +2,7 @@
 
 | 項目 | 內容 |
 |---|---|
-| 規格版本 | **v53**（前版：v52；原始交接文件 v18 見 `docs/handover-v18.md`） |
+| 規格版本 | **v54**（前版：v53；原始交接文件 v18 見 `docs/handover-v18.md`） |
 | 目標套件版本 | **3.0.0**（全新重寫；前版 2.6.0 不沿用程式碼） |
 | 開發方式 | **本機 Claude Code**，於使用者電腦的 Chrome 實測 |
 | 目標環境 | Google Chrome 桌面版，Manifest V3 |
@@ -53,6 +53,7 @@
 - **v51 調整**（`docs/review-2026-11-17.md` 第 31、32 節，T6.2）：直播／待機室訊息的時間**不得在未來**、回溯擷取依 DOM 順序重建跨日日期、`clock-ambiguous`、`fixFutureTimes`（F-02）；等待開播期間一律暫定 `pre`、直播／待機室清單也依 phase 分段（F-14）；VOD 校正後 < 0 顯示「影片開頭之前」（F-08）；待機室→開播實測約 10 秒、`firstStartSource`（F-14）；頻道名稱可見優先、網路錯誤退避、`channelInfo`（F-03）；SC 金額原樣顯示、`scTiers`（10.3）。
 - **v52 調整**（`docs/review-2026-11-17.md` 第 33 節，T6.3）：自己送出的訊息的暫時節點規則再收緊（直播來源、文字、到達時間、30 秒）、id 先清空再設定時也能合併（F-14）；降落的資料正確性（videoId 綁定、導航後的 microdata、降落＝結束、`streamCompare`／`fixRaidLeak`／`fixStreamMeta`，F-14）；降落自動開彈出視窗、`studio` 彈出視窗（F-19）；投票卡結構記錄（6.8）；取消置頂、置頂卡 ✕、「📌 置頂」膠囊（F-07、F-05、10.4）；篩選／搜尋欄預設收起（F-06、10.4）；VOD 的「影片開頭之前」只用於 live、開播前顯示「開播前 …」（F-08）。
 - **v53 調整**（`docs/review-2026-11-17.md` 第 34 節，T6.3.1）：videoId 不一致期間每次定時檢查都判斷是否為新聊天室、30 秒看門狗與「聊天室切換中」、必要時重新載入聊天室 iframe（F-14）；降落橫幅與進場卡區分（`raidDir`），只有降落出去才是結束訊號，重新抓取確認仍在直播時撤銷暫定結束（F-14、F-19、10.4）；`fixOwnDuplicates` 的作者數、`streamCompare`／`fixRaidLeak` 改用降落出去的那則與新規則（F-14）；取消置頂的 `absent` 偵測（F-07）；投票卡露出的修正已備妥、未啟用（6.8）；T8 加頻道佇列合併寫入（第 8 節）。
+- **v54 調整**（`docs/review-2026-11-17.md` 第 35 節，T6.4）：待機室寫入保底（直播來源的 `live` → `pre`）、重播負的影片時間＝`pre`、live／replay 合併以 live 時間判斷、`fixPhases` 涵蓋重播來源與待機室（F-14）；`swap` 合併只限暫時 id、舊 id 仍在新列表絕不合併，離開頁面期間改 id 的節點插回時當成原地改 id（正式 id 為主、暫時 id 為別名），`fixOwnDuplicates` 的 `twinFar` 分布與 `sameMinute`（F-14）；置頂列裡的投票橫幅在面板開啟時露出、算進底部互動區（6.8）。
 
 ---
 
@@ -450,6 +451,10 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - `fixOwnDuplicates` 預覽：`tempIds`＝暫時節點的紀錄數、`tempShapeMatches`＝只看形狀的筆數、`tempShapes`（形狀＋來源＋類型＋時間來源分組，符合規則的標 ✓）、`pairShapes`、`pairDt`（≤ 10 秒／≤ 30 秒）。
     - P1 `own` 加 `tempStored`（暫時節點已存、等正式節點合併）、`tempPending`（目前還在等）、`tempDropped`（90 秒內沒等到，兩筆都留著）。
     - （v53，T6.3.1，審查十一 34.1）實機預覽 `pairs 65`、`tempIds 799`。預覽加上作者數（只有數字，不含 handle）：`tempAuthors`（符合條件的暫時節點紀錄的作者數）、`pairAuthors`（配對的作者數）；大於 1 時 `tempAuthorDist`／`pairAuthorDist`（各作者筆數，多到少，最多 20）。沒配對的原因 `tempUnpaired`：`noTwin`（同場次沒有同作者同內容的正式紀錄：正式節點只是原地改 id、沒有另存一筆，**不是重複**）、`twinFar`（有但時間差 > 30 秒）、`twinUsed`（30 秒內的正式紀錄已配給別筆或已合併過）、`noKey`。兩個作者數都是 1 → 可以執行；大於 1 → 先看分布。
+  - （v54，T6.4，審查十一 35.3）
+    - **列表被換掉（`swap`）只在舊的是暫時 id 時才合併**；新列表的直接子節點仍有舊 id → 兩則不同的訊息，絕不合併。實機（彈出視窗 F-12 從重點切到即時）7 次 `swap` 合併，兩筆都是正式 id（`ChwK|40`）＝洗版中同一人的兩則相同內容；同一則訊息在兩種模式的 id 相同（以同 id 重新出現＝`reborn`），所以 id 不同就是不同的訊息。
+    - **離開頁面期間改 id**：YouTube 把暫時節點移出列表、在列表外改成正式 id 再插回時，MutationObserver 看不到屬性變化（實機：暫時 id 7～8 次全部「沒等到」、原地合併 0、頁面移除 0，紀錄停在暫時 id，之後重播會重複）。插回時 id 與擷取時不同 → 當成原地改 id：同作者同內容 → 合併成一筆，**正式 id 為主、暫時 id 記入 `aliasIds`**（F-14 別名），之後重播以 id 合併。P1 `own.tempAliased`（暫時 → 正式的原地合併次數）、`own.events.whileDetached`（插回時 id 已不同）。
+    - `fixOwnDuplicates` 預覽（34.3）：`twinFar`＝`{ s30to60, s60to90, over90, otherTsSource, sameMinute }`（時間差分布、最近那筆正式紀錄的 `tsSource`；`sameMinute`＝另一筆是顯示時間 `clock`、暫時節點的到達時間落在該筆顯示的同一分鐘內）。`sameMinute` 的配對只在 `{ dryRun: false, sameMinute: true }` 時合併（`sameMinuteMerged`）：看過預覽、多數是這種情況時才用。
 - （v52，T6.3，審查十一 33.1）**降落時的資料正確性**（實機：新場次 `mb9I…` 被存成原場次 `LjiG…` 的標題，新場次裡混有原直播的訊息與降落橫幅、全部標成直播中；dom-notes 2.10）：
   1. **證據**：`await YTCAS_BG.streamCompare('a', 'b')`（只有數字、代碼、4 碼 videoId）：兩場的筆數、phase／`tsSource`／類型分布、開播與結束時間及來源、各收錄紀錄（來源、時間、新增／合併）、收錄開始前就有的筆數、標題／頻道是否相同（布林）、作者數與共同作者數、b 中「同作者同內容也在 a」的筆數、`crossVideo`（id 已存在另一場而合併到那一筆的次數，寫入時記錄）、a 降落後 b 收到「作者只在 a 出現」的筆數。
      - 訊息 id 全域唯一：漏進新場次的訊息，之後原場次的彈出視窗再收到時會**合併到新場次那一筆**（場次不變）→ 原場次只拿到少數幾則。v52 起記下這種跨場次的次數（`streams.crossVideo`，只存次數）。
@@ -502,6 +507,11 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
     - （v47，審查十一 26.1 第 2 點）**硬性規則：預定開播時間在未來＝待機室**。最近一次看到的 meta（擷取端的 `STREAM_INFO` 或 background 重新抓取）`startDate > now` 且沒有 `endDate` → `scheduledFuture: true`、`scheduledStartAt` 改為這個時間（延期時以最新的為準）；此時**不論 `startedAt` 是否已有值都是待機室**（重播來源 `replay` 例外）：擷取端清除已採用的開播時間、不採用 background 回傳的值與播放器訊號，訊息一律 `pre`；background 不接受重播以外的 `startedAt`，已存的 `startedAt` **降級**為 `startedAtSuspect: true`（保留原值供預覽，`C.effectiveStart` 視同沒有；之後的實際開播時間可直接覆蓋）。meta 說已開播或已結束 → `scheduledFuture: false`（提早開播依 `meta-actual` 照常採用）。
     - 既有的錯誤資料：先重新整理該待機室（讓 v47 降級），再 `YTCAS_BG.fixPhases()` 預覽 `waiting` 清單（`videoId` 4 碼、`startedAtSource`、距預定時間幾小時、`live→pre` 筆數）→ `{ dryRun: false }` 執行：清除 `startedAt`、本套件直播收錄的訊息改回 `pre`、推算的 offset 清空。`meta-actual` 且 meta 沒說在未來的（提早開播）不列入。單一場次的時間與來源：`await YTCAS_BG.streamTimes('videoId')`（只有時間與來源代碼）。
     - AC（26.1 第 4 點）：預定時間在未來的待機室收到降落事件 → 仍是待機室、`phase: 'pre'`、不同步；background 先前記下的 `signal` 開播時間不被採用。
+    - （v54，T6.4，審查十一 35.4 第 1 點）**待機室寫入保底**（實機：Lozeson 待機室中自己的留言被放進「直播中」段）：擷取端的 `livePhase` 在不知道預定時間（頁面 meta 沒有 `startDate`，預定時間由 background 重新抓取才得知）時預設 `live`。background 寫入時（`saveMessages` 的 `fix`，自己送出、暫時節點、合併都經過）：場次還沒有採用的開播時間，而且預定時間在未來、等待開播確認、或訊息早於預定時間（`C.isWaitingAt`）→ 直播來源（`live`／`popout`）的 `live` 改 `pre`（P1 回應 `waitingFixed`）。沒有任何預定時間的場次不動（不能判斷）。既有資料：`fixPhases` 的 `waitingLive`（還在待機室、被存成 `live` 的直播訊息；已開播的場次照開播時間重算）。
+    - （v54，T6.4，審查十一 35.6）**重播來源的 phase**：YouTube 重播聊天室以**負的影片時間**列出開播前的聊天（例「-56:00」）→ `pre`（`C.replayPhase`：影片時間 < 0 → `pre`，其餘 `live`；重播不會有結束後的聊天）。v53 以前重播一律 `live`，`fixPhases` 也跳過重播 → VOD 的「直播中」段開頭出現一串「影片開頭之前」。
+      - live／replay 合併（重播把 offset 升級為 `replay`）：本套件直播收錄過的那筆，phase 以 **live 的絕對時間與開播時間**判斷（寫入時已依此計算，不再改成 `live`）；只來自重播的看影片時間正負。
+      - `fixPhases`：只來自重播 → 依影片時間正負；合併（`offsetSource: 'replay'`、含 `live`）→ 依 live 絕對時間（offset 不動）。預覽每場多 `replay`（只來自重播）／`merged`（合併）的改動筆數。
+      - 顯示：`pre` 且影片時間 < 0 →「開播前 55:00」（不可點）；重播 0:13 → 可點；`live` 但 VOD 校正後 < 0 →「影片開頭之前」（v51 規則不變）。
     - （v48，T5.7，審查十一 27.1）**`meta-actual` 的判定必須同時確認 `scheduledFuture` 為 false**（實機：待機室的 `startDate` 可能是過去、帶秒數的時間，dom-notes 5.1）。background 重新抓取時另讀播放器資料的 `isLiveNow`：`false` 且沒有 `endDate` → 不採用 `startDate`（改為等待開播確認）；讀不到時維持原判斷。
     - （v48，審查十一 27 第 1 點）**待機室 → 開播，分頁不重新整理**：
       1. **準時或延後開播**：預定時間一到變成 `startPending`，background 每 60 秒重新抓取（`chrome.alarms` 每 1 分鐘檢查有分頁開著的場次）；開播後下一次抓取取得實際開播時間（`meta-actual`）。**延遲：開播後約 1～2 分鐘**轉為「直播中」。
@@ -897,6 +907,11 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
   - 結構確認後的修正方向：在列表範圍內 → 隱藏樣式改為「列表 `visibility: hidden`、投票卡 `visibility: visible`」並算進露出區域；面板關閉與彈出視窗時本套件樣式不得影響它。另一個可能是 F-12 切到「即時聊天室」後 YouTube 本身以收合狀態顯示（dom-notes 2.11）。
   - 確認：`chat-input.js` 只在嵌入式聊天室啟動（彈出視窗不啟動），隱藏樣式只在面板開啟且未退讓時存在；擷取引擎只處理 `#items` 的直接子節點。
   - （v53，T6.3.1，審查十一 34 第 3 點）面板開啟時「完全看不到」很可能是原生列表的 `visibility: hidden` 連它一起隱藏。修正**已備妥、未啟用**：`selectors.js` 的 `chat.pollCard`（留空＝不啟用）。填入後，隱藏樣式多一條「`pollCard { visibility: visible }`」，量測時 `pollCard` 算進底部互動區（白名單）。`poll-structure` 確認位置（在列表範圍內、不在 `#items` 內）後只需填入元件標籤，不必再多一輪。
+  - （v54，T6.4，審查十一 35.1，**已驗證**，dom-notes 2.11）投票卡是**置頂列裡的一種橫幅**：`yt-live-chat-banner-manager > div#visible-banners > yt-live-chat-banner-renderer > … > yt-live-chat-banner-poll-renderer`。30.2 選 A 把置頂列整體隱藏，投票卡跟著被藏起來；「只剩一列」是 YouTube 自己的收合狀態（`banner-renderer` 高 40、`overflow: hidden`，點開可展開），本套件沒有影響它。
+    - `chat.pollCard` ＝ `yt-live-chat-banner-poll-renderer`；`chat.pollBanner` ＝ `yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer)`（Chrome 105+）。
+    - 面板開啟時：置頂列整體 `visibility: hidden`，**含投票的那個 `banner-renderer` 設 `visible`**。同一層的置頂訊息、降落橫幅維持隱藏（30.2 選 A）。
+    - 投票橫幅（含收合時 40px 的外框）算進底部互動區（白名單）。ResizeObserver 直接監看它，收合與展開時立即重新量測、更新裁切。矮視窗依 6.2 的 80～160px 規則。
+    - `#chat > #action-panel` 那種投票卡維持原白名單。P7 `zone-structure` 在投票橫幅露出時也記（`reason: poll-banner`、role `poll-banner`）。
 - **表符選單（30.1）**：實機選單出現在底部，輸入列（打字的那一列與表符按鈕）不見了，看不到選了什麼、也無法再按表符按鈕關閉。推測選單長在輸入列**下方**、輸入列被往上推，v49 的 `popup` 只取 `popupTop − 8`，輸入列落在裁切範圍外。
   - 規則：`popup` 的裁切頂端＝`min(popupTop, iframe 高度 − bottomZoneHeight) − PANEL.POPUP_GAP_PX`。`bottomZoneHeight` 本來就取底部互動區所有白名單元素的最上方，所以等於「彈窗與底部互動區所有元素的最上方 − 8」。選單在輸入列上方或下方都完整露出輸入列。
   - 上下關係待實機確認（dom-notes 2.5c）：P7 `zone-structure` 在表符選單開關時記錄選單、輸入列 `#top`、`#input-panel`、`#panel-pages` 的頂端與高度。（v51：**已驗證**，選單在 `#input-panel` 內、輸入列之下，`#input-panel` 56 → 252px。）

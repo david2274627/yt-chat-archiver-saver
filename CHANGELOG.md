@@ -237,6 +237,20 @@
   - SPEC 第 8 節 T8 頻道佇列合併寫入（34 第 5 點，commit `0555756`）。
   - CHANGELOG、測試清單、報告（本段落所在的 commit）。
 
+- v54／T6.4（`docs/review-2026-11-17.md` 第 35～35.7 節；報告為 `docs/reports/2026-11-22-t6-f10.md` 的「T6.4」一節）：
+  - 審查十一第 35～35.6 節與兩份診斷摘要（commit `39454d7`）。
+  - phase：待機室寫入保底、重播負的影片時間＝`pre`、live／replay 合併以 live 時間判斷、`fixPhases` 的 `replay`／`merged`／`waitingLive`（35.4、35.6，commit `6eba149`）。
+  - `swap` 合併只限暫時 id、舊 id 仍在新列表絕不合併（35.3 第 2 點，commit `f490981`）。
+  - 置頂列裡的投票橫幅在面板開啟時露出、算進底部互動區（35.1，commit `13cfaa7`）。
+  - 離開頁面期間改 id 的節點插回時當成原地改 id、P1 `tempAliased`、`fixOwnDuplicates` 的 `twinFar` 分布與 `sameMinute`（35.3 第 1 點、34.3，commit `44b05d7`）。
+  - dom-notes 2.11 投票卡已驗證、5.4 studio 已驗證（35.1、35.2，commit `8849a8d`）。
+  - SPEC v54、CHANGELOG、測試清單、報告、審查第 35.7 節（本段落所在的 commit）。
+
+### 規格 v54（2026-11-26，T6.4）
+- F-14：待機室寫入保底（`C.isWaitingAt`、`waitingFixed`）；重播來源的 phase（`C.replayPhase`）、live／replay 合併以 live 時間判斷；`fixPhases` 的 `replay`／`merged`／`waitingLive`。
+- F-14（自己送出）：`swap` 只限暫時 id、舊 id 仍在新列表不合併；插回時 id 已不同 → 原地改 id（P1 `own.tempAliased`、`own.events.whileDetached`）；`fixOwnDuplicates` 的 `twinFar`、`sameMinute`。
+- 6.8：`chat.pollCard`（`yt-live-chat-banner-poll-renderer`）、`chat.pollBanner`；投票橫幅露出、算進底部互動區、ResizeObserver 直接監看。
+
 ### 規格 v53（2026-11-25，T6.3.1）
 - F-14：videoId 不一致期間每次定時檢查、舊聊天室延續的判斷、30 秒看門狗（P1 `mismatchStuck`、P4 `chat-stuck`）、「聊天室切換中」；降落出去／進場卡（`raidDir`、P1 `raidIn`、P7 `raid-dir`）、撤銷暫定結束（`raidEndRevokedAt`、P4 `raid-end-revoked`）、`fixRaidEnds`；`fixOwnDuplicates` 的 `tempAuthors`／`pairAuthors`／`tempUnpaired`；`fixRaidLeak` 新規則（刪除 120 秒內同作者同內容的重複與同內容的降落橫幅）。
 - F-07：取消置頂的 `absent` 偵測（`lastPin`、`unpinnedAtSource`、P1 `unpinnedAbsent`）。
