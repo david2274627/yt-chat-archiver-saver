@@ -154,7 +154,20 @@ yt-live-chat-renderer
   3. 暫時節點有沒有特別的屬性（P7 `oldAttrs`／`newAttrs` 比對），例如「送出中」狀態。
 - 擷取端不依賴第 1 點：頁面移除已存節點（不是修剪、不是列表開頭）、id 原地改變、列表被換掉，都當成替換的證據（SPEC F-14 v50）。
 
-### 2.11 投票卡（**待驗證**，審查十一 32.6、33.2、33.8.4）
+### 2.11 投票卡（**已驗證**，2026-11-25，Chrome 158；審查十一 32.6、33.2、33.8.4、35.1）
+- **已驗證**（P7 `poll-structure`，`HcbO…`，14:46:46）：這種投票卡是**置頂列裡的一種橫幅**，不在訊息列表，也不在 `#action-panel`：
+
+  `yt-live-chat-banner-manager#live-chat-banner > div#visible-banners > yt-live-chat-banner-renderer > div#banner-container > div#contents > yt-live-chat-banner-poll-renderer`
+
+  - 內部：`div#main-content > yt-formatted-string#poll-question`、`div#poll-choices-container > yt-live-chat-banner-poll-choice` × 2。
+  - 收合時 `yt-live-chat-banner-renderer` 高 40、`overflow: hidden`，內容 32px。這是 YouTube 自己的收合狀態，面板關閉時本套件沒有任何樣式影響它，無痕視窗的即時聊天室同樣只剩一列。點開可展開。
+  - 面板開啟時被藏起來的原因：30.2 選 A 把置頂列整體設為 `visibility: hidden`（`underHidden: true`）。
+  - `div#poll-editor-panel`（`#panel-pages` 內）是主播建立投票用的；`g#poll`／`g#poll-filled` 是圖示 SVG。兩者都不是投票卡。
+  - `#chat > #action-panel` 是另一種投票卡（32.6，待機室，完整露出），兩種都支援。
+- v54（T6.4）處理：`chat.pollCard` ＝ `yt-live-chat-banner-poll-renderer`，`chat.pollBanner` ＝ `yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer)`。
+  - 面板開啟時置頂列整體 `hidden`，含投票的那個 `banner-renderer` 設為 `visible`。同一層的置頂訊息、降落橫幅維持隱藏。
+  - 投票橫幅算進底部互動區，ResizeObserver 直接監看它（收合 40px／展開）。
+  - 以下是 v53 以前的推測，保留供參考。
 - 2026-11-22（32.6）：待機室的投票卡（題目一行、4 個選項）在底部完整露出 → 那次的 T6 量測有算到它（`#chat > #action-panel` 或覆蓋層）。
 - 2026-11-24（33.2、33.8.4）：另一種投票卡在本套件環境下被裁切。無痕視窗（沒有本套件）完整顯示：訊息區底部、輸入區上方，有題目、作者、2 個選項。
   - 面板開啟：完全看不到。
@@ -315,6 +328,10 @@ yt-live-chat-renderer
 - **開啟彈出視窗時，YouTube 會先收起主分頁的聊天室**；主分頁的「聊天室 iframe 狀態（診斷）」同時段有 5 筆變化（最新一筆 `present: true`、`visible: true`、`height: 594`、`path: /live_chat`）。
 - 關閉彈出視窗（✕）後，套件自動展開主分頁聊天室並恢復收錄；彈出視窗內 F5 重新整理時主分頁不會誤展開。
 - 主分頁與彈出視窗同時收錄時，id 完全一致（`idMerged 25`、`added 0`）。
+- **studio 彈出視窗：已驗證**（2026-11-25，Chrome 158，審查十一 35.2）：`studio.youtube.com` 的彈出式聊天室結構與 `www` 相同。
+  - P7 `popout-env`：`studio: true`；`app`／`renderer`／`items`（45 節點）／`header`／`inputPanel`／`banner` 都有；`viewSelector 2`。
+  - P1：`HcbO…` 彈出視窗來源 `captured 158`、`added 16`、`idMerged 143`，與主分頁同場去重正常；F-12 `switched`。
+  - F-12 從「重點」切到「即時」時列表被換掉：同一則訊息以**同一個 id** 重新出現（`dupCaptured 63`）。id 不同的同人同內容是不同的訊息（審查十一 35.3 第 2 點，v54 swap 合併的條件）。
 
 ## 4. 診斷腳本
 - `docs/poc-clip-path.md` 附錄：PoC 內建 `Alt+Shift+D`；chat frame 結構腳本；top frame 版面腳本；輸入區腳本。
