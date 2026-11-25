@@ -494,14 +494,52 @@ async function streamFacts(videoId) {
     lastMsg: isoOf(msgs.reduce((a, m) => Math.max(a, m.timestampAbs || 0), 0) || null),
   } };
 }
+// v53（T6.3.1，審查十一 34.2.2）原場次「降落出去」的那則：raidDir 'out'（最後一則）；沒有方向的舊資料取**最後一則** raid
+// （v52 取第一則：LjiG 的第一則是 18:49 別人降落進來的進場卡，比真正的降落早 21 分鐘）
+function raidOutOf(msgs) {
+  const raids = msgs.filter((m) => m.type === 'raid' && typeof m.timestampAbs === 'number').sort((x, y) => x.timestampAbs - y.timestampAbs);
+  const outs = raids.filter((m) => m.raidDir === 'out');
+  if (outs.length) return { m: outs[outs.length - 1], how: 'dir' };
+  const legacy = raids.filter((m) => !m.raidDir);
+  return legacy.length ? { m: legacy[legacy.length - 1], how: 'last' } : null;
+}
+// fixRaidLeak 的規則（34.2.2）：(1) b 中與 a 同作者、同內容、絕對時間相差 ≤ 120 秒 → a 已經有了，從 b 刪除；
+// (2) b 中與 a 降落橫幅同內容的 raid → 從 b 刪除；(3) 其他（例如跟著降落過來的觀眾在新直播的發言）一律保留
+const LEAK_DT_MS = 120 * 1000;
+function leakCandidates(A, B, ro) {
+  const keyOf = (m) => authorKeyOf(m) + '\u0001' + JSON.stringify(m.runs || []);
+  const aTimes = new Map();
+  for (const m of A.msgs) {
+    if (m.type === 'raid' || !authorKeyOf(m)) continue;
+    const k = keyOf(m);
+    if (!aTimes.has(k)) aTimes.set(k, []);
+    aTimes.get(k).push(m.timestampAbs || 0);
+  }
+  const raidText = ro ? JSON.stringify(ro.m.runs || []) : null;
+  const dup = [], banner = [];
+  for (const m of B.msgs) {
+    if (m.type === 'raid') { if (raidText && JSON.stringify(m.runs || []) === raidText) banner.push(m); continue; }
+    const ts = aTimes.get(keyOf(m));
+    if (ts && ts.some((t) => Math.abs(t - (m.timestampAbs || 0)) <= LEAK_DT_MS)) dup.push(m);
+  }
+  return { dup, banner };
+}
 async function streamCompare(a, b) {
   if (!isVideoIdStr(a) || !isVideoIdStr(b)) return { ok: false, error: 'bad-video-id' };
   const [A, B] = await Promise.all([streamFacts(a), streamFacts(b)]);
   const authA = new Set(A.msgs.map(authorKeyOf).filter(Boolean)), authB = new Set(B.msgs.map(authorKeyOf).filter(Boolean));
   const textA = new Set(A.msgs.map((m) => authorKeyOf(m) + '\u0001' + JSON.stringify(m.runs || [])));
   const cv = (s, other) => (s && s.crossVideo && s.crossVideo[other]) || 0;
-  const raidA = A.msgs.filter((m) => m.type === 'raid').map((m) => m.timestampAbs).sort((x, y) => x - y);
+  const ro = raidOutOf(A.msgs);
+  const raidA = ro ? [ro.m.timestampAbs] : [];
+  const lc = leakCandidates(A, B, ro);
+  const tally = (arr, f) => arr.reduce((o, m) => { const k = f(m) || '(無)'; o[k] = (o[k] || 0) + 1; return o; }, {});
   const out = { ok: true, a: A.out, b: B.out,
+    // v53（34.2.2）原場次降落出去的那則怎麼選的（dir＝有 raidDir out、last＝舊資料取最後一則）、a 的 raid 方向分布
+    aRaidPick: ro ? ro.how : null, aRaidDirs: tally(A.msgs.filter((m) => m.type === 'raid'), (m) => m.raidDir),
+    // fixRaidLeak 新規則的筆數：(1) 同作者同內容 ≤ 120 秒、(2) 與 a 降落橫幅同內容的 raid；候選的 tsSource 分布
+    leak: { sameAuthorText120s: lc.dup.length, raidBanner: lc.banner.length, bAfterDelete: B.msgs.length - lc.dup.length - lc.banner.length,
+      tsSource: tally(lc.dup, (m) => m.tsSource) },
     titleSame: !!(A.s && B.s && A.s.title && A.s.title === B.s.title),
     channelSame: !!(A.s && B.s && (A.s.channelHandle || A.s.channelName) && (A.s.channelHandle || A.s.channelName) === (B.s.channelHandle || B.s.channelName)),
     authors: { a: authA.size, b: authB.size, both: [...authB].filter((x) => authA.has(x)).length },
@@ -525,26 +563,23 @@ const isVideoIdStr = (v) => typeof v === 'string' && /^[\w-]{6,20}$/.test(v);
 // 規則（streamCompare 的 bAfterARaidAuthorOnlyInA）：b 中時間在 a 第一個降落橫幅前 1 分鐘之後、作者在 a 出現過、
 // 而且作者在 b 的其他時段（降落前、降落 10 分鐘後）都沒有出現的訊息；另含 a 的降落橫幅本身（b 中同內容的 raid）。
 // 預覽只列筆數；{ dryRun: false } 才搬。**規則依使用者 streamCompare 的結果確認後才執行**
+// v53（T6.3.1，審查十一 34.2.2）規則依使用者的 streamCompare 證據改寫（v52 的「作者只在原場次出現」會誤抓跟著降落過來的觀眾，
+// 而且以第一則 raid 為基準）：(1) 新場次中與原場次同作者、同內容、絕對時間相差 ≤ 120 秒 → 原場次已經有了，從新場次刪除；
+// (2) 新場次中與原場次降落橫幅同內容的 raid → 從新場次刪除；(3) 其他一律保留。不搬移（原場次本來就有那幾則）
 async function fixRaidLeak(newVid, origVid, opts) {
   if (!isVideoIdStr(newVid) || !isVideoIdStr(origVid)) return { ok: false, error: 'bad-video-id' };
   const dryRun = !(opts && opts.dryRun === false);
   const [A, B] = await Promise.all([streamFacts(origVid), streamFacts(newVid)]);
-  const raids = A.msgs.filter((m) => m.type === 'raid').map((m) => m.timestampAbs).sort((x, y) => x - y);
-  if (!raids.length) return { ok: true, dryRun, error: 'no-raid-in-orig', candidates: 0 };
-  const raidAt = raids[0];
-  const authA = new Set(A.msgs.map(authorKeyOf).filter(Boolean));
-  const raidTextA = new Set(A.msgs.filter((m) => m.type === 'raid').map((m) => JSON.stringify(m.runs || [])));
-  const cands = B.msgs.filter((m) => (m.type === 'raid' && raidTextA.has(JSON.stringify(m.runs || [])))
-    || (m.timestampAbs >= raidAt - 60e3 && authA.has(authorKeyOf(m)) && !authOnlyB(B, m, raidAt)));
-  const out = { ok: true, dryRun, orig: v4(origVid), new: v4(newVid), candidates: cands.length, raidBanners: cands.filter((m) => m.type === 'raid').length,
-    phases: cands.reduce((o, m) => { o[m.phase || '(無)'] = (o[m.phase || '(無)'] || 0) + 1; return o; }, {}),
-    spanSec: cands.length ? Math.round((Math.max(...cands.map((m) => m.timestampAbs)) - Math.min(...cands.map((m) => m.timestampAbs))) / 1000) : 0, moved: 0 };
+  if (!A.msgs.length) return { ok: false, dryRun, error: 'orig-empty' }; // 34.1：videoId 打錯時 a 是空的
+  const ro = raidOutOf(A.msgs);
+  const { dup, banner } = leakCandidates(A, B, ro);
+  const out = { ok: true, dryRun, orig: v4(origVid), new: v4(newVid), raidPick: ro ? ro.how : null,
+    sameAuthorText120s: dup.length, raidBanner: banner.length, bBefore: B.msgs.length, bAfter: B.msgs.length - dup.length - banner.length,
+    phases: dup.concat(banner).reduce((o, m) => { o[m.phase || '(無)'] = (o[m.phase || '(無)'] || 0) + 1; return o; }, {}), deleted: 0 };
   if (dryRun) return out;
-  // 原場次還沒有結束時間 → 以降落時間暫定（之後 meta 覆蓋）
-  if (!(A.s && A.s.endedAt != null)) await DB.saveMessages({ videoId: origVid, source: 'live', stream: { endedAt: raidAt, endedAtSource: 'raid' }, messages: [] });
-  const r = await DB.moveMessages(newVid, origVid, cands.map((m) => m.id));
-  out.moved = r.moved;
-  console.info('[ytcas] 降落後漏進新場次的訊息', out);
+  const r = await DB.deleteMessagesIn(newVid, dup.concat(banner).map((m) => m.id));
+  out.deleted = r.deleted;
+  console.info('[ytcas] 降落後漏進新場次的重複訊息', out);
   return out;
 }
 

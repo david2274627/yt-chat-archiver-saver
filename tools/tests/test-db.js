@@ -1717,6 +1717,9 @@
     // 原場次 A：一般訊息、降落橫幅
     await DB.saveMessages({ videoId: A, source: 'live', stream: { title: '原直播', channelHandle: '@orig', startedAt: t0, startedAtSource: 'meta-actual' }, messages: [
       mm('a1', A, '@fan1', '你好', t0 + 60e3), mm('a2', A, '@fan2', '加油', t0 + 3600e3), mm('a3', A, '@fan1', '再見', raidAt - 30e3),
+      mm('a4', A, '@fan1', '今天拿這麼大的', raidAt + 20e3),
+      // v53（34.2.2）舊資料沒有 raidDir：別人降落進來的進場卡在前、真正的降落橫幅在後 → 取最後一則
+      { id: 'ytcas-raid-in', type: 'raid', runs: [{ text: '@someone 和他們的觀眾剛剛加入' }], timestampAbs: raidAt - 21 * 60e3, phase: 'live' },
       { id: 'ytcas-raid-x', type: 'raid', runs: [{ text: '千萬別錯過！和大家一起收看@target' }], timestampAbs: raidAt, phase: 'live' }] });
     // 新場次 B：被存成 A 的標題；自己的 backlog（@tfan）＋漏進來的 A 訊息（@fan1、@fan2、A 的降落橫幅）
     await DB.saveMessages({ videoId: B, source: 'live', stream: { title: '原直播', channelHandle: '@target', startedAt: t0 + 1800e3, startedAtSource: 'meta-actual' }, messages: [
@@ -1728,21 +1731,27 @@
     const cmp = await BG.streamCompare(A, B);
     eq([cmp.ok, cmp.a.v, cmp.b.v, cmp.titleSame, cmp.channelSame], [true, 'vidR', 'vidR', true, false]);
     eq([cmp.crossVideo.aHitB, cmp.crossVideo.bHitA], [1, 0], 'A 的寫入命中 B 的紀錄 1 次');
-    eq(cmp.bAfterARaidAuthorOnlyInA, 2, '候選：@fan1、@fan2 的兩則');
     eq(cmp.authors, { a: 2, b: 3, both: 2 });
+    // v53（34.2.2）降落出去的那則：舊資料取最後一則（不是 21 分鐘前的進場卡）；新規則的筆數
+    eq([cmp.aRaidPick, cmp.aRaidAt], ['last', new Date(raidAt).toISOString()]);
+    eq(cmp.leak, { sameAuthorText120s: 1, raidBanner: 1, bAfterDelete: 3, tsSource: { arrival: 1 } }, 'leak1（a4 同作者同內容 10 秒）＋降落橫幅');
     const s = JSON.stringify(cmp);
     assert(!s.includes('原直播') && !s.includes('@fan1') && !s.includes('你好') && !s.includes(A) && !s.includes(B), '不含標題、作者、內容、完整 videoId');
-    // fixRaidLeak 預覽 → 執行
+    // fixRaidLeak 預覽 → 執行（刪除新場次的重複；跟著降落過來的 @fan2「怎麼這樣」只在 b → 保留）
+    eq((await BG.fixRaidLeak(B, 'vidNOPEnope')).error, 'orig-empty', '原場次 id 打錯');
     const pre = await BG.fixRaidLeak(B, A);
-    eq([pre.dryRun, pre.candidates, pre.raidBanners], [true, 3, 1], '兩則訊息＋降落橫幅');
+    eq([pre.dryRun, pre.raidPick, pre.sameAuthorText120s, pre.raidBanner, pre.bBefore, pre.bAfter], [true, 'last', 1, 1, 5, 3]);
     eq((await DB.queryMessages(B)).length, 5, '預覽不寫入');
     const ex = await BG.fixRaidLeak(B, A, { dryRun: false });
-    eq(ex.moved, 3);
+    eq(ex.deleted, 2);
+    eq((await DB.queryMessages(B)).map((m) => m.id).sort(), ['b1', 'b2', 'leak2'], '新場次刪掉重複，其他保留');
     const inA = await DB.queryMessages(A);
-    const leak = inA.find((m) => m.id === 'leak2');
-    assert(leak && leak.phase === 'post', '搬回原場次並標結束後 ' + (leak && leak.phase));
-    eq((await DB.queryMessages(B)).map((m) => m.id).sort(), ['b1', 'b2'], '新場次只剩自己的');
-    eq([(await DB.getStream(A)).endedAtSource, (await DB.getStream(A)).messageCount], ['raid', inA.length]);
+    eq([inA.some((m) => m.id === 'a4'), (await DB.getStream(B)).messageCount], [true, 3], '原場次不動、新場次重新計數');
+    // 有 raidDir 的資料：用 out 那則（不論先後）
+    await DB.saveMessages({ videoId: A, source: 'live', messages: [{ id: 'ytcas-raid-late-in', type: 'raid', raidDir: 'in', runs: [{ text: '@x 和他們的觀眾剛剛加入' }], timestampAbs: raidAt + 600e3, phase: 'live' },
+      { id: 'ytcas-raid-out', type: 'raid', raidDir: 'out', runs: [{ text: '千萬別錯過！和大家一起收看@target' }], timestampAbs: raidAt + 1000, phase: 'live' }] });
+    const cmp2 = await BG.streamCompare(A, B);
+    eq([cmp2.aRaidPick, cmp2.aRaidAt, cmp2.aRaidDirs['(無)'], cmp2.aRaidDirs.in, cmp2.aRaidDirs.out], ['dir', new Date(raidAt + 1000).toISOString(), 2, 1, 1]);
     // 降落暫定結束：照常重新抓取（等 meta 的 endDate）
     const due = BG._metaPollDue('vidZZZZZZZ9', { endedAt: Date.now() - 60e3, endedAtSource: 'raid', startedAt: t0, isLive: true }, Date.now());
     eq(due && due.kind, 'raid-end');

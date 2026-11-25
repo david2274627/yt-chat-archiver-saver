@@ -1840,6 +1840,27 @@
     return { moved, merged };
   }
 
+  // v53（T6.3.1，審查十一 34.2.2）從某一場刪除指定 id 的訊息（只刪 videoId 相符的；fixRaidLeak 用：原場次已經有的重複）
+  async function deleteMessagesIn(videoId, ids) {
+    const db = await open();
+    let deleted = 0;
+    await withLock(videoId, async () => {
+      const t = db.transaction('messages', 'readwrite');
+      const ms = t.objectStore('messages');
+      const work = (async () => {
+        for (const id of ids) {
+          const cur = await req(ms.get(id));
+          if (!cur || cur.videoId !== videoId) continue;
+          ms.delete(id); deleted++;
+          forgetTwin(videoId, id);
+        }
+      })();
+      await Promise.all([work, done(t)]);
+    });
+    await recountStream(videoId);
+    return { deleted };
+  }
+
   const setVersionLabel = (p) => updateStream(p.videoId, (s) => {
     const v = s.versions.find((x) => x.id === p.versionId);
     if (!v) throw new Error('version not found');
@@ -2183,7 +2204,7 @@
     captureStart, captureEnd, closeStaleSessions, listCaptureSessions,
     recomputePhases, recomputeAllPhases, systemTagStats, recomputeStream, recountStream, cleanupJunkSystem, fieldStats, pickStreamTimes,
     diagAppend, diagAll, diagCount, diagClear,
-    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, moveMessages, updateStream, revokeRaidEnd, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
+    getStream, listStreams, queryMessages, queryMessagesFromOffset, countMessages, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, moveMessages, deleteMessagesIn, updateStream, revokeRaidEnd, queryPinned, countAll, storageSummary, dedupePinnedStore, avatarHostStats,
     resetStream, deleteStreams, reclassifySystem,
     setVersionLabel, linkVideo, unlinkVideo,
     getChannel, getChannels, putChannel, putChannelIfNewer, channelStats,

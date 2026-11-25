@@ -467,6 +467,10 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
        - **保底**：`raid-end` 的重新抓取確認 `isLiveNow: true` 且沒有 `endDate` → 撤銷暫定結束（`DB.revokeRaidEnd`：只動來源是 `raid` 的結束時間，記 `raidEndRevokedAt`）並重算 phase（`post → live`）；P4 `raid-end-revoked`。`SAVE_MESSAGES` 的回應帶 `raidEndRevokedAt`，擷取端撤銷本分頁的暫定結束；擷取端再送同一個或更早的 `raid` 結束時間不採用，之後新的降落出去照常採用。
        - **既有資料**：meta 的 `endDate` 之後有到的場次已被覆蓋（`meta-actual` 等級較高），phase 也已重算，`fixPhases` 照新的結束時間處理。重新抓取期間（3 小時）沒拿到 `endDate`、仍停在 `raid` 的場次，`fixPhases` 改不了 → `YTCAS_BG.fixRaidEnds()`（預覽：場次數、4 碼 videoId）→ `{ dryRun: false }`（逐場重新抓 watch 頁：有 `endDate` → 覆蓋；仍在直播 → 撤銷；其他不動）。
   5. **既有資料**：`YTCAS_BG.fixRaidLeak('新', '原')`：新場次中「時間在原場次第一個降落橫幅前 1 分鐘之後、作者在原場次出現過、而且作者在新場次的其他時段（降落前、降落 10 分鐘後）都沒有出現」的訊息，加上與原場次降落橫幅同內容的那則 → 搬回原場次（phase 依原場次重算，結束後為 `post`；原場次沒有結束時間時以降落時間暫定）。預覽只列筆數、phase 分布、時間跨度。**規則依使用者 `streamCompare` 的結果確認後才執行**。
+     - （v53，T6.3.1，審查十一 34.2.2，**取代上面的 v52 規則**）實機證據（`LjiG`→`mb9I`）：v52 以原場次**第一則** raid（18:49，別人降落進來的進場卡）為基準，只找到 1 則；「作者只在原場次出現」也會誤抓跟著降落過來的觀眾在新直播的發言。漏進來的訊息是舊聊天室的回溯擷取，與原場次那則同作者、同內容、幾乎同時（`bSameAuthorTextInA 15`）。
+       - 原場次降落出去的那則：`raidDir: 'out'` 的最後一則；沒有方向的舊資料取**最後一則** raid。`streamCompare` 的 `aRaidPick`（`dir`／`last`）、`aRaidDirs`。
+       - 規則：(1) 新場次中與原場次**同作者、同內容、絕對時間相差 ≤ 120 秒** → 原場次已經有了，從新場次**刪除**；(2) 新場次中與原場次降落橫幅同內容的 raid → 刪除；(3) 其他一律保留（無法區分）。不搬移。
+       - 預覽（`fixRaidLeak('新', '原')`）：(1)(2) 各幾筆、刪除前後新場次的筆數、phase 分布；原場次是空的（videoId 打錯）→ `orig-empty`。`streamCompare` 的 `leak` 列出同樣的數字與 (1) 的 `tsSource` 分布。使用者看過預覽後才 `{ dryRun: false }`。
 - （v51，T6.2，審查十一 32.9）**等待開播期間一律暫定 `pre`**：有預定時間、還沒有開播時間（`startedAt`）→ 新訊息一律 `pre`，不以預定時間推算 `live`（`capture.js` `livePhase`）。實機：預定時間剛過、頁面 meta 下一次重讀（`startPending`）之前到的一則被判成 `live`，之後的又是 `pre`，面板分段標題來回出現。確認開播後由 background 依實際時間重算 `pre → live`（v48 起的機制）。面板與後台的直播／待機室清單也依 phase 分段（頁面狀態提示 → `pre` → `live` → `post`，`CORE.sortByPhase`），段內維持時間順序，每段標題只出現一次（與 VOD 的 v45 規則一致）。
 - **收錄紀錄 `capture_sessions`**（4.1）：每次開始收錄（chat frame 開始擷取）記一筆，結束時補 `endedAt`、`lastOffset`、`added`、`merged`、`phases`。
   - 後台場次清單顯示「直播收錄 2 次・重播 1 次」，以及**時間軸覆蓋範圍**（只會收錄實際有開著的時段，中途離開的空檔一目了然；含 `pre`／`post`）。
