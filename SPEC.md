@@ -949,7 +949,7 @@ v28 補充與新增（回應一律為 `{ ok: true, ... }` 或 `{ ok: false, erro
 | T6-c ⏸ | （v28）F-19 彈出視窗面板 PoC：面板覆蓋在 `#item-list` 範圍、底部互動區不覆蓋 | `docs/` PoC 紀錄 | 使用者實測可打字、面板可捲動點擊 |
 | T7 | popup、後台獨立檢視器、匯出離線 HTML / JSON（含 `formatVersion`）、刪除；F-11 JSON 匯入 UI（v2.6.0 / v3 格式、預覽、去重）與「刪除舊版資料」按鈕；（v27）主題設定 UI（後台設定區、popup 底部）、場次清單收錄次數與覆蓋範圍、「清空此場次後重新收錄」、「重新分類系統訊息」；（v28）F-15 popup 開關與後台暫停清單、F-16 用量／排序／批次刪除／提醒、**F-17 自動備份（模式 A、排程、重試、通知）與 manifest 新權限**、F-18 版本匯出選項、`.json.gz` 匯入、popup 收錄狀態（10.4） | commit | 匯出 HTML 離線開啟可搜尋；同一 JSON 匯入兩次無重複；F-16、F-17 AC |
 | T7-b | （v28）F-17 備份位置模式 B（自選資料夾）PoC | `docs/` PoC 紀錄 | 依結果決定是否正式提供 |
-| T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部（含 6.5 AC 9），更新 `docs/test-checklist.md`。（v50，審查十一 29 第 3 點）記憶體對照另確認：T6 起原生訊息列表以 `visibility: hidden` 隱藏後，chatframe 的 DOM 節點與 heap 沒有增加、修剪維持 45 則上限 | commit | 使用者確認測試清單全數通過 |
+| T8 ⏸ | 邊界情況與回歸：`$` 三種流程、劇院模式、縮放、深淺色切換、F-01～F-10 全部（含 6.5 AC 9），更新 `docs/test-checklist.md`。（v50，審查十一 29 第 3 點）記憶體對照另確認：T6 起原生訊息列表以 `visibility: hidden` 隱藏後，chatframe 的 DOM 節點與 heap 沒有增加、修剪維持 45 則上限。（v53，審查十一 34 第 5 點）**頻道名稱解析佇列改為合併寫入 `storage.session`**（最多每 1～2 秒寫一次，SW 休眠前補寫；v52 每次排入或處理一個 handle 都序列化整份佇列，大型直播一次排入數百個 handle 時重複寫入很多次；T6.3 已先拿掉 `addedAt` 讓每筆變小），並以壓力測試確認直播 30 分鐘 P95 | commit | 使用者確認測試清單全數通過 |
 | T8.5 | （v28）`docs/USER-GUIDE.md`（繁體中文）：安裝／更新／**不可移除**、各功能操作、劇院模式限制、F-12 會切換原生聊天室、彈出視窗、備份與還原 | commit | 使用者閱讀確認 |
 | T9 | 發版 3.0.0：移除 `src/poc/` 與 manifest 中 PoC 的 content script、`web_accessible_resources` 的 `poc-panel.html`；更新 `manifest.json`、`VERSION`、`CHANGELOG.md` | `release: v3.0.0` | 見 `CLAUDE.md` 版本規則 |
 
