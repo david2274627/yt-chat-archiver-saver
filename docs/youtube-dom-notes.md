@@ -167,6 +167,13 @@ yt-live-chat-renderer
 - v54（T6.4）處理：`chat.pollCard` ＝ `yt-live-chat-banner-poll-renderer`，`chat.pollBanner` ＝ `yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer)`。
   - 面板開啟時置頂列整體 `hidden`，含投票的那個 `banner-renderer` 設為 `visible`。同一層的置頂訊息、降落橫幅維持隱藏。
   - 投票橫幅算進底部互動區，ResizeObserver 直接監看它（收合 40px／展開）。
+- **另兩種結構，已驗證**（2026-11-26，Chrome 158，P7 `poll-structure`，`Cbxi…`；審查十一 37.1）：
+  2. 置頂列 ＋ **`yt-live-chat-poll-renderer`**（14:21:24，收合）：`yt-live-chat-banner-renderer` 高 40、內容 32；內部 `yt-live-chat-poll-header-renderer`、`div#collapse-container > div#poll-choice-container > yt-live-chat-poll-choice`。
+  3. **`#chat > #action-panel > yt-live-chat-action-panel-renderer > yt-live-chat-poll-renderer`**（14:21:46，完整展開，`#action-panel` 202、內容 194、頂端 335）。同時 `yt-live-chat-renderer` 有 `has-action-panel-renderer` 屬性。
+     - 14:21:47：屬性拿掉，`#action-panel` 回到 0／0，子元素沒有尺寸。所以動作面板那種只出現約 1 秒，之後回到置頂列的收合狀態。
+     - 那一刻的 `zone-structure`（`closed`，`bottomZoneHeight 108`）沒有 `#action-panel`，是因為它已經是 0，**量測沒有算錯**。當時面板是關著的（14:21:40 關閉）。
+     - 32.6 待機室那次完整露出的投票卡，應該也是這一種。
+  - v55（T6.5）處理：`chat.pollBanner` 改為 `yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer, yt-live-chat-poll-renderer)`；`#action-panel` 本來就在白名單。另以 MutationObserver 監看 `#action-panel`、置頂列的子節點與 renderer 的 `has-action-panel-renderer`，搬動後立即重新量測（`chat.pollHosts`）。
   - 以下是 v53 以前的推測，保留供參考。
 - 2026-11-22（32.6）：待機室的投票卡（題目一行、4 個選項）在底部完整露出 → 那次的 T6 量測有算到它（`#chat > #action-panel` 或覆蓋層）。
 - 2026-11-24（33.2、33.8.4）：另一種投票卡在本套件環境下被裁切。無痕視窗（沒有本套件）完整顯示：訊息區底部、輸入區上方，有題目、作者、2 個選項。

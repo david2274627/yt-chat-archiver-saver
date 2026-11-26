@@ -135,7 +135,7 @@
     const win = opts.win || window;
     const S = opts.S, C = opts.C, P = C.PANEL, FM = C.FM;
     const st = { started: false, last: '', timer: 0, poll: 0, ro: null, observed: [], hide: false, sent: 0, warnedOverlay: false,
-      zoneActive: false, zoneSig: '', zoneLogs: 0 };
+      zoneActive: false, zoneSig: '', zoneLogs: 0, mo: null, hostEls: [], moves: 0 };
 
     // v50（30.1、30.3）`$` 流程或彈窗開著（以及剛關上的那一次）且結構改變時記一筆（每頁最多 ZONE_LOG_MAX 筆）
     function logZone(m) {
@@ -174,6 +174,21 @@
       if (st.timer) win.clearTimeout(st.timer);
       st.timer = win.setTimeout(() => { st.timer = 0; send(force); }, P.INPUT_DEBOUNCE_MS);
     }
+    // v55（T6.5，審查十一 37.1 第 3 點）投票在置頂列與 #action-panel 之間搬動（實機：點開後 YouTube 把它搬到動作面板，
+    // renderer 的 has-action-panel-renderer 屬性同時改變）：子節點或該屬性一變就立即重新量測（不等 500ms 輪詢）
+    function bindHosts() {
+      if (!win.MutationObserver) return;
+      const hosts = [];
+      for (const sel of S.chat.pollHosts || []) doc.querySelectorAll(sel).forEach((el) => hosts.push(el));
+      const renderer = doc.querySelector(S.chat.renderer);
+      const key = hosts.concat(renderer ? [renderer] : []);
+      if (key.length === st.hostEls.length && key.every((el, i) => el === st.hostEls[i])) return;
+      if (st.mo) st.mo.disconnect();
+      st.mo = new win.MutationObserver(() => { st.moves++; bind(); schedule(false); });
+      for (const h of hosts) st.mo.observe(h, { childList: true, subtree: true });
+      if (renderer) st.mo.observe(renderer, { attributes: true, attributeFilter: ['has-action-panel-renderer'] });
+      st.hostEls = key;
+    }
     // 候選元素出現或被重建時重新監看（ResizeObserver 只看得到已綁定的元素）
     function bind() {
       if (!win.ResizeObserver) return;
@@ -181,6 +196,7 @@
       for (const sel of S.chat.bottomZone) doc.querySelectorAll(sel).forEach((el) => { want.push(el); if (el.parentElement) want.push(el.parentElement); });
       // v54（35.1）投票橫幅收合（約 40px）／展開：直接監看含投票的 banner-renderer，高度一變就重新量測、更新裁切
       for (const sel of pollSels(S)) doc.querySelectorAll(sel).forEach((el) => want.push(el));
+      bindHosts();
       const same = want.length === st.observed.length && want.every((el, i) => el === st.observed[i]);
       if (same) return;
       if (st.ro) st.ro.disconnect();
@@ -237,9 +253,11 @@
       if (st.poll) win.clearInterval(st.poll);
       if (st.timer) win.clearTimeout(st.timer);
       if (st.ro) st.ro.disconnect();
+      if (st.mo) st.mo.disconnect();
+      st.mo = null; st.hostEls = [];
       setHidden(false);
     }
-    const api = { start, stop, send, state: () => ({ hidden: st.hide, sent: st.sent, last: st.last ? JSON.parse(st.last) : null }) };
+    const api = { start, stop, send, state: () => ({ hidden: st.hide, sent: st.sent, moves: st.moves, last: st.last ? JSON.parse(st.last) : null }) };
     return api;
   }
 

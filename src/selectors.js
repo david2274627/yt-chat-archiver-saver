@@ -109,8 +109,14 @@
       //       > div#main-content > yt-formatted-string#poll-question、div#poll-choices-container > yt-live-chat-banner-poll-choice × N
       // 面板開啟時置頂列整體 visibility:hidden（30.2 選 A），**含投票的那個 banner-renderer** 改 visible，並算進底部互動區（chat-input.js）。
       // 置頂訊息、降落橫幅（同一層的其他 banner-renderer）維持隱藏。收合時 banner-renderer 高 40px（overflow:hidden），展開後變高
+      // v55（T6.5，審查十一 37.1）已知三種位置（都已驗證，dom-notes 2.11）：
+      //   (1) 置頂列 ＋ yt-live-chat-banner-poll-renderer（2026-11-25）
+      //   (2) 置頂列 ＋ yt-live-chat-poll-renderer（2026-11-26，收合）
+      //   (3) #chat > #action-panel > yt-live-chat-action-panel-renderer > yt-live-chat-poll-renderer（2026-11-26，展開，原本就在白名單）
       pollCard: 'yt-live-chat-banner-poll-renderer',
-      pollBanner: 'yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer)',
+      pollBanner: 'yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer, yt-live-chat-poll-renderer)',
+      // 投票在置頂列與動作面板之間搬動：監看這兩處的子節點變化，搬動後立即重新量測（chat-input.js）
+      pollHosts: ['#chat > #action-panel', 'yt-live-chat-banner-manager'],
       // 量測時一律排除（含診斷清單標示原因）
       bottomZoneExclude: [
         '#item-list',

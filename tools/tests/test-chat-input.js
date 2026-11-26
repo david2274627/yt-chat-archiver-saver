@@ -180,7 +180,7 @@
   test('T6.4（35.1）置頂列裡的投票橫幅：面板開啟時置頂列隱藏、只露出含投票的 banner-renderer（置頂訊息維持隱藏）並算進底部互動區；收合 40px → 展開時 ResizeObserver 更新；#action-panel 投票卡照舊；關閉面板 → 還原', async () => {
     reset();
     const S = W().YTCAS_SEL;
-    eq([S.chat.pollCard, S.chat.pollBanner], ['yt-live-chat-banner-poll-renderer', 'yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer)'], '已驗證的選擇器（dom-notes 2.11）');
+    eq([S.chat.pollCard, S.chat.pollBanner], ['yt-live-chat-banner-poll-renderer', 'yt-live-chat-banner-renderer:has(yt-live-chat-banner-poll-renderer, yt-live-chat-poll-renderer)'], '已驗證的選擇器（dom-notes 2.11，v55 加第 2 種）');
     // 實機結構（35.1）：banner-manager > div#visible-banners > banner-renderer > div#banner-container > div#contents > banner-poll-renderer
     const mk = (tag, attrs, kids) => { const e = D().createElement(tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); for (const k of kids || []) e.append(k); return e; };
     const mgr = q('yt-live-chat-banner-manager');
@@ -216,6 +216,48 @@
       frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: false }, location.origin);
       await until(() => vis(mgr) === 'visible', 2000, '關閉 → 還原');
     } finally { ci.stop(); vb.remove(); mgr.style.bottom = ''; }
+  });
+
+  test('T6.5（37.1）投票的第 2、3 種位置：置頂列＋yt-live-chat-poll-renderer（收合）露出；點開後搬到 #action-panel（展開 202px）→ 立即重新量測、讓出高度；搬回置頂列（收合）→ 回到 102', async () => {
+    reset();
+    const S = W().YTCAS_SEL;
+    const mk = (tag, attrs, kids) => { const e = D().createElement(tag); for (const [k, v] of Object.entries(attrs || {})) e.setAttribute(k, v); for (const k of kids || []) e.append(k); return e; };
+    const mgr = q('yt-live-chat-banner-manager');
+    mgr.style.top = ''; mgr.style.height = ''; mgr.style.bottom = '62px';
+    const ap = q('#action-panel');
+    place(ap, 335, 0); ap.style.height = '0px'; // 實機：#action-panel 一直存在、平常高 0
+    const pinned = mk('yt-live-chat-banner-renderer', { style: 'display:block;height:40px;overflow:hidden' }, [mk('div', { id: 'contents' })]);
+    const poll = mk('yt-live-chat-poll-renderer', { style: 'display:block;height:32px' }, [mk('yt-live-chat-poll-header-renderer')]);
+    const pollB = mk('yt-live-chat-banner-renderer', { style: 'display:block;height:40px;overflow:hidden' }, [mk('div', { id: 'banner-container' }, [mk('div', { id: 'contents' }, [poll])])]);
+    const vb = mk('div', { id: 'visible-banners' }, [pinned, pollB]);
+    mgr.append(vb);
+    const renderer = q('yt-live-chat-renderer');
+    const vis = (el) => W().getComputedStyle(el).visibility;
+    const sent = [];
+    const ci = W().YTCAS_CHAT_INPUT.create({ doc: D(), win: W(), S, C: W().YTCAS_CONST, post: (type, d) => sent.push(d),
+      accept: (e) => e.source === W().parent && !!e.data && e.data.__ytcas === true });
+    const bz = () => sent[sent.length - 1].bottomZoneHeight;
+    let apr = null;
+    try {
+      ci.start();
+      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: true, paused: false }, location.origin);
+      await until(() => bz() === 102, 2000, '(2) 置頂列＋poll-renderer：露出（600 − 498）');
+      eq([vis(pinned), vis(pollB)], ['hidden', 'visible']);
+      // 點開：YouTube 把投票搬到動作面板（renderer 加 has-action-panel-renderer），置頂列只剩置頂訊息
+      const m0 = ci.state().moves;
+      pollB.remove();
+      apr = mk('yt-live-chat-action-panel-renderer', { style: 'display:block;height:194px' }, [mk('div', { id: 'contents' }, [poll])]);
+      ap.append(apr); ap.style.height = '202px';
+      renderer.setAttribute('has-action-panel-renderer', '');
+      await until(() => bz() === 265, 400, '(3) 搬到 #action-panel → 立即重新量測（600 − 335），不等 500ms 輪詢');
+      assert(ci.state().moves > m0, '搬動有被監看到');
+      // 收合：搬回置頂列、動作面板高度回到 0
+      apr.remove(); ap.style.height = '0px'; renderer.removeAttribute('has-action-panel-renderer');
+      pollB.querySelector('#contents').append(poll); vb.append(pollB);
+      await until(() => bz() === 102, 400, '搬回置頂列（收合）');
+      frame.contentWindow.postMessage({ __ytcas: true, type: 'PANEL_STATE', on: false }, location.origin);
+      await until(() => vis(mgr) === 'visible', 2000, '關閉 → 還原');
+    } finally { ci.stop(); vb.remove(); if (apr) apr.remove(); ap.hidden = true; ap.style.height = ''; renderer.removeAttribute('has-action-panel-renderer'); mgr.style.bottom = ''; }
   });
 
   test('T6.3（33.8.4）P7 poll-structure：找到標籤或 id 含 poll／action-panel 的元素 → 記祖先鏈、位置、visibility、是否在面板隱藏範圍內；大小改變再記；只在記錄中運作；沒有文字', async () => {
