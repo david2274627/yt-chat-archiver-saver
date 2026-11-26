@@ -850,12 +850,13 @@
         const wasTemp = isTemp(e.id) && !isTemp(m.id);
         ownAdopt(m, e);
         m.replaceInPlace = true;
+        // v55（T6.5，審查十一 37.3）P7 的舊 id 要在改寫 e.id 之前記（v54 以前記到的是新 id，顯示成 ChwK|40）
+        probeOwn('in-place', e, el, m, { rule: 'same-node', fromEmpty: !oldId });
         e.matched = true; e.id = m.id; e.m = Object.assign({}, m);
         st.stats.ownInPlaceMerged++;
         // v54（35.3 第 1 點）暫時 id → 正式 id（同一個節點）：background 合併成一筆，正式 id 為主、暫時 id 記入 aliasIds
         // （F-14 別名機制）→ 之後重播送來正式 id 時以 id 合併
         if (wasTemp) st.stats.tempAliased++;
-        probeOwn('in-place', e, el, m, { rule: 'same-node', fromEmpty: !oldId });
       } else if (key) remember(el, m, key);
       if (m.id) st.seenIds.add(m.id);
       savedIdOf.set(el, el.id);

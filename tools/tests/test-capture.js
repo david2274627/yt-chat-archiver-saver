@@ -417,6 +417,8 @@
     const r = last('ChwK' + 'b'.repeat(36));
     eq([r.replacesId, r.replaceInPlace, r.timestampAbs], ['CPfn' + 'a'.repeat(23), true, NOW + 20000], '暫時 id → 空 → 正式 id：合併');
     eq(e.state().stats.tempAliased, 1, 'v54 tempAliased');
+    const ip = recs.filter((x) => x.k === 'own-replace' && x.d.kind === 'in-place').pop();
+    eq([ip.d.oldId, ip.d.newId, ip.d.oldTempId], [{ p: 'CPfn', len: 27 }, { p: 'ChwK', len: 40 }, true], 'v55（37.3）P7 in-place 的舊 id 是暫時 id');
     // 1b. v54（35.3 第 1 點）離開頁面期間改 id（暫時 → 空 → 正式）再插回：MutationObserver 看不到 → 插回時比對
     const n1b = me('CPgx' + 'a'.repeat(23), '離開再回來');
     items.append(n1b);

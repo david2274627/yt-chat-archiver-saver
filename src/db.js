@@ -1412,10 +1412,14 @@
     const why = { noTwin: 0, twinFar: 0, twinUsed: 0, noKey: 0 };
     // v54（T6.4，審查十一 34.3）twinFar 的時間差分布與另一筆（最近的正式紀錄）的 tsSource；
     // sameMinute＝另一筆是顯示時間（clock，只到分鐘）、暫時節點的到達時間落在該筆顯示的同一分鐘內 → 另外配對的候選
-    const far = { s30to60: 0, s60to90: 0, over90: 0, otherTsSource: {}, sameMinute: 0 };
+    const far = { s30to60: 0, s60to90: 0, over90: 0, otherTsSource: {}, sameMinute: 0, multiMinutes: 0, sameMinuteLeft: 0 };
     const minuteOf = (ts) => { const d = new Date(ts); d.setSeconds(0, 0); return d.getTime(); };
     const usedReal = new Set(pairs.map((p) => p.real.id));
     const minutePairs = [];
+    // v55（T6.5，審查十一 37.3）sameMinute 改為**每分鐘一對一**：同場次、同內容、同一分鐘的「沒配對的暫時節點紀錄」與
+    // 「顯示時間（clock）的正式紀錄」依時間順序一一配對，數量不等時多出來的保留（同一分鐘真的送了兩則相同內容）。
+    // multiMinutes＝同一分鐘、同內容有多筆（任一邊 > 1）的分鐘數；sameMinuteLeft＝這些分鐘裡沒配到、保留的筆數
+    const minuteGroups = new Map();
     for (const m of tempRecs) {
       if (pairedTemp.has(m.id)) continue;
       const k = C.ownKey(m);
@@ -1429,8 +1433,20 @@
       if (best.d <= 60000) far.s30to60++; else if (best.d <= 90000) far.s60to90++; else far.over90++;
       const ts = best.r.tsSource || '(無)';
       far.otherTsSource[ts] = (far.otherTsSource[ts] || 0) + 1;
-      const cand = rs.find((r) => r.tsSource === 'clock' && !usedReal.has(r.id) && !hasTempAlias(r) && minuteOf(r.timestampAbs || 0) === minuteOf(m.timestampAbs || 0));
-      if (cand) { far.sameMinute++; usedReal.add(cand.id); minutePairs.push({ real: cand, temp: m }); }
+      const mk = m.videoId + '\u0002' + k + '\u0002' + minuteOf(m.timestampAbs || 0);
+      if (!minuteGroups.has(mk)) {
+        const reals = rs.filter((r) => r.tsSource === 'clock' && !usedReal.has(r.id) && !hasTempAlias(r) && minuteOf(r.timestampAbs || 0) === minuteOf(m.timestampAbs || 0));
+        minuteGroups.set(mk, { temps: [], reals });
+      }
+      minuteGroups.get(mk).temps.push(m);
+    }
+    const byTime = (a, b) => ((a.timestampAbs || 0) - (b.timestampAbs || 0)) || ((a.firstSeenAt || 0) - (b.firstSeenAt || 0)) || String(a.id).localeCompare(String(b.id));
+    for (const g of minuteGroups.values()) {
+      if (!g.reals.length) continue;
+      g.temps.sort(byTime); g.reals.sort(byTime);
+      const n = Math.min(g.temps.length, g.reals.length);
+      if (g.temps.length > 1 || g.reals.length > 1) { far.multiMinutes++; far.sameMinuteLeft += g.temps.length + g.reals.length - 2 * n; }
+      for (let i = 0; i < n; i++) { far.sameMinute++; usedReal.add(g.reals[i].id); minutePairs.push({ real: g.reals[i], temp: g.temps[i] }); }
     }
     out.tempUnpaired = why;
     out.twinFar = far;
