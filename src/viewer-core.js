@@ -263,6 +263,17 @@
   // 校正值為負（VOD 開頭被剪）時兩者穿插、分段標題重複
   const PHASE_RANK = Object.freeze({ notice: 0, pre: 1, live: 2, post: 3 });
   function phaseOf(m) { return C.isNotice(m) ? 'notice' : ((m && m.phase) || 'live'); }
+  // v55（T6.5，審查十一 37.2、37.6，使用者決定）「等待開播」期間、預定時間之後的訊息暫定 pre（32.9），時間碼旁加淡色「確認中」：
+  // 還沒有採用的開播時間、沒有結束、不是待機室（預定時間已過或等待開播確認）、訊息 pre 且不早於預定時間。
+  // 確認開播後依實際時間重算（effectiveStart 有值）→ 不再顯示
+  function confirmingStart(m, stream, now) {
+    if (!m || !stream || phaseOf(m) !== 'pre' || stream.endedAt != null || C.effectiveStart(stream, now) != null) return false;
+    if (C.isFutureScheduled(stream, now)) return false;
+    const sch = typeof stream.scheduledStartAt === 'number' ? stream.scheduledStartAt : null;
+    const t = typeof now === 'number' ? now : Date.now();
+    if (sch == null || !(stream.startPending || sch <= t)) return false;
+    return typeof m.timestampAbs === 'number' && m.timestampAbs >= sch;
+  }
   function sortForVod(list, ver, cal) {
     const keyed = list.map((it, i) => {
       const p = phaseOf(it.m);
@@ -622,7 +633,7 @@
   root.YTCAS_VIEWER_CORE = Object.freeze({
     channelUrl, scColors,
     PILLS, PHASE_LABEL, norm, contentText, displayName, authorKey, isBot, categories, indexMessage, filter,
-    matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, dedupePinned, parseColor, safeImg, safeLink,
+    matchRanges, emojiMatches, withPhaseDividers, dayKey, dayLabel, fmtDur, fmtClock, isLongStream, timecode, confirmingStart, dedupePinned, parseColor, safeImg, safeLink,
     versionOffset, vodCalibration, contentPairs, vodSortKey, sortForVod, sortByPhase, phaseOf, memberParts, isMilestone, isWaitingRoom, videoTimeOf, inRange, liveLag, atLiveEdge, nextBaseline, playheadAbs, liveTarget, median, wallSample, nextWallSamples, anchorInit, anchorStep, wallTarget, syncIndex, syncPoints, pickVersion, findLinkedStream, captureNote, raidLabel,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : self);

@@ -585,6 +585,32 @@
     }
   });
 
+  test('T6.5（37.2／37.6）等待開播期間、預定時間之後的 pre 訊息：時間碼旁淡色「確認中」（面板與後台）；預定時間前的不加；確認開播（startedAt）後消失；待機室（預定時間在未來）不加', async () => {
+    const C2 = self.YTCAS_VIEWER_CORE;
+    const now = Date.now(), sch = Math.floor((now - 5 * 60e3) / 60e3) * 60e3;
+    const pend = { videoId: 'x', scheduledStartAt: sch, startPending: true };
+    eq([C2.confirmingStart({ phase: 'pre', timestampAbs: sch + 1000 }, pend, now), C2.confirmingStart({ phase: 'pre', timestampAbs: sch - 1000 }, pend, now),
+      C2.confirmingStart({ phase: 'live', timestampAbs: sch + 1000 }, pend, now),
+      C2.confirmingStart({ phase: 'pre', timestampAbs: sch + 1000 }, Object.assign({}, pend, { startedAt: sch + 30e3, startedAtSource: 'meta-actual', startPending: false }), now),
+      C2.confirmingStart({ phase: 'pre', timestampAbs: now - 1000 }, { videoId: 'x', scheduledStartAt: now + 3600e3, scheduledFuture: true }, now)],
+    [true, false, false, false, false], '規則');
+    await resetDb();
+    const VC = 'vidCONFIRM1';
+    const msgs = [mk({ id: 'cf1', videoId: VC, phase: 'pre', videoOffsetSec: null, timestampAbs: sch - 60e3 }),
+      mk({ id: 'cf2', videoId: VC, phase: 'pre', videoOffsetSec: null, timestampAbs: sch + 60e3 })];
+    await put({ videoId: VC, title: 'C', isLive: true, scheduledStartAt: sch, startPending: true, lastMessageAt: sch + 60e3, messageCount: 2, versions: [], linkedVideos: [] }, msgs);
+    await DB.close();
+    for (const embed of [true, false]) {
+      const c = V.mount(host, { embed, videoId: VC });
+      await c.ready; await frame(); await frame();
+      c.state.vl.reveal(0, false); await frame(); await frame();
+      const tc = (id) => c.els.list.querySelector('[data-id="' + id + '"] .tc');
+      const who = embed ? '面板' : '後台';
+      assert(tc('cf2').querySelector('.confirming') && tc('cf2').querySelector('.confirming').textContent === '確認中', who + '：預定時間之後的 pre 有「確認中」');
+      assert(!tc('cf1').querySelector('.confirming'), who + '：預定時間之前的沒有');
+    }
+  });
+
   test('T5.3 (K) VOD 校正：已合併訊息的 replay offset − live 估計值的中位數；只有 live 的以此換算；沒有合併時以同作者同內容配對；排序', () => {
     const msgs = kFixture('vidKCAL0001');
     const stream = { startedAt: T0 };

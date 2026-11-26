@@ -38,6 +38,10 @@ const PAIRS = [
   ['text', 'accent-soft', 4.5, '會員列／目前訊息本文'],
   // v48（T5.7，28.3）時間碼前的「≈」（只精確到分鐘）：一般列、hover、目前訊息、降落列、禮物卡
   ['text-3', 'accent-soft', 3, '「≈」（目前訊息）'],
+  // v55（T6.5，37.2／37.6）時間碼旁的「確認中」（等待開播期間）：一般列、hover、目前訊息
+  ['text-3', 'surface', 3, '「確認中」（一般列）'],
+  ['text-3', 'surface-2', 3, '「確認中」（hover）'],
+  ['text-3', 'accent-soft', 3, '「確認中」（目前訊息）'],
 ];
 let fail = 0;
 const rows = [];

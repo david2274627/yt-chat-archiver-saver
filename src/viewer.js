@@ -686,6 +686,13 @@
         const why = '只精確到分鐘（YouTube 只顯示到分鐘）' + (m.tsSource === 'clock-ambiguous' ? '；日期可能不準（YouTube 不顯示日期，依訊息順序推算）' : '');
         n.title = n.title ? n.title + '；' + why : why;
       }
+      // v55（T6.5，37.2／37.6）等待開播期間、預定時間之後的訊息：淡色「確認中」（確認開播、依實際時間重算後拿掉）
+      if (CORE.confirmingStart(m, S.stream, Date.now())) {
+        const cf = el('span', 'confirming', '確認中');
+        n.append(cf);
+        const why = '等待確認開播：預定時間已過，確認開播後依實際開播時間重新分段';
+        n.title = n.title ? n.title + '；' + why : why;
+      }
       return n;
     }
     function tcNode0(m) {
