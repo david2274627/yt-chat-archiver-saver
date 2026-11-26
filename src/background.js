@@ -335,6 +335,7 @@ async function fillAvatars(opts) {
 // waitingLive：還在待機室、被存成 live 的直播訊息 → pre
 async function fixPhases(opts) {
   const r = await DB.recomputeAllPhases({ dryRun: !(opts && opts.dryRun === false) });
+  r.findStream = FIND_HINT; // v55（37.4）
   console.info('[ytcas] phase 重算' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
 }
@@ -352,6 +353,27 @@ async function streamTimes(videoId) {
     liveConfirmed: iso(s.liveConfirmedAt), // v48（27 第 1 點）重新抓取確認正在直播（isLiveNow）的時間
     // v51（T6.2，32.8）第一次得知開播的來源（signal＝播放器長度出現、meta-actual＝頁面或重新抓取的 meta）與得知的時間
     firstStartSource: s.startFirstSource || null, firstStartKnown: iso(s.startFirstAt) };
+}
+// v55（T6.5，審查十一 37.4）依 videoId 前綴找場次（SW Console）：await YTCAS_BG.findStream('G1Ov')
+// 回傳完整 videoId、後台網址、YouTube watch 網址、則數、開播日期與狀態；**不回傳標題與頻道**（Console 不輸出影片標題）。
+// videoId 區分大小寫：先找大小寫相符的前綴，沒有才不分大小寫（caseInsensitive: true）
+const FIND_HINT = "videoId 只列前 4 碼；完整 videoId 與後台／YouTube 網址：await YTCAS_BG.findStream('前 4 碼')";
+function streamLinks(videoId) {
+  return { videoId, backend: chrome.runtime.getURL('src/backend.html') + '?v=' + encodeURIComponent(videoId),
+    youtube: 'https://www.youtube.com/watch?v=' + encodeURIComponent(videoId) };
+}
+async function findStream(prefix) {
+  const p = String(prefix || '').trim();
+  if (!p) return { ok: false, error: 'empty-prefix' };
+  const all = await DB.listStreams();
+  const hit = all.filter((s) => typeof s.videoId === 'string' && s.videoId.startsWith(p));
+  const list = (hit.length ? hit : all.filter((s) => typeof s.videoId === 'string' && s.videoId.toLowerCase().startsWith(p.toLowerCase())))
+    .map((s) => Object.assign(streamLinks(s.videoId), { messages: s.messageCount || 0,
+      startedAt: typeof (s.startedAt ?? s.scheduledStartAt) === 'number' ? new Date(s.startedAt ?? s.scheduledStartAt).toISOString() : null,
+      status: s.endedAt != null ? 'ended' : C.isFutureScheduled(s) ? 'waiting' : s.isLive ? 'live' : 'unknown' }));
+  const r = { ok: true, prefix: p, matches: list.length, list, caseInsensitive: !hit.length && list.length > 0 };
+  console.info('[ytcas] findStream', r);
+  return r;
 }
 // v45（T5.4，審查十一 20.4 第 5 點）既有禮物的作者與 @handle 連結。用法：await YTCAS_BG.fixGiftAuthors()（預覽）→ { dryRun: false }
 async function fixGiftAuthors(opts) {
@@ -372,6 +394,7 @@ async function fixFutureTimes(opts) {
 // sameMinute 的配對要明確指定才合併：fixOwnDuplicates({ dryRun: false, sameMinute: true })
 async function fixOwnDuplicates(opts) {
   const r = await DB.fixOwnDuplicates({ dryRun: !(opts && opts.dryRun === false), sameMinute: !!(opts && opts.sameMinute) });
+  r.findStream = FIND_HINT; // v55（37.4）
   console.info('[ytcas] 自己送出的重複訊息' + (r.dryRun ? '（預覽）' : ''), r);
   return r;
 }
@@ -1619,4 +1642,4 @@ onWake();
 
 // 測試頁使用（Service Worker 中無副作用）
 self.YTCAS_BG = { handlers, capturePolicy, enqueueHandles, parseChannelHtml, parseWatchHtml, fetchStreamMeta, kickQueue,
-  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, _metaPollDue: metaPollDue, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, streamCompare, fixRaidLeak, fixStreamMeta, fixRaidEnds, setRaidAutoPopout, _maybeRaidPopout: maybeRaidPopout, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };
+  autoMigrateLegacy, readQueue, readPopout, maybeRefetchMeta, pollOpenStreams, findStaleTabs, reinjectYouTubeTabs, reconnectStaleTabs, _setWakeChecked: (v) => { wakeChecked = !!v; }, _metaPoll: metaPoll, _metaPollDue: metaPollDue, onPopoutTabRemoved, cleanupJunkSystem, dedupePinned, avatarHosts, fillAvatars, fixGiftAuthors, fixOwnDuplicates, fixFutureTimes, giftStructures, fixPhases, streamTimes, findStream, systemTags: () => DB.systemTagStats(), channelStats, channelInfo, prioritizeHandles, streamCompare, fixRaidLeak, fixStreamMeta, fixRaidEnds, setRaidAutoPopout, _maybeRaidPopout: maybeRaidPopout, scTiers, _parseAmount: parseAmount, _orderQueue: orderQueue, _netBackoffMs: netBackoffMs, _isNetError: isNetError, _resetChStats: () => { Object.assign(chStats, { netErrors: 0, netErrorTimes: [], doneTimes: [], consecutiveNet: 0, pauseUntil: 0 }); }, sourceStats, retryFailedChannels, isJunkTag, reclassifySystem, fieldStats, recomputeStream, diag, _inflight: inflight };

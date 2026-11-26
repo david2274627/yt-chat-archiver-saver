@@ -1408,18 +1408,55 @@
       own({ id: 'CTMPAAAAAAAAAAAAAAAAfar-b1', runs: [{ text: 'b' }], timestampAbs: t0 + 10000, tsSource: 'arrival', videoOffsetSec: 10, phase: 'live' }),
       own({ id: 'ChwKfar-b2', runs: [{ text: 'b' }], timestampAbs: t0 + 59999, tsSource: 'clock', videoOffsetSec: 60, phase: 'live' }), // 同一分鐘、差 50 秒
       own({ id: 'CTMPAAAAAAAAAAAAAAAAfar-c1', runs: [{ text: 'c' }], timestampAbs: t0 + 200e3, tsSource: 'arrival', videoOffsetSec: 200, phase: 'live' }),
-      own({ id: 'ChwKfar-c2', runs: [{ text: 'c' }], timestampAbs: t0 + 300e3, tsSource: 'arrival', videoOffsetSec: 300, phase: 'live' })]; // 差 100 秒
+      own({ id: 'ChwKfar-c2', runs: [{ text: 'c' }], timestampAbs: t0 + 300e3, tsSource: 'arrival', videoOffsetSec: 300, phase: 'live' }), // 差 100 秒
+      // v55（37.3）同一分鐘送了兩則相同內容（兩筆暫時），只有一筆顯示時間的正式紀錄 → 一對一：配一筆、另一筆保留
+      own({ id: 'CTMPAAAAAAAAAAAAAAAAfar-d1', runs: [{ text: 'd' }], timestampAbs: t0 + 610e3, tsSource: 'arrival', videoOffsetSec: 610, phase: 'live' }),
+      own({ id: 'CTMPAAAAAAAAAAAAAAAAfar-d3', runs: [{ text: 'd' }], timestampAbs: t0 + 615e3, tsSource: 'arrival', videoOffsetSec: 615, phase: 'live' }),
+      own({ id: 'ChwKfar-d2', runs: [{ text: 'd' }], timestampAbs: t0 + 659999, tsSource: 'clock', videoOffsetSec: 660, phase: 'live' })];
     for (const m of msgs) await DB.saveMessages({ videoId: V, source: 'live', messages: [m] });
-    eq((await DB.queryMessages(V)).length, 4, '前提：寫入時沒有合併（> 30 秒）');
+    eq((await DB.queryMessages(V)).length, 7, '前提：寫入時沒有合併（> 30 秒）');
     const pre = await BG.fixOwnDuplicates();
-    eq([pre.pairs, pre.tempUnpaired.twinFar, pre.twinFar], [0, 2, { s30to60: 1, s60to90: 0, over90: 1, otherTsSource: { clock: 1, arrival: 1 }, sameMinute: 1 }]);
+    eq([pre.pairs, pre.tempUnpaired.twinFar, pre.twinFar], [0, 4, { s30to60: 3, s60to90: 0, over90: 1, otherTsSource: { clock: 3, arrival: 1 }, sameMinute: 2, multiMinutes: 1, sameMinuteLeft: 1 }]);
     const r1 = await BG.fixOwnDuplicates({ dryRun: false });
-    eq([r1.merged, r1.sameMinuteMerged, (await DB.queryMessages(V)).length], [0, 0, 4], '沒指定 sameMinute：不合併');
+    eq([r1.merged, r1.sameMinuteMerged, (await DB.queryMessages(V)).length], [0, 0, 7], '沒指定 sameMinute：不合併');
     const r2 = await BG.fixOwnDuplicates({ dryRun: false, sameMinute: true });
     list = await DB.queryMessages(V);
-    eq([r2.merged, r2.sameMinuteMerged, list.length], [1, 1, 3]);
+    eq([r2.merged, r2.sameMinuteMerged, list.length], [2, 2, 5]);
+    eq(list.find((m) => m.id === 'ChwKfar-d2').aliasIds, ['CTMPAAAAAAAAAAAAAAAAfar-d1'], '依時間順序：較早的暫時那筆配對');
+    assert(list.some((m) => m.id === 'CTMPAAAAAAAAAAAAAAAAfar-d3'), '多出來的保留');
     const b = list.find((m) => m.id === 'ChwKfar-b2');
     eq([b.aliasIds, b.tsSource, b.timestampAbs], [['CTMPAAAAAAAAAAAAAAAAfar-b1'], 'arrival', t0 + 10000], '正式 id 為主、時間取到達時間');
+  });
+
+  test('T6.5（36 第 1 點）待機室保底與提早開播：預定時間在未來時寫成 pre（waitingFixed）→ 得知實際開播時間（meta-actual）→ 依時間重算回 live；開播前的那則維持 pre', async () => {
+    await resetAll();
+    U._resetTwins();
+    const now = Date.now();
+    const sch = Math.ceil((now + 20 * MIN) / MIN) * MIN;
+    const act = now - 5 * MIN + 17000; // 實際已提早開播
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { scheduledStartAt: sch, scheduledFuture: true, isLive: true }, messages: [] });
+    const r0 = await DB.saveMessages({ videoId: V, source: 'live', messages: [
+      msg({ id: 'eb1', timestampAbs: now - 10 * MIN, videoOffsetSec: null, phase: 'live' }), // 真的在開播前
+      msg({ id: 'eb2', timestampAbs: now - 1 * MIN, videoOffsetSec: null, phase: 'live' })] }); // 其實已開播
+    eq(r0.waitingFixed, 2, '保底：兩則都暫時 pre');
+    const get = async (id) => (await DB.queryMessages(V)).find((m) => m.id === id);
+    eq([(await get('eb1')).phase, (await get('eb2')).phase], ['pre', 'pre']);
+    await DB.saveMessages({ videoId: V, source: 'live', stream: { startedAt: act, startedAtSource: 'meta-actual', scheduledFuture: false }, messages: [] });
+    eq([(await get('eb1')).phase, (await get('eb2')).phase, (await get('eb2')).videoOffsetSec], ['pre', 'live', Math.round((now - MIN - act) / 100) / 10], '得知開播時間 → pre→live 重算');
+  });
+
+  test('T6.5（37.4）findStream：依 videoId 前綴找場次 → 完整 videoId、後台網址、YouTube 網址；不含標題與頻道；大小寫不符時才不分大小寫', async () => {
+    await resetAll();
+    await DB.saveMessages({ videoId: 'G1Ov3wFEL5c', source: 'live', stream: { title: '秘密標題', channelName: '秘密頻道', startedAt: 1_700_000_000_000, startedAtSource: 'meta-actual' }, messages: [msg()] });
+    await DB.saveMessages({ videoId: 'G1Oz0000000', source: 'live', stream: { title: 'x' }, messages: [] });
+    const r = await BG.findStream('G1Ov');
+    eq([r.matches, r.list[0].videoId, r.list[0].backend, r.list[0].youtube, r.list[0].messages],
+      [1, 'G1Ov3wFEL5c', 'chrome-extension://testextid/src/backend.html?v=G1Ov3wFEL5c', 'https://www.youtube.com/watch?v=G1Ov3wFEL5c', 1]);
+    assert(!JSON.stringify(r).includes('秘密'), '不含標題與頻道');
+    eq((await BG.findStream('G1O')).matches, 2);
+    eq([(await BG.findStream('g1ov')).matches, (await BG.findStream('g1ov')).caseInsensitive], [1, true]);
+    eq((await BG.findStream('zzzz')).matches, 0);
+    assert(/findStream/.test((await BG.fixPhases()).findStream), '維護函式的預覽附上 findStream 提示');
   });
 
   test('T6.4 phase（35.6）：重播 offset −3,300 秒 → pre；0:13 → live；live／replay 合併以 live 的絕對時間判斷；既有資料 fixPhases 列出重播來源的改動（replay／merged）', async () => {
