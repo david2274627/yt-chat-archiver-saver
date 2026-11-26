@@ -246,6 +246,20 @@
   - dom-notes 2.11 投票卡已驗證、5.4 studio 已驗證（35.1、35.2，commit `8849a8d`）。
   - SPEC v54、CHANGELOG、測試清單、報告、審查第 35.7 節（本段落所在的 commit）。
 
+- v55／T6.5（`docs/review-2026-11-17.md` 第 36～37.7 節；報告為 `docs/reports/2026-11-22-t6-f10.md` 的「T6.5」一節）：
+  - 審查十一第 36～37.7 節與三份診斷摘要（commit `6d1a361`）。
+  - 投票的第 2 種位置、在置頂列與 `#action-panel` 之間搬動時立即重新量測、dom-notes 2.11（37.1，commit `14a4310`）。
+  - `sameMinute` 每分鐘一對一、P7 `in-place` 舊 id（37.3，commit `255f9a8`）。
+  - `findStream()`、預覽提示、待機室保底與提早開播的測試（37.4、36 第 1 點，commit `0355dbf`）。
+  - 等待開播期間的「確認中」（37.2、37.6，commit `8d2c1ad`）。
+  - SPEC v55（含 T7-a 排程與 T8 長批次）、CHANGELOG、測試清單、報告（本段落所在的 commit）。
+
+### 規格 v55（2026-11-26，T6.5）
+- 6.8：投票三種位置、`chat.pollBanner` 擴充、`chat.pollHosts` 監看搬動。
+- F-14：`sameMinute` 每分鐘一對一（`multiMinutes`、`sameMinuteLeft`）、P7 `in-place` 舊 id；`findStream()`。
+- F-08、10.4：「確認中」（`CORE.confirmingStart`）。
+- 第 8 節：新增 T7-a 後台場次管理（排在 T6.5 之後、T6-c 之前）；T7 移出相關項目；T8 加壓力測試長批次的查明。
+
 ### 規格 v54（2026-11-26，T6.4）
 - F-14：待機室寫入保底（`C.isWaitingAt`、`waitingFixed`）；重播來源的 phase（`C.replayPhase`）、live／replay 合併以 live 時間判斷；`fixPhases` 的 `replay`／`merged`／`waitingLive`。
 - F-14（自己送出）：`swap` 只限暫時 id、舊 id 仍在新列表不合併；插回時 id 已不同 → 原地改 id（P1 `own.tempAliased`、`own.events.whileDetached`）；`fixOwnDuplicates` 的 `twinFar`、`sameMinute`。

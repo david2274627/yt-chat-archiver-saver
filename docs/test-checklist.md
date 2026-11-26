@@ -277,6 +277,13 @@
 | T6.4 實機【任何直播】投票卡：面板開啟時露出（只有投票、沒有置頂訊息）、點開展開時面板跟著讓出空間、收合後回來 | ⬜ | |
 | T6.4 實機【任何直播】自己送出：P1 `tempAliased` ≥ 1、`whileDetached`；`fixOwnDuplicates()` 預覽 `twinFar` | ⬜ | |
 | T6.4 實機【任何直播】彈出視窗開啟（F-12 切換）時 P1 換列表合併為 0（除非是暫時 id） | ⬜ | |
+| T6.5 自動 (37.1) | 置頂列＋`yt-live-chat-poll-renderer` 收合露出、搬到 `#action-panel` 展開 400ms 內重新量測、搬回收合（`test-chat-input.html`） | ✅ | 2026-11-26 |
+| T6.5 自動 (37.3、37.4、36) | `sameMinute` 每分鐘一對一、`multiMinutes`／`sameMinuteLeft`；`findStream`（不含標題）；提早開播 → 保底暫為 pre → live（`test-db.html`）；P7 `in-place` 舊 id 是暫時 id（`test-capture.html`） | ✅ | 2026-11-26 |
+| T6.5 自動 (37.2) | 「確認中」：規則、面板與後台只在預定時間之後的 pre 出現（`test-viewer.html`）；對比（`check-contrast`） | ✅ | 2026-11-26 |
+| T6.5 實機【任何直播】投票卡：收合時面板開啟露出；點開（搬到動作面板）時面板讓出高度；收合後回來 | ⬜ | |
+| T6.5 實機【待機室→開播】等待開播期間，預定時間之後的訊息有「確認中」，確認開播後消失 | ⬜ | |
+| T6.5 實機【不限】`findStream('G1Ov')` 回傳完整 videoId 與兩個網址 | ⬜ | |
+| T6.5 實機【不限】`fixOwnDuplicates()` 預覽 `sameMinute`／`multiMinutes`／`sameMinuteLeft` | ⬜ | |
 
 ## UI 設計（SPEC 第 10 節）
 | 項目 | 狀態 | 備註 |
